@@ -1,5 +1,13 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Mis turnos más completa — 29 sep 2026 (caché ppam-v9)
+
+- Resumen del mes (turnos, horas y por confirmar), secciones Hoy · Próximos · Realizados y hojita de calendario en cada turno, con la miniatura de la foto del lugar si tiene.
+- Se mantienen el nombre completo con la ciudad y los botones Cómo llegar, Detalle y Cancelar.
+- Corregido: un turno de hoy que ya terminó pasa solo a "Realizados" con "✓ Hecho".
+- Agradecimiento por los turnos hechos en el mes y botón "Anotarme en otro turno".
+- Cancelar pide confirmación con una explicación clara. 78 pruebas de la página.
+
 ## Detalles del rediseño — 29 sep 2026 (caché ppam-v8)
 
 - Sin emojis: íconos de línea en la configuración de puntos (carrito, stand, ubicación, fotos), en "Estoy acá", "Buscar en el mapa", "Pegar link", en los botones de WhatsApp y en el buscador del mapa.

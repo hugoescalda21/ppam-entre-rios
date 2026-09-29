@@ -269,7 +269,7 @@
     if (dias === 1) return 'Mañana';
     const ahora = new Date(), falta = minutos(p.desde) - (ahora.getHours() * 60 + ahora.getMinutes());
     if (falta <= 0) return 'Ahora';
-    return 'Hoy · en ' + (falta >= 60 ? `${Math.floor(falta / 60)} h${falta % 60 ? ' ' + (falta % 60) : ''}` : `${falta} min`);
+    return 'Hoy · en ' + (falta >= 60 ? `${Math.floor(falta / 60)} h${falta % 60 ? ' ' + (falta % 60) + ' min' : ''}` : `${falta} min`);
   }
   function ticket(p) {
     const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, conf = p.estado === 'confirmado';
@@ -462,32 +462,62 @@
     });
     await batch.commit();
   }
-  async function cancelarPedido(pid) {
+  function cancelarPedido(pid) {
     const p = S.mis[pid]; if (!p) return;
-    if (!confirm(`¿Cancelar tu turno del ${fmtDia(p.fecha)} (${fmtHora(p.desde)} a ${fmtHora(p.hasta)})?`)) return;
-    const batch = S.db.batch();
-    batch.update(S.db.doc('cupos/' + cupoId(p.cid, p.fecha, p.tid)), { ['ocupados.' + p.uid]: S.del() });
-    batch.delete(S.db.doc('pedidos/' + pid));
-    try { await batch.commit(); toast('Turno cancelado'); if (S.route.name === 'turno') go('#/mis'); } catch (e) { console.error(e); toast('No se pudo cancelar. Probá de nuevo.'); }
+    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {};
+    const ov = sheet(`<h3>¿Cancelar este turno?</h3><p class="hint">Se libera el lugar para otro publicador y se borran tus datos de ese turno.</p>
+      <div class="sum"><div><b>${esc(cap(fmtDia(p.fecha)))} · ${esc(p.desde)} a ${esc(p.hasta)}</b></div><div style="color:var(--ink3)">${esc([c.nombre, pt.nombre, c.ciudad].filter(Boolean).join(' · '))}</div></div>
+      <button type="button" class="btn danger" id="cxOk">Sí, cancelar el turno</button><button type="button" class="btn alt" data-cerrar>No, mantenerlo</button>`);
+    ov.querySelector('#cxOk').addEventListener('click', async () => {
+      const b = ov.querySelector('#cxOk'); b.disabled = true; b.textContent = 'Cancelando…';
+      const batch = S.db.batch();
+      batch.update(S.db.doc('cupos/' + cupoId(p.cid, p.fecha, p.tid)), { ['ocupados.' + p.uid]: S.del() });
+      batch.delete(S.db.doc('pedidos/' + pid));
+      try { await batch.commit(); ov.remove(); toast('Turno cancelado'); if (S.route.name === 'turno') go('#/mis'); }
+      catch (e) { console.error(e); b.disabled = false; b.textContent = 'Sí, cancelar el turno'; toast('No se pudo cancelar. Probá de nuevo.'); }
+    });
   }
   S.del = () => (window.__ppamMock ? window.__ppamMock.del() : firebase.firestore.FieldValue.delete());
 
   /* ---------- Mis turnos ---------- */
   function renderMis() {
     if (!S.user) { $('app').innerHTML = '<div class="welcome"><h4>Tus turnos</h4><p>Ingresá con tu cuenta de Google para ver los turnos que pediste.</p><button type="button" class="btn p" data-login>Ingresar con Google</button></div>'; return; }
+    const ahora = new Date(), m = ahora.getHours() * 60 + ahora.getMinutes(), h0 = hoy(), mes = h0.slice(0, 7);
+    const hecho = (p) => p.fecha < h0 || (p.fecha === h0 && minutos(p.hasta) <= m);
     const all = Object.keys(S.mis).map(id => Object.assign({ id }, S.mis[id])).sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
-    const prox = all.filter(p => p.fecha >= hoy()), pas = all.filter(p => p.fecha < hoy()).reverse();
-    let h = prox.length ? prox.map(misCard).join('') : '<div class="welcome"><h4>No tenés turnos</h4><p>Elegí una campaña en el inicio y anotate en un horario libre.</p><button type="button" class="btn p" data-go="#/">Ver campañas</button></div>';
-    if (pas.length) h += '<div class="sec">Anteriores</div><div class="card">' + pas.slice(0, 20).map(pedidoRow).join('') + '</div>';
+    const deHoy = all.filter(p => !hecho(p) && p.fecha === h0 && p.estado !== 'rechazado');
+    const prox = all.filter(p => !hecho(p) && (p.fecha > h0 || p.estado === 'rechazado') && !deHoy.includes(p));
+    const pas = all.filter(hecho).reverse();
+    let mesRef = mes, delMes = all.filter(p => p.fecha.slice(0, 7) === mes && p.estado !== 'rechazado');
+    if (!delMes.length) { const sig = all.find(p => !hecho(p) && p.estado !== 'rechazado'); if (sig) { mesRef = sig.fecha.slice(0, 7); delMes = all.filter(p => p.fecha.slice(0, 7) === mesRef && p.estado !== 'rechazado'); } }
+    const cualMes = mesRef === mes ? 'este mes' : 'en ' + MES[+mesRef.slice(5, 7) - 1];
+    const horas = delMes.reduce((a, p) => a + Math.max(0, minutos(p.hasta) - minutos(p.desde)), 0) / 60;
+    const porConf = all.filter(p => !hecho(p) && p.estado === 'pendiente').length;
+    let h = '';
+    if (all.length) h += `<div class="stat"><div class="g"><b class="num">${delMes.length}</b><small>${delMes.length === 1 ? 'turno' : 'turnos'} ${cualMes}</small></div><div><b class="num">${Number.isInteger(horas) ? horas : horas.toFixed(1).replace('.', ',')} h</b><small>de predicación</small></div><div><b class="num">${porConf}</b><small>por confirmar</small></div></div>`;
+    if (deHoy.length) h += '<div class="lbl">Hoy</div>' + deHoy.map(p => misCard(p, 'hoy')).join('');
+    if (prox.length) h += `<div class="lbl sp">Próximos <span>${prox.length}</span></div>` + prox.map(p => misCard(p, '')).join('');
+    if (!deHoy.length && !prox.length) h += '<div class="welcome"><h4>No tenés turnos por delante</h4><p>Elegí una campaña y anotate en un horario libre.</p><button type="button" class="btn p" data-go="#/">Ver campañas</button></div>';
+    if (pas.length) {
+      const hechosMes = pas.filter(p => p.estado === 'confirmado' && p.fecha.slice(0, 7) === mes).length;
+      h += `<div class="lbl sp">Realizados <span>${esc(cap(MES[parseIso(pas[0].fecha).getMonth()]))}</span></div>` + pas.slice(0, 20).map(p => misCard(p, 'done')).join('');
+      if (hechosMes) h += `<div class="thanks">${I('star')}<span><b>¡Gracias por participar!</b><br>${hechosMes === 1 ? 'Ya hiciste 1 turno este mes.' : `Ya hiciste ${hechosMes} turnos este mes.`}</span></div>`;
+    }
+    if (deHoy.length || prox.length) h += `<button type="button" class="cta2" data-go="#/">${I('plus')}Anotarme en otro turno</button>`;
     $('app').innerHTML = h;
   }
-  function misCard(p) {
-    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, tp = TIPOS[pt.tipo] || TIPOS.otro;
-    const url = pt.nombre && p.estado !== 'rechazado' ? comoLlegarUrl(pt, c) : '';
-    let acts = url ? `<a class="go" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Cómo llegar</a>` : '';
+  function misCard(p, modo) {
+    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, d = parseIso(p.fecha);
+    const rech = p.estado === 'rechazado', conf = p.estado === 'confirmado', done = modo === 'done';
+    const url = !done && !rech && pt.nombre ? comoLlegarUrl(pt, c) : '';
+    const foto = (pt.fotos || [])[0];
+    const chip = done ? (conf ? `<span class="chip dn">${I('check')}Hecho</span>` : `<span class="chip dn">${rech ? 'No confirmado' : 'Sin confirmar'}</span>`)
+      : `<span class="chip ${conf ? 'ok' : rech ? 'rj' : 'pe'}"><i></i>${esc(ESTADOS[p.estado] || p.estado)}</span>`;
+    let acts = '';
+    if (url) acts += `<a class="go" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Cómo llegar</a>`;
     acts += `<button type="button" class="sbtn" data-go="#/t/${esc(p.id)}">Detalle</button>`;
-    if (p.estado !== 'rechazado') acts += `<button type="button" class="sbtn bad x" data-cancelar="${esc(p.id)}" aria-label="Cancelar turno">${I('x')}</button>`;
-    return `<div class="mt"><div class="ph"${fotoAttr(p.cid, (pt.fotos || [])[0], `background-image:${colorDe(c.id ? c : { id: p.cid })};`)}><span class="tag ${esc(p.estado)}">${p.estado === 'confirmado' ? '✓ ' : ''}${esc(ESTADOS[p.estado] || p.estado)}</span></div><div class="b"><div class="when">${esc(cap(fmtDia(p.fecha)))} · ${esc(p.desde)} a ${esc(p.hasta)}</div><div class="m">${esc([c.nombre, pt.nombre, c.ciudad].filter(Boolean).join(' · '))}</div><div class="acts">${acts}</div></div></div>`;
+    if (!done && !rech) acts += `<button type="button" class="sbtn bad" data-cancelar="${esc(p.id)}">Cancelar</button>`;
+    return `<div class="tc ${modo}"><div class="tcl"><div class="cal ${done ? 'd' : conf ? '' : 'p'}"><small>${DOW[d.getDay()]}</small><b class="num">${d.getDate()}</b><i>${MES[d.getMonth()].slice(0, 3)}</i></div>${foto ? `<div class="thumb"${fotoAttr(p.cid, foto)}></div>` : ''}</div><div class="bd">${modo === 'hoy' ? `<span class="hoyb">${I('clock')}${esc(cuandoTexto(p).replace(/^Hoy · /, ''))}</span>` : ''}<div class="h num">${esc(p.desde)} – ${esc(p.hasta)}</div><div class="m">${I(pt.tipo === 'carrito' ? 'cart' : pt.tipo === 'stand' ? 'stand' : 'pin')}<span>${esc([c.nombre, pt.nombre, c.ciudad].filter(Boolean).join(' · '))}</span></div><div class="st1">${chip}</div></div><div class="acts3">${acts}</div></div>`;
   }
   function renderTurno() {
     if (!S.user) { $('app').innerHTML = '<div class="welcome"><h4>Tu turno</h4><p>Ingresá con tu cuenta para ver el detalle.</p><button type="button" class="btn p" data-login>Ingresar con Google</button></div>'; return; }

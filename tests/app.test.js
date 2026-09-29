@@ -145,7 +145,9 @@ const SEED = {
   await p.screenshot({ path: SHOTS + '/inicio-turno.png' });
   check('con sesión el botón de la cuenta muestra las iniciales', await p.evaluate(() => document.getElementById('userBtn').textContent === 'AP'));
   await p.evaluate(() => { location.hash = '#/mis'; }); await p.waitForTimeout(100);
-  await p.click('[data-cancelar]'); await p.waitForTimeout(200);
+  await p.click('[data-cancelar]'); await p.waitForTimeout(100);
+  check('cancelar pide confirmar con una explicación', /¿Cancelar este turno\?[\s\S]*Se libera el lugar/.test(await text(p, '.sheet')));
+  await p.click('#cxOk'); await p.waitForTimeout(200);
   const st2 = await p.evaluate(() => ({ cupo: window.__store['cupos/parana-terminal__2026-10-03__t3'], ped: window.__store['pedidos/parana-terminal__2026-10-03__t3__u-ana'] }));
   check('cancelar libera el lugar y borra sus datos', !st2.ped && st2.cupo && !('u-ana' in st2.cupo.ocupados), st2);
   check('sin botón "Coordinación" para un publicador', await p.evaluate(() => document.getElementById('coordBtn').classList.contains('hidden')));
@@ -284,10 +286,10 @@ const SEED = {
   await v.click('.sheet [data-cerrar]');
   await v.click('#userBtn'); await v.waitForTimeout(250);
   await v.evaluate(() => { location.hash = '#/mis'; }); await v.waitForTimeout(250);
-  const mis = await v.evaluate(() => { const m = document.querySelector('.mt'); return m && { t: m.innerText, go: (m.querySelector('a.go') || {}).href || '', lugar: !!m.querySelector('[data-go^="#/t/"]'), foto: /url\(/.test(m.querySelector('.ph').style.backgroundImage) }; });
-  check('"Mis turnos": turno confirmado con "Cómo llegar" y "Detalle"', mis && /Confirmado/.test(mis.t) && /Sábado 3 de octubre · 16:00 a 18:00/.test(mis.t) && mis.go === 'https://maps.app.goo.gl/AbCd123XyZ' && mis.lugar, mis);
+  const mis = await v.evaluate(() => { const m = document.querySelector('.tc'); return m && { t: m.innerText, all: document.getElementById('app').innerText, go: (m.querySelector('a.go') || {}).href || '', lugar: !!m.querySelector('[data-go^="#/t/"]'), cancelar: !!m.querySelector('[data-cancelar]'), foto: !!m.querySelector('.thumb') }; });
+  check('"Mis turnos": resumen del mes, próximos con hojita de calendario, Cómo llegar, Detalle y Cancelar', mis && /Confirmado/.test(mis.t) && /SÁB\s*3\s*oct\s*16:00 – 18:00\s*Terminal de ómnibus · Hall central · Paraná\s*Confirmado\s*Cómo llegar\s*Detalle\s*Cancelar/i.test(mis.t) && mis.cancelar && /1\s*turno en octubre\s*2 h\s*de predicación\s*0\s*por confirmar/.test(mis.all) && /Próximos\s*1/i.test(mis.all) && /Anotarme en otro turno/.test(mis.all) && mis.go === 'https://maps.app.goo.gl/AbCd123XyZ' && mis.lugar, mis);
   await v.screenshot({ path: SHOTS + '/mis-turnos.png' });
-  await v.click('.mt [data-go^="#/t/"]'); await v.waitForTimeout(250);
+  await v.click('.tc [data-go^="#/t/"]'); await v.waitForTimeout(250);
   const det = await v.evaluate(() => ({ t: document.getElementById('app').innerText, llegar: (document.querySelector('.grid4 a.pr') || {}).href || '', hash: location.hash }));
   check('detalle del turno: estado, día y horario, y las cuatro acciones', /Confirmado por un coordinador\s*Sábado 3 de octubre · 16:00 a 18:00/.test(det.t) && /Llegar\s*Agendar\s*Compartir\s*Cancelar/.test(det.t) && det.llegar === 'https://maps.app.goo.gl/AbCd123XyZ' && /^#\/t\//.test(det.hash), det);
   await v.screenshot({ path: SHOTS + '/detalle.png' });
@@ -321,6 +323,29 @@ const SEED = {
   await a.fill('#adCongs', 'San Agustín (Paraná)\nVilla Urquiza (Paraná)\n\nSan Agustín (Paraná)'); await a.click('#adCongsOk'); await a.waitForTimeout(150);
   check('guarda la lista de congregaciones sin repetidos', JSON.stringify(await a.evaluate(() => window.__store['config/publico'].congregaciones)) === '["San Agustín (Paraná)","Villa Urquiza (Paraná)"]');
   check('sin errores (admin)', a.errs.length === 0, a.errs);
+  console.log('\nMis turnos: hoy, próximos y realizados');
+  {
+    const seed = JSON.parse(JSON.stringify(SEED));
+    seed['campanas/parana-terminal'].desde = '2026-09-01';
+    const ped = (fecha, tid, punto, desde, hasta, estado) => ({ cid: 'parana-terminal', fecha, tid, punto, desde, hasta, uid: 'u-ana', email: 'ana@x.com', nombre: 'Ana', apellido: 'Paz', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', estado });
+    seed['pedidos/parana-terminal__2026-09-29__t2__u-ana'] = ped('2026-09-29', 't2', 'p1', '10:00', '12:00', 'confirmado');
+    seed['pedidos/parana-terminal__2026-09-29__t3__u-ana'] = ped('2026-09-29', 't3', 'p2', '16:00', '18:00', 'confirmado');
+    seed['pedidos/parana-terminal__2026-10-03__t1__u-ana'] = ped('2026-10-03', 't1', 'p1', '08:00', '10:00', 'pendiente');
+    seed['pedidos/parana-terminal__2026-09-19__t1__u-ana'] = ped('2026-09-19', 't1', 'p1', '08:00', '10:00', 'confirmado');
+    const cx = await b.newContext({ viewport: { width: 390, height: 1300 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    await cx.clock.install({ time: new Date('2026-09-29T13:56:00-03:00') });
+    await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(seed)}, ${JSON.stringify([pub])})`);
+    const m = await cx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
+    await m.goto(FILE + '#/mis'); await m.waitForTimeout(250); await m.click('#userBtn'); await m.waitForTimeout(300);
+    const tx = await text(m, '#app');
+    check('el turno de hoy que ya terminó (10 a 12) pasa a Realizados; el de 16 a 18 queda en Hoy', /^[\s\S]*HOY\s*MAR\s*29\s*sep\s*en 2 h 4 min\s*16:00 – 18:00[\s\S]*PRÓXIMOS\s*1\s*SÁB\s*3[\s\S]*Esperando confirmación[\s\S]*REALIZADOS\s*Septiembre\s*MAR\s*29\s*sep\s*10:00 – 12:00[\s\S]*Hecho\s*Detalle\s*SÁB\s*19[\s\S]*Hecho/i.test(tx), tx);
+    check('resumen: 3 turnos este mes, 6 h, 1 por confirmar, y el agradecimiento', /3\s*turnos este mes\s*6 h\s*de predicación\s*1\s*por confirmar/.test(tx) && /Gracias por participar[\s\S]*Ya hiciste 2 turnos este mes/.test(tx), tx.slice(0, 200));
+    await m.screenshot({ path: SHOTS + '/mis-turnos-completo.png', fullPage: true });
+    check('sin errores (mis turnos)', m.errs.length === 0, m.errs);
+    await cx.close();
+  }
+
   await b.close(); console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;
 })();

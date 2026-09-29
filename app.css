@@ -382,3 +382,42 @@ label.sbtn { cursor: pointer; }
 .card > .note { color: var(--ink2); }
 .card .fld textarea { font-size: 15px; }
 .acts .sbtn .ic { width: 16px; height: 16px; }
+
+/* ---------- Mis turnos ---------- */
+.stat { display: flex; gap: 8px; margin: 4px 0 6px; }
+.stat > div { flex: 1; background: var(--card); border: 1px solid var(--line2); border-radius: 16px; padding: 10px 12px; }
+.stat b { display: block; font-family: var(--tt); font-size: 21px; }
+.stat small { font-size: 11.5px; color: var(--ink3); }
+.stat .g { background: var(--gold-bg); border-color: rgba(184,146,74,.25); }
+.stat .g b { color: var(--gold-t); }
+.lbl.sp { display: flex; justify-content: space-between; margin-top: 20px; }
+.lbl.sp span { letter-spacing: 0; text-transform: none; font-weight: 500; }
+.tc { display: flex; flex-wrap: wrap; gap: 12px; background: var(--card); border: 1px solid var(--line2); border-radius: 20px; padding: 12px; margin-bottom: 10px; box-shadow: var(--sh); }
+.tc.hoy { border: 1.5px solid var(--pri2); box-shadow: 0 12px 24px -16px rgba(18,67,63,.5); }
+.tc.done { opacity: .85; }
+.tcl { flex-shrink: 0; }
+.cal { width: 56px; border-radius: 14px; overflow: hidden; text-align: center; border: 1px solid var(--line); background: var(--card); }
+.cal small { display: block; background: var(--pri); color: #fff; font-size: 10.5px; font-weight: 700; padding: 3px 0; text-transform: uppercase; letter-spacing: .04em; }
+.cal b { display: block; font-family: var(--tt); font-size: 23px; padding: 4px 0 1px; }
+.cal i { display: block; font-style: normal; font-size: 10.5px; color: var(--ink3); padding-bottom: 5px; }
+.cal.p small { background: #8A6A2E; } .cal.d small { background: #A5ADB3; }
+.thumb { width: 56px; height: 42px; border-radius: 10px; margin-top: 6px; background: var(--line) center/cover; }
+.tc .bd { flex: 1; min-width: 0; }
+.tc .h { font-family: var(--tt); font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.tc .m { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; color: var(--ink3); margin-top: 3px; line-height: 1.35; }
+.tc .m .ic { width: 15px; height: 15px; margin-top: 1px; }
+.st1 { margin-top: 7px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 4px 10px; }
+.chip i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip .ic { width: 12px; height: 12px; stroke-width: 2.6; }
+.chip.ok { background: var(--pri-bg); color: var(--pri); } .chip.pe { background: var(--gold-bg); color: var(--gold-t); }
+.chip.rj { background: var(--bad-bg); color: var(--bad); } .chip.dn { background: var(--line2); color: var(--ink3); }
+.hoyb { display: inline-flex; align-items: center; gap: 5px; background: #D7B774; color: #2A2110; border-radius: 999px; padding: 3px 10px; font-size: 11.5px; font-weight: 700; margin-bottom: 6px; }
+.hoyb .ic { width: 13px; height: 13px; }
+.acts3 { display: flex; gap: 8px; flex-basis: 100%; }
+.acts3 > * { flex: 1; min-width: 0; white-space: nowrap; padding: 10px 6px; font-size: 13px; border-radius: 12px; }
+.acts3 > .go { flex: 1.4; }
+.thanks { display: flex; gap: 12px; align-items: center; margin: 4px 0 10px; border-radius: 18px; background: linear-gradient(135deg, var(--gold-bg), transparent); border: 1px solid rgba(184,146,74,.25); padding: 13px 15px; font-size: 13px; color: var(--gold-t); line-height: 1.45; }
+.thanks .ic { width: 24px; height: 24px; color: var(--gold); }
+.cta2 { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin: 14px 0 4px; border: 1.5px dashed rgba(28,92,86,.35); border-radius: 16px; padding: 14px; color: var(--pri); font-weight: 600; font-size: 14.5px; background: var(--pri-bg); }
+.btn.danger { background: var(--bad); color: #fff; }
