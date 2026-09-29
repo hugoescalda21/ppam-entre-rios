@@ -22,7 +22,7 @@
   const DOW_L = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   const MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
   const TIPOS = { carrito: ['🛒', 'Carrito'], stand: ['⛺', 'Stand'], otro: ['📍', 'Punto'] };
-  const COLORES = ['#C4552F', '#2F7D6B', '#B7791F', '#8E4B6E', '#3D6F8E', '#A2401F'];
+  const COLORES = ['linear-gradient(135deg,#1D4ED8,#3B82F6)', 'linear-gradient(135deg,#0E7490,#22D3EE)', 'linear-gradient(135deg,#059669,#34D399)', 'linear-gradient(135deg,#7C3AED,#DB2777)', 'linear-gradient(135deg,#B45309,#F59E0B)', 'linear-gradient(135deg,#BE123C,#FB7185)'];
   const ILUS = '<svg class="ilus" viewBox="0 0 200 110" aria-hidden="true"><path d="M0 110V70h18V52h14v18h10V38h22v72Z"/><path d="M60 110V58h16V44l12-10 12 10v14h14v52Z"/><path d="M116 110V66h20V50h16v16h12V30h20v80Z"/><circle class="sol" cx="160" cy="18" r="10"/></svg>';
 
   /* ---------- Fechas (hora local del celular) ---------- */
@@ -118,8 +118,8 @@
     $('tbExtra').innerHTML = '';
     // En la campaña, la foto de portada (o su color) como banner
     const tb = $('tb'), fk = r.name === 'camp' && c && c.portada ? fotoKey(c.id, c.portada) : '';
-    tb.dataset.foto = fk; tb.style.backgroundImage = ''; tb.classList.remove('foto');
-    tb.style.backgroundColor = r.name === 'camp' && c ? colorDe(c) : '';
+    tb.dataset.foto = fk; tb.classList.remove('foto');
+    tb.style.backgroundImage = r.name === 'camp' && c ? colorDe(c) : '';
     tb.classList.toggle('tb-camp', r.name === 'camp' && !!c);
     aplicarMomento();
     if (fk) { pedirFoto(fk); if (S.fotos[fk]) { tb.style.backgroundImage = `url("${S.fotos[fk]}")`; tb.classList.add('foto'); } }
@@ -150,7 +150,7 @@
   }
   const EDIF = '<path d="M0 110V70h18V52h14v18h10V38h22v72Z"/><path d="M60 110V58h16V44l12-10 12 10v14h14v52Z"/><path d="M116 110V66h20V50h16v16h12V30h20v80Z"/>';
   const LUCES = [[22, 76], [48, 50], [48, 64], [82, 64], [92, 78], [138, 72], [170, 40], [170, 56], [180, 78]];
-  const TEMA = { amanecer: '#E7835A', dia: '#C4552F', atardecer: '#8E3A3A', noche: '#141B34' };
+  const TEMA = { amanecer: '#3B5BA9', dia: '#0F1B2D', atardecer: '#1E3A8A', noche: '#03060E' };
   function ilusMomento(mo, f) {
     let cielo = '';
     if (mo === 'noche') {
@@ -305,7 +305,7 @@
       const cuando = dias[0] <= addDays(hoy(), 6) ? 'en los próximos 7 días' : 'la primera semana';
       cob = `<div class="bar"><i style="width:${pct}%"></i></div><div class="cob"><span>${k.faltan > 0 ? `Faltan ${k.faltan} ${k.faltan === 1 ? 'lugar' : 'lugares'} ${cuando}` : `Todo cubierto ${cuando} 🙌`}</span><b>${pct}%</b></div>`;
     }
-    return `<div class="card"><button type="button" class="camp" data-go="#/c/${esc(c.id)}"><div class="ph"${fotoAttr(c.id, c.portada, `background-color:${colorDe(c)};`)}>${ILUS}<span class="city">${esc(c.ciudad || '')}</span>${c.desde ? `<span class="when">${esc(rangoCorto(c))}</span>` : ''}</div><div class="bd"><b>${esc(c.nombre)}</b><small>${pts.length} ${pts.length === 1 ? 'punto' : 'puntos'}${tipos.length ? ' · ' + esc(tipos.join(' y ')) : ''}${c.lugar ? ' · ' + esc(c.lugar) : ''}</small>${cob}</div></button></div>`;
+    return `<div class="card"><button type="button" class="camp" data-go="#/c/${esc(c.id)}"><div class="ph"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}>${ILUS}<span class="city">${esc(c.ciudad || '')}</span>${c.desde ? `<span class="when">${esc(rangoCorto(c))}</span>` : ''}</div><div class="bd"><b>${esc(c.nombre)}</b><small>${pts.length} ${pts.length === 1 ? 'punto' : 'puntos'}${tipos.length ? ' · ' + esc(tipos.join(' y ')) : ''}${c.lugar ? ' · ' + esc(c.lugar) : ''}</small>${cob}</div></button></div>`;
   }
   const ESTADOS = { pendiente: 'Pendiente', confirmado: 'Confirmado', rechazado: 'No confirmado' };
   function pedidoRow(p) {
@@ -326,7 +326,7 @@
       const cls = k.faltan <= 0 ? 'lleno' : k.faltan / k.total <= 0.34 ? 'poco' : '';
       return `<button type="button" class="day${d === S.dia ? ' on' : ''}" data-dia="${d}"><small>${DOW[x.getDay()]}</small><b>${x.getDate()}</b><i>${MES[x.getMonth()].slice(0, 3)}</i><u class="${cls}"></u></button>`;
     }).join('')}</div>`;
-    h += '<div class="leyenda"><span><i style="background:var(--ok)"></i>Hay lugar</span><span><i style="background:#E59A6B"></i>Quedan pocos</span><span><i style="background:var(--line2)"></i>Completo</span></div>';
+    h += '<div class="leyenda"><span><i style="background:var(--ok)"></i>Hay lugar</span><span><i style="background:var(--poco)"></i>Quedan pocos</span><span><i style="background:var(--line2)"></i>Completo</span></div>';
     const ts = turnosDelDia(c, S.dia);
     h += `<div class="sec">${esc(cap(fmtDia(S.dia)))}</div>`;
     const orden = Object.keys(c.puntos || {}).filter(pid => ts.some(t => t.punto === pid));
@@ -344,7 +344,7 @@
         return `<div class="row slot"><div class="h">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))}</div><div class="tx"><div class="dots">${dots}</div><small>${full ? 'completo' : falta === 1 ? 'falta 1' : 'faltan ' + falta}</small></div>${btn}</div>`;
       }).join('');
     });
-    h += `<p class="note">Círculo verde: lugar confirmado · naranja: pedido, falta que lo confirme un coordinador · vacío: libre.</p>`;
+    h += `<p class="note">Círculo lleno: lugar confirmado · con borde: pedido, falta que lo confirme un coordinador · gris: libre.</p>`;
     $('app').innerHTML = h;
   }
   function verLugar(cid, pid) {
@@ -579,7 +579,7 @@
     const puntos = Object.keys(c.puntos || {}).map(id => Object.assign({ id }, c.puntos[id]));
     const turnos = Object.keys(c.turnos || {}).map(id => Object.assign({ id }, c.turnos[id])).sort((a, b) => (a.punto + a.desde).localeCompare(b.punto + b.desde));
     let h = `<div class="sec">Datos de la campaña</div><div class="card" style="padding:12px 13px 4px;">
-      <div class="lbl">Foto de portada</div><div class="portada"${fotoAttr(c.id, c.portada, `background-color:${colorDe(c)};`)}></div>
+      <div class="lbl">Foto de portada</div><div class="portada"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></div>
       <div class="pills"><label class="sbtn">📷 ${c.portada ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" id="cfFoto" hidden></label>${c.portada ? '<button type="button" class="sbtn bad" id="cfFotoDel">Quitar foto</button>' : ''}</div>
       <p class="small-hint">Una foto apaisada del lugar, sin personas reconocibles. Se achica sola antes de subirse. Sin foto se usa el color de la campaña.</p>
       <div class="fld"><label for="cfNom">Nombre</label><input id="cfNom" value="${esc(c.nombre)}"></div>

@@ -1,5 +1,11 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Vuelta al diseño original (azul) — 29 sep 2026 (caché ppam-v6)
+
+- Vuelve el diseño azul de la primera versión (encabezado azul marino, fondo gris azulado, acento azul, letra del sistema), sin perder nada de lo agregado: fotos, ubicación, "Ver lugar", "Cómo llegar", el mapa para marcar puntos y la cobertura.
+- Los cuatro momentos del día pasan a tonos azules: amanecer celeste rosado, día azul marino (el original), atardecer violeta anaranjado y noche con luna y ventanas.
+- Corregidos los detalles del azul: el título ya no se monta sobre "Iniciar sesión" y los turnos no se parten en tres renglones.
+
 ## Momentos del día — 29 sep 2026 (caché ppam-v5)
 
 - El encabezado cambia con la hora: amanecer (durazno), día (terracota), atardecer (rojo y violeta) y noche (azul, con luna, estrellas y ventanas encendidas). El sol recorre el cielo de derecha a izquierda.
