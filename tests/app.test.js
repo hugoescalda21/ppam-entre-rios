@@ -89,7 +89,7 @@ const SEED = {
   async function open(users, hash) {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
     await ctx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });   // miércoles 30 de septiembre
-    await ctx.route(/gstatic|googleapis/, r => r.abort());
+    await ctx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
     await ctx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, ${JSON.stringify(users)})`);
     const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
     await p.goto(FILE + (hash || '')); await p.waitForTimeout(300);
@@ -102,6 +102,7 @@ const SEED = {
   let p = await open([pub]);
   let home = await text(p, '#app');
   check('inicio: las campañas vigentes (no la que ya terminó)', /Terminal de ómnibus/.test(home) && /Costanera/.test(home) && !/Campaña vieja/.test(home), home);
+  check('cobertura de la primera semana en la tarjeta', /Terminal de ómnibus[\s\S]*Faltan 24 lugares en los próximos 7 días\s*11%/.test(home) && /Costanera[\s\S]*Faltan 6 lugares en los próximos 7 días\s*0%/.test(home), home);
   check('filtro por ciudad', await p.evaluate(() => [...document.querySelectorAll('.chip')].map(x => x.textContent).join() === 'Todas,Concordia,Paraná'));
   await p.click('[data-ciudad="Concordia"]');
   check('filtrando Concordia queda solo la Costanera', await p.evaluate(() => document.querySelectorAll('.camp').length === 1 && /Costanera/.test(document.querySelector('.camp').innerText)));
@@ -109,12 +110,14 @@ const SEED = {
   await p.click('[data-go="#/c/parana-terminal"]'); await p.waitForTimeout(150);
   check('encabezado con la campaña', /Terminal de ómnibus/.test(await text(p, '#tbTitle')) && /Del 1 de octubre al 31 de octubre/.test(await text(p, '#tbSub')));
   let camp = await text(p, '#app');
-  check('puntos con tipo y cupo', /Andén 1\s*Carrito · 2 por turno · Frente a boleterías/.test(camp) && /Hall central\s*Stand · 3 por turno/.test(camp), camp.slice(0, 300));
+  check('turnos agrupados por punto, con tipo y cupo (el stand no tiene turnos el jueves)', /Andén 1\s*Carrito · 2 por turno · Frente a boleterías\s*8 a 10/.test(camp) && !/Hall central/.test(camp), camp.slice(camp.indexOf('Hay lugar')));
+  check('los días marcan cuánto lugar queda (jueves 1: quedan pocos; viernes 2: hay lugar)', await p.evaluate(() => !!document.querySelector('[data-dia="2026-10-01"] u.poco') && document.querySelector('[data-dia="2026-10-02"] u').className === ''));
   check('días desde el 1 de octubre (no antes), sin domingos', await p.evaluate(() => { const d = [...document.querySelectorAll('.day')].map(x => x.dataset.dia); return d[0] === '2026-10-01' && !d.includes('2026-10-04'); }));
-  check('turnos del jueves 1: completo, falta 1 (uno pedido)', /8 a 10\s*Andén 1 · completo\s*Completo/.test(camp) && /10 a 12\s*Andén 1 · falta 1\s*Pedir/.test(camp), camp);
+  check('turnos del jueves 1: completo, falta 1 (uno pedido)', /8 a 10\s*completo\s*Completo\s*10 a 12\s*falta 1\s*Pedir/.test(camp), camp.slice(camp.indexOf('Hay lugar')));
+  check('sin ubicación cargada no aparece "Ver lugar"', !(await p.$('[data-lugar]')));
   await p.click('[data-dia="2026-10-03"]'); await p.waitForTimeout(80);
   camp = await text(p, '#app');
-  check('el sábado aparece también el stand (3 lugares)', /16 a 18\s*Hall central · faltan 3/.test(camp), camp);
+  check('el sábado aparece también el stand (3 lugares)', /Hall central\s*Stand · 3 por turno\s*16 a 18\s*faltan 3/.test(camp), camp.slice(camp.indexOf('Hay lugar')));
   await p.screenshot({ path: SHOTS + '/campana.png' });
   await p.click('[data-pedir="t3"]'); await p.waitForTimeout(80);
   check('sin sesión: pide iniciar sesión primero', /Iniciá sesión para pedir el turno/.test(await text(p, '.sheet')));
@@ -135,7 +138,7 @@ const SEED = {
   check('el pedido guarda nombre, apellido, congregación y celular', st.ped && st.ped.nombre === 'Ana' && st.ped.apellido === 'Paz' && st.ped.congregacion === 'San Agustín (Paraná)' && st.ped.celular === '343 555-0000' && st.ped.estado === 'pendiente' && st.ped.email === 'ana@x.com', st.ped);
   check('confirmación en pantalla', /Pediste el turno/.test(await text(p, '.sheet')));
   await p.click('.sheet [data-cerrar]'); await p.waitForTimeout(80);
-  check('el turno ahora dice "Pedido" y faltan 2', /16 a 18\s*Hall central · faltan 2\s*Pedido/.test(await text(p, '#app')), await text(p, '#app'));
+  check('el turno ahora dice "Pedido" y faltan 2', /Hall central[\s\S]*16 a 18\s*faltan 2\s*Pedido/.test(await text(p, '#app')), await text(p, '#app'));
   await p.click('#backBtn'); await p.waitForTimeout(100);
   check('en el inicio: "Mis próximos turnos" con el pendiente', /Mis próximos turnos[\s\S]*Sábado 3 de octubre · 16 a 18[\s\S]*Pendiente/i.test(await text(p, '#app')), await text(p, '#app'));
   await p.evaluate(() => { location.hash = '#/mis'; }); await p.waitForTimeout(100);
@@ -153,9 +156,9 @@ const SEED = {
   console.log('\nCoordinador');
   const SEED2 = pedidos;
   const coordUser = { uid: 'u-co', email: 'coord@x.com', displayName: 'Carlos Vega' };
-  const ctx2 = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+  const ctx2 = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires', geolocation: { latitude: -31.73, longitude: -60.52 }, permissions: ['geolocation'] });
   await ctx2.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
-  await ctx2.route(/gstatic|googleapis/, r => r.abort());
+  await ctx2.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
   await ctx2.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED2)}, ${JSON.stringify([coordUser])})`);
   const c = await ctx2.newPage(); c.errs = []; c.on('pageerror', e => c.errs.push(e.message));
   await c.goto(FILE); await c.waitForTimeout(300);
@@ -190,7 +193,74 @@ const SEED = {
   await c.check('#tuMas'); await c.fill('#tuFin', '20:00'); await c.click('#tuOk'); await c.waitForTimeout(150);
   const ts = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; const pid = Object.keys(cp.puntos).find(k => cp.puntos[k].nombre === 'Salida Av. Ramírez'); return Object.values(cp.turnos).filter(t => t.punto === pid).map(t => t.desde + '-' + t.hasta).sort(); });
   check('"crear los siguientes": 14–16, 16–18 y 18–20 de una vez', JSON.stringify(ts) === '["14:00-16:00","16:00-18:00","18:00-20:00"]', ts);
+  // Ubicación y fotos de un punto
+  const ICON = path.resolve(__dirname, '..', 'icon-192.png');
+  await c.click('[data-punto="p1"]'); await c.waitForTimeout(80);
+  await c.fill('#ptDir', 'Av. Ramírez 2598');
+  await c.click('#ptLinkB'); await c.fill('#ptLink', 'https://www.google.com/maps/place/Terminal/@-31.7401,-60.5202,17z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d-31.741234!4d-60.523678');
+  check('pegar un link de Google Maps toma el punto exacto del lugar', /Ubicación guardada \(-31\.741234, -60\.523678\)/.test(await text(c, '#ptUbi')), await text(c, '#ptUbi'));
+  await c.fill('#ptInd', 'Entrando por Av. Ramírez, a la derecha.'); await c.fill('#ptRet', 'Oficina de administración, planta baja.');
+  await c.setInputFiles('#ptFile', ICON); await c.waitForTimeout(400);
+  check('la foto nueva aparece en el formulario', await c.evaluate(() => document.querySelectorAll('#ptFotos .img').length === 1));
+  await c.click('#ptOk'); await c.waitForTimeout(250);
+  const p1 = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; const pt = cp.puntos.p1; const f = pt.fotos && window.__store['fotos/parana-terminal__' + pt.fotos[0]]; return { pt, f: f && { cid: f.cid, ini: f.data.slice(0, 23), largo: f.data.length } }; });
+  check('guarda dirección, ubicación, indicaciones y retiro del punto', p1.pt.direccion === 'Av. Ramírez 2598' && p1.pt.lat === -31.741234 && p1.pt.lng === -60.523678 && /a la derecha/.test(p1.pt.indicaciones) && /planta baja/.test(p1.pt.retiro) && p1.pt.nombre === 'Andén 1' && p1.pt.cupo === 2, p1.pt);
+  check('la foto se guarda achicada como JPEG en fotos/{campaña}__{id}', p1.f && p1.f.cid === 'parana-terminal' && p1.f.ini === 'data:image/jpeg;base64,' && p1.f.largo < 440000, p1.f);
+  check('la lista de puntos muestra que tiene ubicación y foto', /Andén 1[\s\S]*📍 Con ubicación · 📷 1 foto/.test(await text(c, '#app')));
+  await c.click('[data-punto="p2"]'); await c.waitForTimeout(80);
+  await c.click('#ptLinkB'); await c.fill('#ptLink', 'https://maps.app.goo.gl/AbCd123XyZ');
+  check('un link corto de Maps se guarda como link', /Link de Maps guardado/.test(await text(c, '#ptUbi')));
+  await c.click('#ptOk'); await c.waitForTimeout(200);
+  check('…y queda en el punto', await c.evaluate(() => window.__store['campanas/parana-terminal'].puntos.p2.mapsUrl === 'https://maps.app.goo.gl/AbCd123XyZ'));
+  await c.click('[data-punto="' + await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; return Object.keys(cp.puntos).find(k => cp.puntos[k].nombre === 'Salida Av. Ramírez'); }) + '"]'); await c.waitForTimeout(80);
+  await c.click('#ptGeo'); await c.waitForTimeout(300);
+  check('"Usar mi ubicación actual" toma el GPS del celular', /Ubicación guardada \(-31\.73, -60\.52\)/.test(await text(c, '#ptUbi')), await text(c, '#ptUbi'));
+  await c.click('[data-cerrar]'); await c.waitForTimeout(80);
+  // Foto de portada
+  await c.setInputFiles('#cfFoto', ICON); await c.waitForTimeout(500);
+  const port = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; return { id: cp.portada, f: !!window.__store['fotos/parana-terminal__' + cp.portada] }; });
+  check('sube la foto de portada', /^portada-/.test(port.id || '') && port.f, port);
+  check('y la muestra en la configuración', await c.evaluate(() => /url\(/.test(document.querySelector('.portada').style.backgroundImage) && /Cambiar foto/.test(document.getElementById('app').innerText)));
+  await c.screenshot({ path: SHOTS + '/configurar.png' });
   check('sin errores (coordinador)', c.errs.length === 0, c.errs);
+  const SEED3 = await c.evaluate(() => JSON.parse(JSON.stringify(window.__store)));
+
+  console.log('\nPublicador: el lugar');
+  const ctx3 = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+  await ctx3.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+  await ctx3.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+  await ctx3.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED3)}, ${JSON.stringify([pub])})`);
+  const v = await ctx3.newPage(); v.errs = []; v.on('pageerror', e => v.errs.push(e.message));
+  await v.goto(FILE); await v.waitForTimeout(400);
+  check('la tarjeta de la campaña muestra la foto de portada', await v.evaluate(() => /url\(/.test(document.querySelector('[data-go="#/c/parana-terminal"] .ph').style.backgroundImage)));
+  await v.screenshot({ path: SHOTS + '/inicio.png' });
+  await v.click('[data-go="#/c/parana-terminal"]'); await v.waitForTimeout(300);
+  check('el banner de la campaña es la foto', await v.evaluate(() => document.getElementById('tb').classList.contains('foto') && /url\(/.test(document.getElementById('tb').style.backgroundImage)));
+  check('el punto muestra la miniatura y "Ver lugar"', await v.evaluate(() => /url\(/.test(document.querySelector('.pt .th').style.backgroundImage) && !!document.querySelector('[data-lugar="parana-terminal|p1"]')));
+  await v.screenshot({ path: SHOTS + '/campana.png' });
+  await v.click('[data-lugar="parana-terminal|p1"]'); await v.waitForTimeout(300);
+  const lug = await v.evaluate(() => { const s = document.querySelector('.sheet'); return { t: s.innerText, map: (s.querySelector('iframe') || {}).src || '', go: (s.querySelector('a.go') || {}).href || '', fotos: s.querySelectorAll('.fotos div').length }; });
+  check('"Ver lugar": fotos, dirección, indicaciones y retiro del carrito', lug.fotos === 1 && /Av\. Ramírez 2598/.test(lug.t) && /Cómo encontrarlo\s*Entrando por/i.test(lug.t) && /Retiro del carrito\s*Oficina/i.test(lug.t), lug.t);
+  check('mapa de OpenStreetMap con el punto marcado', /openstreetmap\.org\/export\/embed\.html\?bbox=.*marker=-31\.741234,-60\.523678/.test(lug.map), lug.map);
+  check('"Cómo llegar" abre Google Maps con el recorrido hasta el punto', lug.go === 'https://www.google.com/maps/dir/?api=1&destination=-31.741234,-60.523678', lug.go);
+  await v.screenshot({ path: SHOTS + '/lugar.png' });
+  await v.click('.sheet [data-cerrar]'); await v.waitForTimeout(80);
+  await v.click('[data-dia="2026-10-03"]'); await v.waitForTimeout(100);
+  await v.click('[data-lugar="parana-terminal|p2"]'); await v.waitForTimeout(150);
+  check('con un link corto, "Cómo llegar" usa ese link', await v.evaluate(() => document.querySelector('.sheet a.go').href === 'https://maps.app.goo.gl/AbCd123XyZ'));
+  await v.click('.sheet [data-cerrar]');
+  await v.click('#userBtn'); await v.waitForTimeout(250);
+  await v.evaluate(() => { location.hash = '#/mis'; }); await v.waitForTimeout(250);
+  const mis = await v.evaluate(() => { const m = document.querySelector('.mt'); return m && { t: m.innerText, go: (m.querySelector('a.go') || {}).href || '', lugar: !!m.querySelector('[data-lugar]'), foto: /url\(/.test(m.querySelector('.ph').style.backgroundImage) }; });
+  check('"Mis turnos": turno confirmado con "Cómo llegar" y "Lugar"', mis && /Confirmado/.test(mis.t) && /Sábado 3 de octubre · 16 a 18/.test(mis.t) && mis.go === 'https://maps.app.goo.gl/AbCd123XyZ' && mis.lugar, mis);
+  await v.screenshot({ path: SHOTS + '/mis-turnos.png' });
+  check('sin errores (el lugar)', v.errs.length === 0, v.errs);
+
+  // Quitar la foto del punto
+  await c.click('[data-punto="p1"]'); await c.waitForTimeout(80);
+  const fotoId = await c.evaluate(() => window.__store['campanas/parana-terminal'].puntos.p1.fotos[0]);
+  await c.click('[data-qf]'); await c.click('#ptOk'); await c.waitForTimeout(200);
+  check('quitar la foto la borra de la base', await c.evaluate((f) => !window.__store['fotos/parana-terminal__' + f] && !window.__store['campanas/parana-terminal'].puntos.p1.fotos && window.__store['campanas/parana-terminal'].puntos.p1.lat === -31.741234, fotoId));
 
   console.log('\nAdministrador');
   const a = await open([{ uid: 'u-ad', email: 'admin@x.com', displayName: 'Admin' }], '#/admin');

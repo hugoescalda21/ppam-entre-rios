@@ -5,10 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PPAM Entre Ríos</title>
 <meta name="description" content="Campañas de predicación pública metropolitana en Entre Ríos: horarios, puntos y turnos.">
-<meta name="theme-color" content="#0F1B2D">
+<meta name="theme-color" content="#C4552F">
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap">
 <link rel="stylesheet" href="./app.css">
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
@@ -17,14 +20,21 @@
 </head>
 <body>
   <header class="tb" id="tb">
+    <svg class="ilus" id="tbIlus" viewBox="0 0 200 110" aria-hidden="true"><path d="M0 110V70h18V52h14v18h10V38h22v72Z"/><path d="M60 110V58h16V44l12-10 12 10v14h14v52Z" opacity=".85"/><path d="M116 110V66h20V50h16v16h12V30h20v80Z"/><circle class="sol" cx="160" cy="18" r="10"/></svg>
     <div class="tb-in">
-      <button type="button" class="back hidden" id="backBtn">‹ Volver</button>
-      <small id="tbKicker">Predicación pública metropolitana</small>
-      <h1 id="tbTitle">PPAM Entre Ríos</h1>
-      <p id="tbSub">Elegí una campaña, un día y un horario.</p>
-      <div class="tb-actions">
-        <button type="button" class="tb-btn hidden" id="coordBtn">Coordinación</button>
-        <button type="button" class="tb-btn" id="userBtn">Iniciar sesión</button>
+      <div class="tb-row">
+        <button type="button" class="back hidden" id="backBtn">‹ Volver</button>
+        <span class="sp"></span>
+        <div class="tb-actions">
+          <button type="button" class="tb-btn sec2 hidden" id="coordBtn">Coordinación</button>
+          <button type="button" class="tb-btn" id="userBtn">Iniciar sesión</button>
+        </div>
+      </div>
+      <div class="tb-txt">
+        <small id="tbKicker">Predicación pública · Entre Ríos</small>
+        <h1 id="tbTitle">Sumate a un turno</h1>
+        <p id="tbSub">Elegí una campaña, un día y un horario.</p>
+        <div id="tbExtra"></div>
       </div>
     </div>
   </header>

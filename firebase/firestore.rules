@@ -13,6 +13,7 @@ rules_version = '2';
 //  · Publicador con sesión (Google): pide turnos y ve SOLO los suyos.
 // Los datos personales (nombre, apellido, congregación, celular) están solo en "pedidos"
 // y los ven quien pidió y los coordinadores de esa campaña. En "cupos" solo hay ids.
+// Las fotos (fotos/…) son del lugar, sin personas reconocibles.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -74,6 +75,19 @@ service cloud.firestore {
                      request.resource.data.cid == resource.data.cid && request.resource.data.fecha == resource.data.fecha && request.resource.data.tid == resource.data.tid && (
                      gestiona(resource.data.cid) ||
                      (publicador(resource.data.ocupados, request.resource.data.ocupados) && request.resource.data.ocupados.size() <= maximo(resource.data)));
+      allow delete: if gestiona(resource.data.cid);
+    }
+
+    // Fotos de portada y de los puntos: imágenes JPEG achicadas (menos de ~330 KB), públicas.
+    // Las sube el coordinador de esa campaña; el id empieza con el de la campaña.
+    match /fotos/{id} {
+      function fotoValida(d) {
+        return d.keys().hasOnly(['cid', 'data', 'creado']) && d.cid is string && id.matches(d.cid + '__[A-Za-z0-9-]+') &&
+               d.data is string && d.data.size() < 450000 && d.data.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+');
+      }
+      allow read: if true;
+      allow create, update: if fotoValida(request.resource.data) && gestiona(request.resource.data.cid) &&
+                             (resource == null || resource.data.cid == request.resource.data.cid);
       allow delete: if gestiona(resource.data.cid);
     }
 

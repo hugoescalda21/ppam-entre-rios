@@ -95,6 +95,22 @@ const section = (t) => console.log('\n' + t);
   await check('el coordinador no confirma a ese otro', assertSucceeds((async () => { const f = db(CO), b = f.batch(); b.update(f.doc(cupo('t1')), { ['ocupados.' + uidOf(CO2)]: require('firebase/compat/app').default.firestore.FieldValue.delete() }); b.update(f.doc(ped('t1', uidOf(CO2))), { estado: 'rechazado', actualizado: 'x', por: CO }); await b.commit(); })()));
   await check('y puede volver a pedir otro día u horario (o el mismo)', assertSucceeds(pedir(CO2, 't1')));
 
+  section('6) Fotos');
+  const JPG = 'data:image/jpeg;base64,' + 'A'.repeat(2000);
+  const foto = (email, id, extra) => db(email).doc('fotos/' + id).set(Object.assign({ cid: CID, data: JPG, creado: 'x' }, extra || {}));
+  await check('el coordinador sube una foto de su campaña', assertSucceeds(foto(CO, CID + '__f1')));
+  await check('cualquiera la ve, sin sesión', assertSucceeds(db(null).doc('fotos/' + CID + '__f1').get()));
+  await check('un publicador NO sube fotos', assertFails(foto(A, CID + '__f2')));
+  await check('el coordinador NO sube fotos de otra campaña', assertFails(foto(CO, 'otra__f1', { cid: 'otra' })));
+  await check('NO con un id que no es de la campaña', assertFails(foto(CO, 'otra__f3')));
+  await check('solo imágenes JPEG', assertFails(foto(CO, CID + '__f4', { data: 'data:text/html;base64,PHNjcmlwdD4=' })));
+  await check('NO más grande de lo permitido', assertFails(foto(CO, CID + '__f5', { data: 'data:image/jpeg;base64,' + 'A'.repeat(460000) })));
+  await check('NO con campos de más', assertFails(foto(CO, CID + '__f6', { autor: 'x' })));
+  await check('el administrador sube fotos en cualquier campaña', assertSucceeds(foto(ADM, 'otra__f1', { cid: 'otra' })));
+  await check('un publicador NO borra fotos', assertFails(db(A).doc('fotos/' + CID + '__f1').delete()));
+  await check('el coordinador borra fotos de su campaña', assertSucceeds(db(CO).doc('fotos/' + CID + '__f1').delete()));
+  await check('el coordinador guarda la ubicación de un punto', assertSucceeds(db(CO).doc('campanas/' + CID).update({ 'puntos.p1.lat': -31.74, 'puntos.p1.lng': -60.52, 'puntos.p1.direccion': 'Av. Ramírez 2598', portada: 'portada-x' })));
+
   await env.cleanup();
   console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;

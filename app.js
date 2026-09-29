@@ -2,14 +2,16 @@
    PPAM Entre Ríos — campañas de predicación pública metropolitana
    ---------------------------------------------------------------------
    Datos (Firestore):
-     campanas/{cid}        nombre, ciudad, lugar, desde, hasta, color, activa,
-                           puntos {pid: {nombre, tipo, cupo, detalle}},
+     campanas/{cid}        nombre, ciudad, lugar, desde, hasta, activa, portada (id de foto),
+                           puntos {pid: {nombre, tipo, cupo, detalle, direccion, lat, lng, mapsUrl,
+                                         indicaciones, retiro, fotos [ids]}},
                            turnos {tid: {punto, desde, hasta, dias[0-6]}}   ← público
      cupos/{cid}__{fecha}__{tid}   {cid, fecha, tid, ocupados {uid: 'p'|'c'}}  ← público, sin datos personales
      pedidos/{cid}__{fecha}__{tid}__{uid}   datos de quien pide (solo lo ven él y los coordinadores)
      coordinadores/{cid}   {emails}          roles/{email}  {campanas: [cid]}
      config/publico        {congregaciones: ['Nombre (Ciudad)'], ciudades: [...]}
      config/admins         {emails}
+     fotos/{cid}__{id}     {cid, data (imagen JPEG achicada, data:…), creado}   ← público
    Mirar es libre; para pedir un turno hay que iniciar sesión con Google.
    ===================================================================== */
 (function () {
@@ -20,7 +22,8 @@
   const DOW_L = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   const MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
   const TIPOS = { carrito: ['🛒', 'Carrito'], stand: ['⛺', 'Stand'], otro: ['📍', 'Punto'] };
-  const COLORES = ['linear-gradient(135deg,#1D4ED8,#3B82F6)', 'linear-gradient(135deg,#0E7490,#22D3EE)', 'linear-gradient(135deg,#059669,#34D399)', 'linear-gradient(135deg,#7C3AED,#DB2777)', 'linear-gradient(135deg,#B45309,#F59E0B)', 'linear-gradient(135deg,#BE123C,#FB7185)'];
+  const COLORES = ['#C4552F', '#2F7D6B', '#B7791F', '#8E4B6E', '#3D6F8E', '#A2401F'];
+  const ILUS = '<svg class="ilus" viewBox="0 0 200 110" aria-hidden="true"><path d="M0 110V70h18V52h14v18h10V38h22v72Z"/><path d="M60 110V58h16V44l12-10 12 10v14h14v52Z"/><path d="M116 110V66h20V50h16v16h12V30h20v80Z"/><circle class="sol" cx="160" cy="18" r="10"/></svg>';
 
   /* ---------- Fechas (hora local del celular) ---------- */
   const pad = (n) => String(n).padStart(2, '0');
@@ -39,7 +42,7 @@
     db: null, auth: null, user: null, isAdmin: false, coordDe: [],
     campanas: {}, loaded: false, publico: { congregaciones: [], ciudades: [] },
     ciudad: 'todas', route: { name: 'home' }, dia: null,
-    cupos: {}, cuposUnsub: null, cuposKey: '',
+    cc: {}, ccUnsub: {}, fotos: {},
     mis: {}, misUnsub: null,
     coord: { cid: null, tab: 'pedidos', pedidos: {}, cupos: {}, unsub: [] , semana: null },
     admins: [], coordEmails: {}
@@ -100,23 +103,93 @@
 
   function renderTop() {
     const r = S.route, c = r.cid && S.campanas[r.cid];
+    document.body.className = 'r-' + r.name;
     $('backBtn').classList.toggle('hidden', r.name === 'home');
-    const coordCount = S.isAdmin ? Object.keys(S.campanas).length : S.coordDe.length;
+    $('backBtn').textContent = r.name === 'camp' ? '‹ Campañas' : '‹ Volver';
     $('coordBtn').classList.toggle('hidden', !(S.user && (S.isAdmin || S.coordDe.length)) || r.name === 'coord' || r.name === 'admin');
-    $('coordBtn').textContent = coordCount ? 'Coordinación' : 'Coordinación';
     $('userBtn').textContent = S.user ? (S.user.displayName ? S.user.displayName.split(' ')[0] : 'Mi cuenta') : 'Iniciar sesión';
-    let k = 'Predicación pública metropolitana', t = 'PPAM Entre Ríos', s = 'Elegí una campaña, un día y un horario.';
+    let k = 'Predicación pública · Entre Ríos', t = 'Sumate a un turno', s = 'Elegí una campaña, un día y un horario.';
     if (r.name === 'camp' && c) { k = c.ciudad || ''; t = c.nombre; s = campRango(c); }
-    else if (r.name === 'mis') { t = 'Mis turnos'; s = 'Los turnos que pediste y su estado.'; }
+    else if (r.name === 'mis') { t = 'Mis turnos'; s = 'Los turnos que pediste, su estado y cómo llegar.'; }
     else if (r.name === 'coord') { k = 'Coordinación' + (c ? ' · ' + (c.ciudad || '') : ''); t = c ? c.nombre : 'Mis campañas'; s = c ? 'Pedidos, cobertura y listas del día.' : 'Elegí la campaña.'; }
     else if (r.name === 'admin') { k = 'Administración'; t = 'PPAM Entre Ríos'; s = 'Campañas, coordinadores y congregaciones.'; }
     $('tbKicker').textContent = k; $('tbTitle').textContent = t; $('tbSub').textContent = s;
+    $('tbExtra').innerHTML = '';
+    // En la campaña, la foto de portada (o su color) como banner
+    const tb = $('tb'), fk = r.name === 'camp' && c && c.portada ? fotoKey(c.id, c.portada) : '';
+    tb.dataset.foto = fk; tb.style.backgroundImage = ''; tb.classList.remove('foto');
+    tb.style.backgroundColor = r.name === 'camp' && c ? colorDe(c) : '';
+    if (fk) { pedirFoto(fk); if (S.fotos[fk]) { tb.style.backgroundImage = `url("${S.fotos[fk]}")`; tb.classList.add('foto'); } }
   }
   function campRango(c) {
     if (!c.desde || !c.hasta) return c.lugar || '';
     const a = parseIso(c.desde), b = parseIso(c.hasta);
     return `Del ${a.getDate()} de ${MES[a.getMonth()]} al ${b.getDate()} de ${MES[b.getMonth()]}${c.lugar ? ' · ' + c.lugar : ''}`;
   }
+  function rangoCorto(c) {
+    if (!c.desde || !c.hasta) return '';
+    const a = parseIso(c.desde), b = parseIso(c.hasta), m = (d) => MES[d.getMonth()].slice(0, 3);
+    return a.getMonth() === b.getMonth() ? `${a.getDate()} al ${b.getDate()} ${m(b)}` : `${a.getDate()} ${m(a)} al ${b.getDate()} ${m(b)}`;
+  }
+  function colorDe(c) { const ids = Object.keys(S.campanas).sort(); return COLORES[Math.max(0, ids.indexOf(c.id)) % COLORES.length]; }
+
+  /* ---------- Fotos: se guardan achicadas en fotos/{cid}__{id} y se piden una sola vez ---------- */
+  const fotoKey = (cid, fid) => cid + '__' + fid;
+  function pedirFoto(k) {
+    if (k in S.fotos) return;
+    S.fotos[k] = '';
+    S.db.doc('fotos/' + k).get().then((d) => { const u = (d.exists && d.data().data) || ''; S.fotos[k] = u; if (u) aplicarFoto(k); }).catch(() => {});
+  }
+  function aplicarFoto(k) {
+    const u = S.fotos[k];
+    document.querySelectorAll('[data-foto]').forEach((el) => { if (el.dataset.foto === k) { el.style.backgroundImage = `url("${u}")`; if (el.id === 'tb') el.classList.add('foto'); } });
+  }
+  // Atributos para un elemento que muestra una foto de fondo (se completa sola cuando llega).
+  function fotoAttr(cid, fid, base) {
+    if (!fid) return base ? ` style="${base}"` : '';
+    const k = fotoKey(cid, fid); pedirFoto(k);
+    const u = S.fotos[k];
+    return ` data-foto="${esc(k)}" style="${base || ''}${u ? `background-image:url('${u}');` : ''}"`;
+  }
+  function achicar(file, max) {
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let w = img.naturalWidth, h = img.naturalHeight; const k = Math.min(1, max / Math.max(w, h)); w = Math.round(w * k); h = Math.round(h * k);
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(img, 0, 0, w, h);
+        let q = 0.8, out = cv.toDataURL('image/jpeg', q);
+        while (out.length > 380000 && q > 0.35) { q -= 0.1; out = cv.toDataURL('image/jpeg', q); }
+        if (out.length > 440000) rej(new Error('grande')); else res(out);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagen')); };
+      img.src = url;
+    });
+  }
+
+  /* ---------- Ubicación ---------- */
+  function parseMapsLink(txt) {
+    let s = String(txt || '').trim(); try { s = decodeURIComponent(s); } catch (e) { /* tal cual */ }
+    const m = s.match(/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/) || s.match(/@(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/) ||
+      s.match(/[?&](?:q|query|destination|daddr|ll|center)=(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/) || s.match(/^(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)$/);
+    if (!m) return null;
+    const lat = +m[1], lng = +m[2];
+    return Math.abs(lat) > 90 || Math.abs(lng) > 180 ? null : { lat: +lat.toFixed(6), lng: +lng.toFixed(6) };
+  }
+  const tieneUbic = (p) => p.lat != null || !!p.direccion || !!p.mapsUrl;
+  const tieneLugar = (p) => tieneUbic(p) || !!(p.fotos || []).length || !!p.indicaciones || !!p.retiro;
+  function comoLlegarUrl(p, c) {
+    if (p.lat != null && p.lng != null) return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
+    if (p.mapsUrl) return p.mapsUrl;
+    if (p.direccion) return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(p.direccion + (c && c.ciudad ? ', ' + c.ciudad : '') + ', Entre Ríos');
+    return '';
+  }
+  function mapaUrl(p) { const d = 0.0035; return `https://www.openstreetmap.org/export/embed.html?bbox=${p.lng - d},${p.lat - d * 0.6},${p.lng + d},${p.lat + d * 0.6}&layer=mapnik&marker=${p.lat},${p.lng}`; }
+  const retiroLabel = (p) => 'Retiro del ' + (p.tipo === 'stand' ? 'stand' : p.tipo === 'carrito' ? 'carrito' : 'material');
+
+  // Varias novedades juntas (por ejemplo, los lugares de cada campaña) se dibujan una sola vez.
+  function luego() { if (luego.t) return; luego.t = setTimeout(() => { luego.t = 0; render(); }, 0); }
   function render() {
     renderTop();
     const r = S.route;
@@ -144,6 +217,22 @@
   const cupoId = (cid, fecha, tid) => `${cid}__${fecha}__${tid}`;
   const cupoDe = (c, t) => Math.max(1, parseInt((c.puntos[t.punto] || {}).cupo, 10) || 2);
 
+  /* ---------- Lugares ocupados (todos los días de una campaña; público y sin datos personales) ---------- */
+  function listenCC(cid) {
+    if (S.ccUnsub[cid]) return;
+    S.cc[cid] = S.cc[cid] || {}; S.ccUnsub[cid] = true;
+    S.ccUnsub[cid] = S.db.collection('cupos').where('cid', '==', cid).onSnapshot((qs) => {
+      const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.cc[cid] = o;
+      if (S.route.name === 'home' || (S.route.name === 'camp' && S.route.cid === cid)) luego();
+    }, () => {});
+  }
+  const ocupDe = (cid, fecha, tid) => ((S.cc[cid] || {})[cupoId(cid, fecha, tid)] || {}).ocupados || {};
+  function cobertura(c, dias) {
+    let total = 0, ocup = 0;
+    dias.forEach(d => turnosDelDia(c, d).forEach(t => { const n = cupoDe(c, t); total += n; ocup += Math.min(n, Object.keys(ocupDe(c.id, d, t.id)).length); }));
+    return { total, ocup, faltan: total - ocup };
+  }
+
   /* ---------- Inicio ---------- */
   function renderHome() {
     const list = Object.values(S.campanas).filter(c => c.activa !== false && (!c.hasta || c.hasta >= hoy()))
@@ -151,54 +240,83 @@
     const ciudades = [...new Set(list.map(c => c.ciudad).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
     if (S.ciudad !== 'todas' && !ciudades.includes(S.ciudad)) S.ciudad = 'todas';
     const vis = list.filter(c => S.ciudad === 'todas' || c.ciudad === S.ciudad);
+    $('tbExtra').innerHTML = ciudades.length > 1 ? `<div class="chips">${['todas', ...ciudades].map(x => `<button type="button" class="chip${x === S.ciudad ? ' on' : ''}" data-ciudad="${esc(x)}">${x === 'todas' ? 'Todas' : esc(x)}</button>`).join('')}</div>` : '';
     let h = '';
     const misProx = Object.values(S.mis).filter(p => p.fecha >= hoy() && p.estado !== 'rechazado').sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
-    if (misProx.length) h += `<div class="sec">Mis próximos turnos <a href="#/mis" style="color:var(--acc-t);text-transform:none;letter-spacing:0;font-size:12.5px;">Ver todos</a></div><div class="card">${misProx.slice(0, 3).map(pedidoRow).join('')}</div>`;
-    h += `<div class="sec">Campañas</div>`;
-    if (ciudades.length > 1) h += `<div class="chips">${['todas', ...ciudades].map(x => `<button type="button" class="chip${x === S.ciudad ? ' on' : ''}" data-ciudad="${esc(x)}">${x === 'todas' ? 'Todas' : esc(x)}</button>`).join('')}</div>`;
-    if (!vis.length) h += '<div class="empty">Todavía no hay campañas publicadas.</div>';
-    h += vis.map((c, i) => `<div class="card"><button type="button" class="camp" data-go="#/c/${esc(c.id)}"><div class="ph" style="background:${esc(c.color || COLORES[i % COLORES.length])}"><span>${esc(c.ciudad || '')}</span></div><div class="bd"><b>${esc(c.nombre)}</b><small>${esc(campRango(c))}</small><small>${Object.keys(c.puntos || {}).length} ${Object.keys(c.puntos || {}).length === 1 ? 'punto' : 'puntos'} · ${diasDe(c).length} días con turnos</small></div></button></div>`).join('');
+    if (misProx.length) h += `<div class="card"><div class="card-h">Mis próximos turnos <a href="#/mis">Ver todos</a></div>${misProx.slice(0, 3).map(pedidoRow).join('')}</div><div class="sec">Campañas</div>`;
+    h += vis.length ? vis.map(campCard).join('') : '<div class="card"><div class="empty">Todavía no hay campañas publicadas.</div></div>';
     $('app').innerHTML = h;
   }
+  function campCard(c) {
+    listenCC(c.id);
+    const dias = diasDe(c), pts = Object.values(c.puntos || {});
+    const tipos = [...new Set(pts.map(p => (TIPOS[p.tipo] || TIPOS.otro)[1].toLowerCase()))];
+    let cob = '<div class="cob"><span>Todavía sin turnos cargados</span></div>';
+    if (dias.length) {
+      const k = cobertura(c, dias.filter(d => d <= addDays(dias[0], 6)));
+      const pct = k.total ? Math.round(k.ocup * 100 / k.total) : 0;
+      const cuando = dias[0] <= addDays(hoy(), 6) ? 'en los próximos 7 días' : 'la primera semana';
+      cob = `<div class="bar"><i style="width:${pct}%"></i></div><div class="cob"><span>${k.faltan > 0 ? `Faltan ${k.faltan} ${k.faltan === 1 ? 'lugar' : 'lugares'} ${cuando}` : `Todo cubierto ${cuando} 🙌`}</span><b>${pct}%</b></div>`;
+    }
+    return `<div class="card"><button type="button" class="camp" data-go="#/c/${esc(c.id)}"><div class="ph"${fotoAttr(c.id, c.portada, `background-color:${colorDe(c)};`)}>${ILUS}<span class="city">${esc(c.ciudad || '')}</span>${c.desde ? `<span class="when">${esc(rangoCorto(c))}</span>` : ''}</div><div class="bd"><b>${esc(c.nombre)}</b><small>${pts.length} ${pts.length === 1 ? 'punto' : 'puntos'}${tipos.length ? ' · ' + esc(tipos.join(' y ')) : ''}${c.lugar ? ' · ' + esc(c.lugar) : ''}</small>${cob}</div></button></div>`;
+  }
+  const ESTADOS = { pendiente: 'Pendiente', confirmado: 'Confirmado', rechazado: 'No confirmado' };
   function pedidoRow(p) {
-    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {};
-    return `<div class="row"><div class="ic">${(TIPOS[pt.tipo] || TIPOS.otro)[0]}</div><div class="tx"><b>${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))}</b><small>${esc(c.nombre || '')} · ${esc(pt.nombre || '')}</small></div><span class="tag ${esc(p.estado)}">${esc({ pendiente: 'Pendiente', confirmado: 'Confirmado', rechazado: 'No confirmado' }[p.estado] || p.estado)}</span></div>`;
+    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, d = parseIso(p.fecha);
+    return `<div class="row"><div class="dt${p.estado === 'confirmado' ? ' ok' : ''}"><b>${d.getDate()}</b><small>${DOW[d.getDay()]}</small></div><div class="tx"><b>${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))}</b><small>${esc(c.nombre || '')} · ${esc(pt.nombre || '')}</small></div><span class="tag ${esc(p.estado)}">${esc(ESTADOS[p.estado] || p.estado)}</span></div>`;
   }
 
   /* ---------- Campaña ---------- */
-  function listenCupos(cid, fecha) {
-    const key = cid + '|' + fecha;
-    if (S.cuposKey === key) return;
-    if (S.cuposUnsub) S.cuposUnsub();
-    S.cuposKey = key; S.cupos = {};
-    S.cuposUnsub = S.db.collection('cupos').where('cid', '==', cid).where('fecha', '==', fecha).onSnapshot((qs) => {
-      const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.cupos = o; if (S.route.name === 'camp') renderCamp();
-    }, () => {});
-  }
   function renderCamp() {
     const c = S.campanas[S.route.cid];
-    if (!c) { $('app').innerHTML = '<div class="empty">Esa campaña no existe o ya terminó.</div>'; return; }
+    if (!c) { $('app').innerHTML = '<div class="card"><div class="empty">Esa campaña no existe o ya terminó.</div></div>'; return; }
+    listenCC(c.id);
     const dias = diasDe(c);
     if (S.diaCid !== c.id || !dias.includes(S.dia)) { S.dia = dias[0]; S.diaCid = c.id; }
-    let h = `<div class="sec">Puntos</div><div class="card">${Object.keys(c.puntos || {}).map(pid => { const p = c.puntos[pid], t = TIPOS[p.tipo] || TIPOS.otro; return `<div class="row"><div class="ic">${t[0]}</div><div class="tx"><b>${esc(p.nombre)}</b><small>${esc(t[1])} · ${cupoDe(c, { punto: pid })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small></div></div>`; }).join('') || '<div class="empty">Sin puntos cargados.</div>'}</div>`;
-    if (!dias.length) { $('app').innerHTML = h + '<div class="empty">No hay días con turnos por delante.</div>'; return; }
-    listenCupos(c.id, S.dia);
-    h += `<div class="sec">Elegí el día</div><div class="days">${dias.map(d => { const x = parseIso(d); return `<button type="button" class="day${d === S.dia ? ' on' : ''}" data-dia="${d}"><small>${DOW[x.getDay()]}</small><b>${x.getDate()}</b><i>${MES[x.getMonth()].slice(0, 3)}</i></button>`; }).join('')}</div>`;
+    if (!dias.length) { $('app').innerHTML = '<div class="card"><div class="empty">No hay días con turnos por delante.</div></div>'; return; }
+    let h = `<div class="sec">Elegí el día</div><div class="days">${dias.map(d => {
+      const x = parseIso(d), k = cobertura(c, [d]);
+      const cls = k.faltan <= 0 ? 'lleno' : k.faltan / k.total <= 0.34 ? 'poco' : '';
+      return `<button type="button" class="day${d === S.dia ? ' on' : ''}" data-dia="${d}"><small>${DOW[x.getDay()]}</small><b>${x.getDate()}</b><i>${MES[x.getMonth()].slice(0, 3)}</i><u class="${cls}"></u></button>`;
+    }).join('')}</div>`;
+    h += '<div class="leyenda"><span><i style="background:var(--ok)"></i>Hay lugar</span><span><i style="background:#E59A6B"></i>Quedan pocos</span><span><i style="background:var(--line2)"></i>Completo</span></div>';
     const ts = turnosDelDia(c, S.dia);
-    h += `<div class="sec">Turnos del ${esc(fmtDia(S.dia))}</div><div class="card">`;
-    h += ts.map(t => {
-      const cu = S.cupos[cupoId(c.id, S.dia, t.id)] || { ocupados: {} };
-      const oc = cu.ocupados || {}, n = cupoDe(c, t), vals = Object.values(oc), conf = vals.filter(v => v === 'c').length, pend = vals.length - conf;
-      const mio = S.user && oc[S.user.uid];
-      const falta = n - vals.length, full = falta <= 0;
-      const dots = Array.from({ length: Math.max(n, vals.length) }, (_, k) => `<i class="${k < conf ? 'c' : k < conf + pend ? 'p' : ''}"></i>`).join('');
-      const p = c.puntos[t.punto];
-      const btn = mio ? `<button type="button" class="sbtn mine" data-mio="${esc(t.id)}">${oc[S.user.uid] === 'c' ? 'Confirmado' : 'Pedido'}</button>`
-        : `<button type="button" class="sbtn" data-pedir="${esc(t.id)}" ${full ? 'disabled' : ''}>${full ? 'Completo' : 'Pedir'}</button>`;
-      return `<div class="row slot"><div class="h">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))}</div><div class="tx"><div class="dots">${dots}</div><small>${esc(p.nombre)} · ${full ? 'completo' : falta === 1 ? 'falta 1' : 'faltan ' + falta}</small></div>${btn}</div>`;
-    }).join('') || '<div class="empty">No hay turnos ese día.</div>';
-    h += `</div><p class="note">Los puntitos llenos son lugares confirmados; los marcados, pedidos por confirmar. Tu pedido queda pendiente hasta que un coordinador lo confirme.</p>`;
+    h += `<div class="sec">${esc(cap(fmtDia(S.dia)))}</div>`;
+    const orden = Object.keys(c.puntos || {}).filter(pid => ts.some(t => t.punto === pid));
+    if (!orden.length) h += '<div class="card"><div class="empty">No hay turnos ese día.</div></div>';
+    orden.forEach(pid => {
+      const p = c.puntos[pid], tp = TIPOS[p.tipo] || TIPOS.otro;
+      h += `<div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${tp[0]}</div><div class="tx"><b>${esc(p.nombre)}</b><small>${esc(tp[1])} · ${cupoDe(c, { punto: pid })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small></div>${tieneLugar(p) ? `<button type="button" class="loc" data-lugar="${esc(c.id)}|${esc(pid)}">📍 Ver lugar</button>` : ''}</div>`;
+      h += ts.filter(t => t.punto === pid).map(t => {
+        const oc = ocupDe(c.id, S.dia, t.id), n = cupoDe(c, t), vals = Object.values(oc), conf = vals.filter(v => v === 'c').length, pend = vals.length - conf;
+        const mio = S.user && oc[S.user.uid];
+        const falta = n - vals.length, full = falta <= 0;
+        const dots = Array.from({ length: Math.max(n, vals.length) }, (_, k) => `<i class="${k < conf ? 'c' : k < conf + pend ? 'p' : ''}"></i>`).join('');
+        const btn = mio ? `<button type="button" class="sbtn mine" data-mio="${esc(t.id)}">${oc[S.user.uid] === 'c' ? 'Confirmado' : 'Pedido'}</button>`
+          : `<button type="button" class="sbtn" data-pedir="${esc(t.id)}" ${full ? 'disabled' : ''}>${full ? 'Completo' : 'Pedir'}</button>`;
+        return `<div class="row slot"><div class="h">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))}</div><div class="tx"><div class="dots">${dots}</div><small>${full ? 'completo' : falta === 1 ? 'falta 1' : 'faltan ' + falta}</small></div>${btn}</div>`;
+      }).join('');
+    });
+    h += `<p class="note">Círculo verde: lugar confirmado · naranja: pedido, falta que lo confirme un coordinador · vacío: libre.</p>`;
     $('app').innerHTML = h;
+  }
+  function verLugar(cid, pid) {
+    const c = S.campanas[cid], p = c && c.puntos && c.puntos[pid];
+    if (!p) return;
+    const tp = TIPOS[p.tipo] || TIPOS.otro, url = comoLlegarUrl(p, c);
+    const dir = p.direccion || (p.lat != null ? `${p.lat}, ${p.lng}` : '');
+    const fotos = (p.fotos || []).map(f => `<div${fotoAttr(cid, f)}></div>`).join('');
+    sheet(`${fotos ? `<div class="fotos">${fotos}</div>` : ''}<h3>${tp[0]} ${esc(p.nombre)}</h3><span class="sub">${esc(tp[1])} · ${cupoDe(c, { punto: pid })} por turno</span>
+      ${p.lat != null ? `<div class="mapa"><iframe loading="lazy" title="Mapa de ${esc(p.nombre)}" src="${esc(mapaUrl(p))}"></iframe></div>` : ''}
+      <div class="dir"><span>📍</span><div><b>${esc(c.nombre)}${c.ciudad ? ' · ' + esc(c.ciudad) : ''}</b>${dir ? '<br>' + esc(dir) : ''}${p.detalle ? '<br>' + esc(p.detalle) : ''}</div></div>
+      ${url ? `<div class="lugar-acts"><a class="go" href="${esc(url)}" target="_blank" rel="noopener">🧭 Cómo llegar</a>${dir ? `<button type="button" class="sbtn" data-copiar="${esc(dir)}">📋 Copiar dirección</button>` : ''}</div>` : ''}
+      ${p.indicaciones ? `<div class="info"><b>Cómo encontrarlo</b>${esc(p.indicaciones)}</div>` : ''}
+      ${p.retiro ? `<div class="info"><b>${retiroLabel(p)}</b>${esc(p.retiro)}</div>` : ''}
+      <button type="button" class="btn alt" data-cerrar style="margin-top:14px">Cerrar</button>`);
+  }
+  async function copiar(txt) {
+    try { await navigator.clipboard.writeText(txt); toast('Dirección copiada'); }
+    catch (e) { toast(txt); }
   }
 
   /* ---------- Pedir un turno ---------- */
@@ -276,13 +394,20 @@
 
   /* ---------- Mis turnos ---------- */
   function renderMis() {
-    if (!S.user) { $('app').innerHTML = '<div class="empty">Iniciá sesión para ver tus turnos.</div><button type="button" class="btn" data-login>Iniciar sesión con Google</button>'; return; }
+    if (!S.user) { $('app').innerHTML = '<div class="card"><div class="empty">Iniciá sesión para ver tus turnos.</div></div><button type="button" class="btn" data-login>Iniciar sesión con Google</button>'; return; }
     const all = Object.keys(S.mis).map(id => Object.assign({ id }, S.mis[id])).sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
     const prox = all.filter(p => p.fecha >= hoy()), pas = all.filter(p => p.fecha < hoy()).reverse();
-    let h = '<div class="sec">Próximos</div>';
-    h += prox.length ? '<div class="card">' + prox.map(p => pedidoRow(p) + (p.estado !== 'rechazado' ? `<div style="padding:0 13px 11px;text-align:right;"><button type="button" class="sbtn bad" data-cancelar="${esc(p.id)}">Cancelar</button></div>` : '')).join('') + '</div>' : '<div class="empty">No tenés turnos pedidos. Elegí una campaña en el inicio.</div>';
+    let h = prox.length ? prox.map(misCard).join('') : '<div class="card"><div class="empty">No tenés turnos pedidos. Elegí una campaña en el inicio.</div></div>';
     if (pas.length) h += '<div class="sec">Anteriores</div><div class="card">' + pas.slice(0, 20).map(pedidoRow).join('') + '</div>';
     $('app').innerHTML = h;
+  }
+  function misCard(p) {
+    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, tp = TIPOS[pt.tipo] || TIPOS.otro;
+    const url = pt.nombre && p.estado !== 'rechazado' ? comoLlegarUrl(pt, c) : '';
+    let acts = url ? `<a class="go" href="${esc(url)}" target="_blank" rel="noopener">🧭 Cómo llegar</a>` : '';
+    if (pt.nombre && tieneLugar(pt)) acts += `<button type="button" class="sbtn ok" data-lugar="${esc(p.cid)}|${esc(p.punto)}">📍 Lugar</button>`;
+    if (p.estado !== 'rechazado') acts += `<button type="button" class="sbtn bad x" data-cancelar="${esc(p.id)}">Cancelar</button>`;
+    return `<div class="mt"><div class="ph"${fotoAttr(p.cid, (pt.fotos || [])[0])}>${tp[0]}<span class="tag ${esc(p.estado)}">${p.estado === 'confirmado' ? '✓ ' : ''}${esc(ESTADOS[p.estado] || p.estado)}</span></div><div class="b"><div class="when">${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))}</div><div class="m">${esc(c.nombre || '')} · ${tp[0]} ${esc(pt.nombre || '')}${c.ciudad ? ' · ' + esc(c.ciudad) : ''}</div>${acts ? `<div class="acts">${acts}</div>` : ''}</div></div>`;
   }
 
   /* ---------- Coordinación ---------- */
@@ -407,12 +532,15 @@
     const puntos = Object.keys(c.puntos || {}).map(id => Object.assign({ id }, c.puntos[id]));
     const turnos = Object.keys(c.turnos || {}).map(id => Object.assign({ id }, c.turnos[id])).sort((a, b) => (a.punto + a.desde).localeCompare(b.punto + b.desde));
     let h = `<div class="sec">Datos de la campaña</div><div class="card" style="padding:12px 13px 4px;">
+      <div class="lbl">Foto de portada</div><div class="portada"${fotoAttr(c.id, c.portada, `background-color:${colorDe(c)};`)}></div>
+      <div class="pills"><label class="sbtn">📷 ${c.portada ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" id="cfFoto" hidden></label>${c.portada ? '<button type="button" class="sbtn bad" id="cfFotoDel">Quitar foto</button>' : ''}</div>
+      <p class="small-hint">Una foto apaisada del lugar, sin personas reconocibles. Se achica sola antes de subirse. Sin foto se usa el color de la campaña.</p>
       <div class="fld"><label for="cfNom">Nombre</label><input id="cfNom" value="${esc(c.nombre)}"></div>
       <div class="two"><div class="fld"><label for="cfCiu">Ciudad</label><input id="cfCiu" value="${esc(c.ciudad || '')}"></div><div class="fld"><label for="cfLug">Lugar (opcional)</label><input id="cfLug" value="${esc(c.lugar || '')}"></div></div>
       <div class="two"><div class="fld"><label for="cfDes">Desde</label><input id="cfDes" type="date" value="${esc(c.desde || '')}"></div><div class="fld"><label for="cfHas">Hasta</label><input id="cfHas" type="date" value="${esc(c.hasta || '')}"></div></div>
       <label class="ck"><input type="checkbox" id="cfAct"${c.activa !== false ? ' checked' : ''}> <span>Visible para todos (si la desmarcás, deja de aparecer en el inicio)</span></label>
       <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div>`;
-    h += `<div class="sec">Puntos <button type="button" class="sbtn" data-punto="">+ Punto</button></div><div class="card">` + (puntos.map(p => `<div class="edit-row"><div><b>${(TIPOS[p.tipo] || TIPOS.otro)[0]} ${esc(p.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc((TIPOS[p.tipo] || TIPOS.otro)[1])} · ${cupoDe(c, { punto: p.id })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small></div><button type="button" class="sbtn" data-punto="${esc(p.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá el primer punto (un carrito, un stand…).</div>') + '</div>';
+    h += `<div class="sec">Puntos <button type="button" class="sbtn" data-punto="">+ Punto</button></div><div class="card">` + (puntos.map(p => `<div class="edit-row"><div><b>${(TIPOS[p.tipo] || TIPOS.otro)[0]} ${esc(p.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc((TIPOS[p.tipo] || TIPOS.otro)[1])} · ${cupoDe(c, { punto: p.id })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small><small style="display:block;font-size:11.5px;color:${tieneUbic(p) ? 'var(--ok)' : 'var(--faint)'};">${tieneUbic(p) ? '📍 Con ubicación' : 'Sin ubicación'}${(p.fotos || []).length ? ' · 📷 ' + p.fotos.length + ((p.fotos.length === 1) ? ' foto' : ' fotos') : ''}</small></div><button type="button" class="sbtn" data-punto="${esc(p.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá el primer punto (un carrito, un stand…).</div>') + '</div>';
     h += `<div class="sec">Turnos <button type="button" class="sbtn" data-turno="" ${puntos.length ? '' : 'disabled'}>+ Turno</button></div><div class="card">` + (turnos.map(t => `<div class="edit-row"><div><b>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc((c.puntos[t.punto] || {}).nombre || '¿?')}</b><small style="display:block;color:var(--soft);font-size:12px;">${(t.dias || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', ') || 'Ningún día'}</small></div><button type="button" class="sbtn" data-turno="${esc(t.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá los horarios de cada punto (por ejemplo, 8 a 10, de lunes a sábado).</div>') + '</div>';
     return h;
   }
@@ -422,6 +550,12 @@
     catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); return false; }
   }
   function bindConfig(c) {
+    $('cfFoto').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; if (f) subirPortada(c, f); });
+    if ($('cfFotoDel')) $('cfFotoDel').addEventListener('click', async () => {
+      if (!confirm('¿Quitar la foto de portada?')) return;
+      const b = S.db.batch(); b.update(S.db.doc('campanas/' + c.id), { portada: S.del() }); b.delete(S.db.doc('fotos/' + fotoKey(c.id, c.portada)));
+      try { await b.commit(); toast('Foto quitada'); } catch (e) { console.error(e); toast('No se pudo quitar.'); }
+    });
     $('cfSave').addEventListener('click', async () => {
       const d = { nombre: $('cfNom').value.trim(), ciudad: $('cfCiu').value.trim(), lugar: $('cfLug').value.trim(), desde: $('cfDes').value, hasta: $('cfHas').value, activa: $('cfAct').checked };
       if (!d.nombre || !d.desde || !d.hasta) { toast('Completá el nombre y las fechas.'); return; }
@@ -429,27 +563,96 @@
       try { await S.db.doc('campanas/' + c.id).update(d); toast('Guardado'); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
     });
   }
-  function editarPunto(c, pid) {
-    const p = pid ? c.puntos[pid] : { nombre: '', tipo: 'carrito', cupo: 2, detalle: '' };
-    const ov = sheet(`<h3>${pid ? 'Editar punto' : 'Nuevo punto'}</h3><p class="hint">Un carrito, un stand o cualquier lugar donde se pone la gente.</p>
+  async function subirPortada(c, file) {
+    toast('Subiendo la foto…');
+    try {
+      const data = await achicar(file, 1400), fid = 'portada-' + uidGen(), k = fotoKey(c.id, fid);
+      const b = S.db.batch();
+      b.set(S.db.doc('fotos/' + k), { cid: c.id, data, creado: new Date().toISOString() });
+      b.update(S.db.doc('campanas/' + c.id), { portada: fid });
+      if (c.portada) b.delete(S.db.doc('fotos/' + fotoKey(c.id, c.portada)));
+      S.fotos[k] = data;
+      await b.commit(); toast('Foto de portada guardada');
+    } catch (e) { console.error(e); toast(e && e.message === 'imagen' ? 'No se pudo leer esa imagen.' : 'No se pudo subir la foto. Probá con otra.'); }
+  }
+  function editarPunto(c, pidIn) {
+    const pid = pidIn || 'p' + uidGen();
+    const p = pidIn ? c.puntos[pidIn] : { nombre: '', tipo: 'carrito', cupo: 2, detalle: '' };
+    const st = { fotos: (p.fotos || []).slice(), nuevas: {}, borrar: [], lat: p.lat != null ? p.lat : null, lng: p.lng != null ? p.lng : null, mapsUrl: p.mapsUrl || '' };
+    const ov = sheet(`<h3>${pidIn ? 'Editar punto' : 'Nuevo punto'}</h3><p class="hint">Un carrito, un stand o cualquier lugar donde se pone la gente.</p>
       <div class="fld"><label for="ptNom">Nombre</label><input id="ptNom" value="${esc(p.nombre)}" placeholder="Andén 1, Hall central, Plaza…"></div>
       <div class="two"><div class="fld"><label for="ptTipo">Tipo</label><select id="ptTipo">${Object.keys(TIPOS).map(k => `<option value="${k}"${p.tipo === k ? ' selected' : ''}>${TIPOS[k][1]}</option>`).join('')}</select></div>
       <div class="fld"><label for="ptCupo">Personas por turno</label><input id="ptCupo" type="number" min="1" max="20" value="${esc(p.cupo)}"></div></div>
-      <div class="fld"><label for="ptDet">Detalle (opcional)</label><input id="ptDet" value="${esc(p.detalle || '')}" placeholder="Frente a boleterías"></div>
-      <button type="button" class="btn" id="ptOk">Guardar</button>${pid ? '<button type="button" class="btn alt" id="ptDel" style="color:var(--bad)">Borrar este punto</button>' : ''}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+      <div class="fld"><label for="ptDet">Detalle corto (opcional)</label><input id="ptDet" value="${esc(p.detalle || '')}" placeholder="Frente a boleterías"></div>
+      <div class="fld"><label for="ptDir">Dirección (opcional)</label><input id="ptDir" value="${esc(p.direccion || '')}" placeholder="Av. Ramírez 2598"></div>
+      <div class="lbl">Ubicación en el mapa</div>
+      <div class="pills"><button type="button" class="sbtn" id="ptGeo">📍 Usar mi ubicación actual</button><button type="button" class="sbtn" id="ptLinkB">🔗 Pegar link de Maps</button></div>
+      <div class="fld hidden" id="ptLinkF" style="margin:8px 0 0"><input id="ptLink" placeholder="Pegá acá el link de Google Maps" inputmode="url"></div>
+      <div class="okline" id="ptUbi"></div>
+      <p class="small-hint">Parado en el lugar, tocá "Usar mi ubicación actual". Si no, en Google Maps buscá el lugar, tocá Compartir → Copiar vínculo y pegalo.</p>
+      <div class="lbl">Fotos del lugar (hasta 3)</div><div class="up" id="ptFotos"></div>
+      <p class="small-hint">Del lugar, sin personas reconocibles. Se achican solas antes de subirse.</p>
+      <div class="fld"><label for="ptInd">Cómo encontrarlo (opcional)</label><textarea id="ptInd" rows="2" placeholder="Entrando por Av. Ramírez, a la derecha, entre las boleterías 4 y 5.">${esc(p.indicaciones || '')}</textarea></div>
+      <div class="fld"><label for="ptRet" id="ptRetL">${retiroLabel(p)} (opcional)</label><textarea id="ptRet" rows="2" placeholder="Dónde se busca y se devuelve">${esc(p.retiro || '')}</textarea></div>
+      <button type="button" class="btn" id="ptOk">Guardar</button>${pidIn ? '<button type="button" class="btn alt" id="ptDel" style="color:var(--bad)">Borrar este punto</button>' : ''}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
     const q = (s) => ov.querySelector(s);
-    q('#ptTipo').addEventListener('change', () => { if (!pid) q('#ptCupo').value = q('#ptTipo').value === 'stand' ? 3 : 2; });
+    function pintarUbi() {
+      q('#ptUbi').innerHTML = st.lat != null ? `✓ Ubicación guardada (${st.lat}, ${st.lng}) · <button type="button" class="linkish" id="ptUbiX">quitar</button>`
+        : st.mapsUrl ? '✓ Link de Maps guardado · <button type="button" class="linkish" id="ptUbiX">quitar</button>' : '';
+      if (q('#ptUbiX')) q('#ptUbiX').addEventListener('click', () => { st.lat = st.lng = null; st.mapsUrl = ''; q('#ptLink').value = ''; pintarUbi(); });
+    }
+    function pintarFotos() {
+      q('#ptFotos').innerHTML = st.fotos.map(f => `<div class="img"${st.nuevas[f] ? ` style="background-image:url('${st.nuevas[f]}')"` : fotoAttr(c.id, f)}><button type="button" data-qf="${esc(f)}" aria-label="Quitar foto">✕</button></div>`).join('') +
+        (st.fotos.length < 3 ? '<label class="add">📷<br>Agregar foto<input type="file" accept="image/*" id="ptFile"></label>' : '');
+      ov.querySelectorAll('[data-qf]').forEach(b => b.addEventListener('click', () => { const f = b.dataset.qf; st.fotos = st.fotos.filter(x => x !== f); if (st.nuevas[f]) delete st.nuevas[f]; else st.borrar.push(f); pintarFotos(); }));
+      if (q('#ptFile')) q('#ptFile').addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0]; if (!file) return;
+        try { const data = await achicar(file, 1200), f = 'f' + uidGen(); st.nuevas[f] = data; st.fotos.push(f); pintarFotos(); }
+        catch (err) { toast(err && err.message === 'imagen' ? 'No se pudo leer esa imagen.' : 'Esa foto es muy pesada. Probá con otra.'); }
+      });
+    }
+    pintarUbi(); pintarFotos();
+    q('#ptTipo').addEventListener('change', () => { if (!pidIn) q('#ptCupo').value = q('#ptTipo').value === 'stand' ? 3 : 2; q('#ptRetL').textContent = retiroLabel({ tipo: q('#ptTipo').value }) + ' (opcional)'; });
+    q('#ptLinkB').addEventListener('click', () => { q('#ptLinkF').classList.remove('hidden'); q('#ptLink').focus(); });
+    q('#ptLink').addEventListener('input', () => {
+      const v = q('#ptLink').value.trim(), g = parseMapsLink(v);
+      if (g) { st.lat = g.lat; st.lng = g.lng; st.mapsUrl = ''; }
+      else if (/^https?:\/\/\S+$/.test(v)) { st.lat = st.lng = null; st.mapsUrl = v.slice(0, 500); }
+      pintarUbi();
+    });
+    q('#ptGeo').addEventListener('click', () => {
+      if (!navigator.geolocation) { toast('Este navegador no da la ubicación.'); return; }
+      q('#ptGeo').disabled = true; q('#ptGeo').textContent = 'Buscando…';
+      navigator.geolocation.getCurrentPosition((pos) => {
+        st.lat = +pos.coords.latitude.toFixed(6); st.lng = +pos.coords.longitude.toFixed(6); st.mapsUrl = '';
+        q('#ptGeo').disabled = false; q('#ptGeo').textContent = '📍 Usar mi ubicación actual'; pintarUbi();
+      }, () => { q('#ptGeo').disabled = false; q('#ptGeo').textContent = '📍 Usar mi ubicación actual'; toast('No se pudo obtener la ubicación. Revisá el permiso del navegador.'); }, { enableHighAccuracy: true, timeout: 15000 });
+    });
     q('#ptOk').addEventListener('click', async () => {
       const d = { nombre: q('#ptNom').value.trim(), tipo: q('#ptTipo').value, cupo: Math.min(20, Math.max(1, parseInt(q('#ptCupo').value, 10) || 2)), detalle: q('#ptDet').value.trim() };
       if (!d.nombre) { toast('Poné un nombre al punto.'); return; }
-      if (await guardarCampo(c, 'puntos.' + (pid || 'p' + uidGen()), d, 'Punto guardado')) ov.remove();
+      const dir = q('#ptDir').value.trim().slice(0, 150), ind = q('#ptInd').value.trim().slice(0, 600), ret = q('#ptRet').value.trim().slice(0, 600);
+      if (dir) d.direccion = dir;
+      if (ind) d.indicaciones = ind;
+      if (ret) d.retiro = ret;
+      if (st.lat != null) { d.lat = st.lat; d.lng = st.lng; } else if (st.mapsUrl) d.mapsUrl = st.mapsUrl;
+      if (st.fotos.length) d.fotos = st.fotos;
+      const b = S.db.batch(), ahora = new Date().toISOString();
+      Object.keys(st.nuevas).forEach(f => { b.set(S.db.doc('fotos/' + fotoKey(c.id, f)), { cid: c.id, data: st.nuevas[f], creado: ahora }); S.fotos[fotoKey(c.id, f)] = st.nuevas[f]; });
+      st.borrar.forEach(f => b.delete(S.db.doc('fotos/' + fotoKey(c.id, f))));
+      b.update(S.db.doc('campanas/' + c.id), { ['puntos.' + pid]: d });
+      const btn = q('#ptOk'); btn.disabled = true; btn.textContent = 'Guardando…';
+      try { await b.commit(); ov.remove(); toast('Punto guardado'); }
+      catch (e) { console.error(e); btn.disabled = false; btn.textContent = 'Guardar'; toast('No se pudo guardar. Probá de nuevo.'); }
     });
-    if (pid) q('#ptDel').addEventListener('click', async () => {
+    if (pidIn) q('#ptDel').addEventListener('click', async () => {
       const usados = Object.values(c.turnos || {}).filter(t => t.punto === pid).length;
       if (!confirm(usados ? `Este punto tiene ${usados} turno(s). Se borran también. ¿Seguir?` : '¿Borrar este punto?')) return;
       const upd = { ['puntos.' + pid]: S.del() };
       Object.keys(c.turnos || {}).forEach(tid => { if (c.turnos[tid].punto === pid) upd['turnos.' + tid] = S.del(); });
-      try { await S.db.doc('campanas/' + c.id).update(upd); ov.remove(); toast('Punto borrado'); } catch (e) { toast('No se pudo borrar.'); }
+      const b = S.db.batch(); b.update(S.db.doc('campanas/' + c.id), upd);
+      (p.fotos || []).forEach(f => b.delete(S.db.doc('fotos/' + fotoKey(c.id, f))));
+      try { await b.commit(); ov.remove(); toast('Punto borrado'); } catch (e) { toast('No se pudo borrar.'); }
     });
   }
   function editarTurno(c, tid) {
@@ -514,7 +717,7 @@
     const q = (s) => ov.querySelector(s);
     q('#ncOk').addEventListener('click', async () => {
       const d = { nombre: q('#ncNom').value.trim(), ciudad: q('#ncCiu').value.trim(), lugar: q('#ncLug').value.trim(), desde: q('#ncDes').value, hasta: q('#ncHas').value, activa: true, puntos: {}, turnos: {},
-        color: COLORES[Object.keys(S.campanas).length % COLORES.length], creada: new Date().toISOString() };
+        creada: new Date().toISOString() };
       if (!d.nombre || !d.ciudad || !d.desde || !d.hasta || d.hasta < d.desde) { toast('Completá nombre, ciudad y fechas.'); return; }
       const slug = (d.ciudad + '-' + d.nombre).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + uidGen().slice(0, 3);
       try { await S.db.doc('campanas/' + slug).set(d); ov.remove(); toast('Campaña creada'); S.coord.tab = 'config'; go('#/coord/' + slug); } catch (e) { console.error(e); toast('No se pudo crear.'); }
@@ -564,6 +767,8 @@
     if (ds.dia) { S.dia = ds.dia; renderCamp(); return; }
     if (ds.pedir) { pedir(ds.pedir); return; }
     if (ds.mio) { go('#/mis'); return; }
+    if (ds.lugar) { const [cid, pid] = ds.lugar.split('|'); verLugar(cid, pid); return; }
+    if (ds.copiar) { copiar(ds.copiar); return; }
     if (ds.cancelar) { cancelarPedido(ds.cancelar); return; }
     if (ds.tab) { S.coord.tab = ds.tab; renderCoord(); return; }
     if (ds.confirmar) { cambiarEstado(ds.confirmar, 'confirmado'); return; }

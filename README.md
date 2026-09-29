@@ -25,7 +25,8 @@ confirman los pedidos, ven qué turnos faltan cubrir y comparten las listas por 
 
 ## Datos (Firestore)
 
-- `campanas/{id}`: nombre, ciudad, fechas, puntos (tipo y cupo) y turnos (horario y días). Público.
+- `campanas/{id}`: nombre, ciudad, fechas, foto de portada, puntos (tipo, cupo, dirección, ubicación, fotos, indicaciones, retiro del carrito) y turnos (horario y días). Público.
+- `fotos/{campaña}__{id}`: las fotos, achicadas a JPEG de menos de ~330 KB. Públicas; las suben los coordinadores. Tienen que ser del lugar, sin personas reconocibles.
 - `cupos/{campaña}__{fecha}__{turno}`: quién ocupa cada lugar, solo con el id de la cuenta (sin datos personales). Público.
 - `pedidos/{…}__{uid}`: nombre, apellido, congregación y celular. Solo los ven quien pidió y los coordinadores de esa campaña.
 - `coordinadores/{id}`, `roles/{email}`, `config/admins`, `config/publico` (lista de congregaciones).
