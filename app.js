@@ -66,6 +66,7 @@
     }, (e) => { console.error(e); $('app').innerHTML = '<div class="empty">No se pudieron cargar las campañas. Revisá la conexión.</div>'; });
     S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin') render(); }, () => {});
     S.auth.onAuthStateChanged(onUser);
+    setInterval(aplicarMomento, 5 * 60000);
     window.addEventListener('hashchange', () => { readRoute(); render(); });
     readRoute();
   }
@@ -119,6 +120,8 @@
     const tb = $('tb'), fk = r.name === 'camp' && c && c.portada ? fotoKey(c.id, c.portada) : '';
     tb.dataset.foto = fk; tb.style.backgroundImage = ''; tb.classList.remove('foto');
     tb.style.backgroundColor = r.name === 'camp' && c ? colorDe(c) : '';
+    tb.classList.toggle('tb-camp', r.name === 'camp' && !!c);
+    aplicarMomento();
     if (fk) { pedirFoto(fk); if (S.fotos[fk]) { tb.style.backgroundImage = `url("${S.fotos[fk]}")`; tb.classList.add('foto'); } }
   }
   function campRango(c) {
@@ -126,6 +129,50 @@
     const a = parseIso(c.desde), b = parseIso(c.hasta);
     return `Del ${a.getDate()} de ${MES[a.getMonth()]} al ${b.getDate()} de ${MES[b.getMonth()]}${c.lugar ? ' · ' + c.lugar : ''}`;
   }
+  /* ---------- Momentos del día: el encabezado sigue al sol real de Entre Ríos ---------- */
+  // Salida y puesta del sol (fórmulas de NOAA) para Paraná, en minutos de la hora local del celular.
+  function solDelDia(d) {
+    const lat = -31.73, lng = -60.53, rad = Math.PI / 180;
+    const base = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    const n = Math.round((base - Date.UTC(d.getFullYear(), 0, 1)) / 864e5) + 1, g = 2 * Math.PI / 365 * (n - 1);
+    const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+    const dec = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+    const ha = Math.acos(Math.cos(90.833 * rad) / (Math.cos(lat * rad) * Math.cos(dec)) - Math.tan(lat * rad) * Math.tan(dec)) / rad;
+    const local = (m) => { const x = new Date(base + m * 60000); return x.getHours() * 60 + x.getMinutes(); };
+    return { sale: local(720 - 4 * (lng + ha) - eq), pone: local(720 - 4 * (lng - ha) - eq) };
+  }
+  function momentoAhora(now) {
+    now = now || new Date();
+    const m = now.getHours() * 60 + now.getMinutes(), s = solDelDia(now);
+    const f = (m - s.sale) / (s.pone - s.sale);
+    const mo = m < s.sale - 40 || m > s.pone + 40 ? 'noche' : m < s.sale + 80 ? 'amanecer' : m > s.pone - 80 ? 'atardecer' : 'dia';
+    return { mo, f };
+  }
+  const EDIF = '<path d="M0 110V70h18V52h14v18h10V38h22v72Z"/><path d="M60 110V58h16V44l12-10 12 10v14h14v52Z"/><path d="M116 110V66h20V50h16v16h12V30h20v80Z"/>';
+  const LUCES = [[22, 76], [48, 50], [48, 64], [82, 64], [92, 78], [138, 72], [170, 40], [170, 56], [180, 78]];
+  const TEMA = { amanecer: '#E7835A', dia: '#C4552F', atardecer: '#8E3A3A', noche: '#141B34' };
+  function ilusMomento(mo, f) {
+    let cielo = '';
+    if (mo === 'noche') {
+      cielo = '<g class="est">' + [[20, 20], [70, 12], [110, 30], [185, 60], [90, 55], [130, 8], [40, 44]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.1"/>`).join('') + '</g>' +
+        '<g class="luna"><circle cx="160" cy="22" r="11" class="lu"/><circle cx="166" cy="17" r="10" class="lu2"/></g>';
+    } else {
+      const k = Math.max(-0.06, Math.min(1.06, f)), x = Math.round(172 - k * 144), y = Math.round(66 - Math.sin(Math.PI * Math.max(0, Math.min(1, k))) * 50);
+      cielo = `<g class="sol-g"><circle cx="${x}" cy="${y}" r="21" class="halo"/><circle cx="${x}" cy="${y}" r="11" class="sol"/></g>`;
+    }
+    const luces = mo === 'noche' ? '<g class="luz">' + LUCES.map(([x, y]) => `<rect x="${x}" y="${y}" width="4" height="5"/>`).join('') + '</g>' : '';
+    return cielo + EDIF + luces;
+  }
+  function aplicarMomento() {
+    const { mo, f } = momentoAhora(), el = $('tbIlus');
+    if (document.body.dataset.m !== mo || S.solF === undefined || Math.abs(S.solF - f) > 0.01) {
+      document.body.dataset.m = mo; S.solF = f;
+      if (el) el.innerHTML = ilusMomento(mo, f);
+      const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', TEMA[mo]);
+    }
+  }
+  window.__ppamMomento = momentoAhora;   // para las pruebas
+
   function rangoCorto(c) {
     if (!c.desde || !c.hasta) return '';
     const a = parseIso(c.desde), b = parseIso(c.hasta), m = (d) => MES[d.getMonth()].slice(0, 3);

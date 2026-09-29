@@ -1,5 +1,11 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Momentos del día — 29 sep 2026 (caché ppam-v5)
+
+- El encabezado cambia con la hora: amanecer (durazno), día (terracota), atardecer (rojo y violeta) y noche (azul, con luna, estrellas y ventanas encendidas). El sol recorre el cielo de derecha a izquierda.
+- Los horarios siguen la salida y la puesta del sol reales en Entre Ríos (se calculan en el celular, sin internet) y se actualizan solos cada 5 minutos. También cambia el color de la barra del navegador.
+- La campaña con foto o color propio queda igual. 74 pruebas de la página.
+
 ## Marcar el punto en el mapa — 29 sep 2026 (caché ppam-v4)
 
 - Al editar un punto hay un mapa (Leaflet + OpenStreetMap): se toca donde va el carrito o el stand y el pin se puede arrastrar. Arranca en la ciudad de la campaña o en otro punto ya marcado.

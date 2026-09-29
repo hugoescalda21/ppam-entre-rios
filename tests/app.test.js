@@ -305,6 +305,22 @@ const SEED = {
   await a.fill('#adCongs', 'San Agustín (Paraná)\nVilla Urquiza (Paraná)\n\nSan Agustín (Paraná)'); await a.click('#adCongsOk'); await a.waitForTimeout(150);
   check('guarda la lista de congregaciones sin repetidos', JSON.stringify(await a.evaluate(() => window.__store['config/publico'].congregaciones)) === '["San Agustín (Paraná)","Villa Urquiza (Paraná)"]');
   check('sin errores (admin)', a.errs.length === 0, a.errs);
+  console.log('\nMomentos del día');
+  for (const [hora, mo, luna] of [['06:30', 'amanecer', false], ['13:00', 'dia', false], ['18:45', 'atardecer', false], ['23:00', 'noche', true], ['03:00', 'noche', true]]) {
+    const cx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    await cx.clock.install({ time: new Date(`2026-09-30T${hora}:00-03:00`) });
+    await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, [])`);
+    const pg = await cx.newPage(); pg.errs = []; pg.on('pageerror', e => pg.errs.push(e.message));
+    await pg.goto(FILE); await pg.waitForTimeout(250);
+    const r = await pg.evaluate(() => ({ m: document.body.dataset.m, luna: !!document.querySelector('#tbIlus .luna'), sol: !!document.querySelector('#tbIlus .sol'), luces: document.querySelectorAll('#tbIlus .luz rect').length, bg: getComputedStyle(document.getElementById('tb')).backgroundImage, tc: document.querySelector('meta[name="theme-color"]').content }));
+    check(`${hora} → ${mo}${luna ? ' (luna, estrellas y ventanas encendidas)' : ' (con sol)'}`, r.m === mo && r.luna === luna && r.sol === !luna && (luna ? r.luces > 0 : r.luces === 0) && pg.errs.length === 0, r);
+    if (hora === '06:30' || hora === '23:00') await pg.screenshot({ path: SHOTS + `/momento-${mo}.png` });
+    await cx.close();
+  }
+  const sol = await a.evaluate(() => { const at = (h, m) => { const d = new Date(2026, 11, 21, h, m); return window.__ppamMomento(d).mo; }; return [at(20, 0), at(21, 30), at(5, 50)]; });
+  check('en diciembre el sol se pone más tarde: 20:00 atardecer, 21:30 noche, 5:50 amanecer', sol[0] === 'atardecer' && sol[1] === 'noche' && sol[2] === 'amanecer', sol);
+
   await b.close(); console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;
 })();

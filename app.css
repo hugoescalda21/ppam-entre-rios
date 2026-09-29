@@ -264,3 +264,20 @@ body:not(.r-home) .tb .ilus .sol { display: none; }
 .mf-acts { display: flex; gap: 8px; margin-top: 8px; }
 .mf-acts .btn { margin: 0; }
 .mf-acts .btn.alt { flex: 0 0 34%; }
+
+/* ---------- Momentos del día (solo el encabezado; la campaña con foto o color queda igual) ---------- */
+.tb .ilus .halo { fill: #F6C28B; opacity: .28; }
+.tb .ilus .est circle { fill: #fff; opacity: .85; }
+.tb .ilus .lu { fill: #F4EEDC; }
+.tb .ilus .luz rect { fill: #F6C98B; }
+body[data-m="amanecer"] .tb:not(.tb-camp) { background: linear-gradient(180deg, #F3A56B 0%, #E7835A 55%, #D9694A 100%); }
+body[data-m="amanecer"] .tb .ilus path { fill: rgba(140,50,25,.45); }
+body[data-m="amanecer"] .tb .ilus .sol, body[data-m="amanecer"] .tb .ilus .halo { fill: #FFE2A8; }
+body[data-m="atardecer"] .tb:not(.tb-camp) { background: linear-gradient(180deg, #B8472E 0%, #8E3A3A 60%, #5E2E45 100%); }
+body[data-m="atardecer"] .tb .ilus path { fill: #4A2233; }
+body[data-m="atardecer"] .tb .ilus .sol, body[data-m="atardecer"] .tb .ilus .halo { fill: #FFB36B; }
+body[data-m="noche"] .tb:not(.tb-camp) { background: linear-gradient(180deg, #141B34 0%, #23244A 70%, #35295A 100%); }
+body[data-m="noche"] .tb .ilus path { fill: #0E1128; }
+body[data-m="noche"] .tb .ilus .lu2 { fill: #1B1F3D; }
+body[data-m="noche"] .tb-btn:not(.sec2) { color: #23244A; }
+body:not(.r-home) .tb .ilus .sol-g, body:not(.r-home) .tb .ilus .luna { display: none; }
