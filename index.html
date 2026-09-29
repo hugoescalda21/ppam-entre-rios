@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPAM Entre Ríos</title>
+<meta name="description" content="Campañas de predicación pública metropolitana en Entre Ríos: horarios, puntos y turnos.">
+<meta name="theme-color" content="#0F1B2D">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="stylesheet" href="./app.css">
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="./firebase-config.js"></script>
+</head>
+<body>
+  <header class="tb" id="tb">
+    <div class="tb-in">
+      <button type="button" class="back hidden" id="backBtn">‹ Volver</button>
+      <small id="tbKicker">Predicación pública metropolitana</small>
+      <h1 id="tbTitle">PPAM Entre Ríos</h1>
+      <p id="tbSub">Elegí una campaña, un día y un horario.</p>
+      <div class="tb-actions">
+        <button type="button" class="tb-btn hidden" id="coordBtn">Coordinación</button>
+        <button type="button" class="tb-btn" id="userBtn">Iniciar sesión</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="ct" id="app" aria-live="polite">
+    <div class="empty">Cargando…</div>
+  </main>
+
+  <footer class="foot">
+    <button type="button" class="linkish" id="privBtn">Cómo se usan tus datos</button>
+  </footer>
+
+  <div class="toast" id="toast" role="status"></div>
+  <script src="./app.js"></script>
+</body>
+</html>

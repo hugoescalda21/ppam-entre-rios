@@ -1,0 +1,104 @@
+rules_version = '2';
+
+// Reglas de seguridad — PPAM Entre Ríos
+// -----------------------------------------------------------------
+// Publicar (desde la carpeta firebase):   firebase deploy --only firestore:rules
+// Probar antes (desde firebase/pruebas-reglas):   npm test
+//
+// Quién es quién:
+//  · Administrador técnico: hugoescalda@gmail.com (fijo, para no quedar nunca afuera).
+//  · Administradores: config/admins.emails — crean campañas y eligen coordinadores.
+//  · Coordinadores de una campaña: coordinadores/{campaña}.emails — la configuran y confirman pedidos.
+//  · Cualquiera: mira campañas y cupos sin iniciar sesión.
+//  · Publicador con sesión (Google): pide turnos y ve SOLO los suyos.
+// Los datos personales (nombre, apellido, congregación, celular) están solo en "pedidos"
+// y los ven quien pidió y los coordinadores de esa campaña. En "cupos" solo hay ids.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function conSesion() { return request.auth != null && request.auth.token.email is string; }
+    function mail() { return request.auth.token.email.lower(); }
+    function docAdmins() { return /databases/$(database)/documents/config/admins; }
+    function esAdmin() {
+      return conSesion() && (mail() == 'hugoescalda@gmail.com' ||
+        (exists(docAdmins()) && mail() in get(docAdmins()).data.get('emails', [])));
+    }
+    function esCoord(cid) {
+      let d = /databases/$(database)/documents/coordinadores/$(cid);
+      return conSesion() && exists(d) && mail() in get(d).data.get('emails', []);
+    }
+    function gestiona(cid) { return esAdmin() || esCoord(cid); }
+
+    match /config/publico {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+    match /config/admins {
+      allow read, write: if esAdmin();
+    }
+    // roles/{email}: en qué campañas coordina cada uno (lo lee él mismo para ver el botón "Coordinación").
+    match /roles/{correo} {
+      allow read: if conSesion() && (mail() == correo || esAdmin());
+      allow write: if esAdmin();
+    }
+    match /coordinadores/{cid} {
+      allow read: if esAdmin() || (conSesion() && mail() in resource.data.get('emails', []));
+      allow write: if esAdmin();
+    }
+
+    match /campanas/{cid} {
+      allow read: if true;
+      allow create, delete: if esAdmin();
+      allow update: if gestiona(cid);
+    }
+
+    // Cupos: cuántos lugares están ocupados en cada turno de cada día. Público y sin datos
+    // personales: solo el id de cada cuenta y "p" (pedido) o "c" (confirmado).
+    match /cupos/{id} {
+      function campana(cid) { return get(/databases/$(database)/documents/campanas/$(cid)).data; }
+      function maximo(d) { let c = campana(d.cid); return c.puntos[c.turnos[d.tid].punto].cupo; }
+      function idOk(d) { return id == d.cid + '__' + d.fecha + '__' + d.tid; }
+      function forma(d) { return d.keys().hasOnly(['cid', 'fecha', 'tid', 'ocupados']) && d.fecha is string && d.fecha.size() == 10 && d.ocupados is map; }
+      // Un publicador solo se agrega a sí mismo como "pedido" o se saca (cancelar), y sin pasarse del cupo.
+      function publicador(antes, despues) {
+        let yo = request.auth.uid;
+        return conSesion() && despues.diff(antes).affectedKeys().hasOnly([yo]) &&
+               (!(yo in despues) || (despues[yo] == 'p' && !(yo in antes))) &&
+               campana(request.resource.data.cid).get('activa', true) == true;
+      }
+      allow read: if true;
+      allow create: if forma(request.resource.data) && idOk(request.resource.data) && (
+                     gestiona(request.resource.data.cid) ||
+                     (publicador({}, request.resource.data.ocupados) && request.resource.data.ocupados.size() <= maximo(request.resource.data)));
+      allow update: if forma(request.resource.data) &&
+                     request.resource.data.cid == resource.data.cid && request.resource.data.fecha == resource.data.fecha && request.resource.data.tid == resource.data.tid && (
+                     gestiona(resource.data.cid) ||
+                     (publicador(resource.data.ocupados, request.resource.data.ocupados) && request.resource.data.ocupados.size() <= maximo(resource.data)));
+      allow delete: if gestiona(resource.data.cid);
+    }
+
+    // Pedidos: los datos de quien pide un turno.
+    match /pedidos/{id} {
+      function pedidoValido(d) {
+        let cupo = /databases/$(database)/documents/cupos/$(d.cid + '__' + d.fecha + '__' + d.tid);
+        return d.keys().hasOnly(['cid', 'fecha', 'tid', 'punto', 'desde', 'hasta', 'uid', 'email', 'nombre', 'apellido', 'congregacion', 'celular', 'estado', 'creado']) &&
+               d.uid == request.auth.uid && d.email == mail() && d.estado == 'pendiente' &&
+               id == d.cid + '__' + d.fecha + '__' + d.tid + '__' + request.auth.uid &&
+               d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 60 &&
+               d.apellido is string && d.apellido.size() > 0 && d.apellido.size() <= 60 &&
+               d.congregacion is string && d.congregacion.size() > 0 && d.congregacion.size() <= 80 &&
+               d.celular is string && d.celular.size() >= 8 && d.celular.size() <= 30 &&
+               getAfter(cupo).data.ocupados.get(request.auth.uid, '') == 'p';
+      }
+      allow read: if conSesion() && (resource.data.uid == request.auth.uid || gestiona(resource.data.cid));
+      allow create: if conSesion() && pedidoValido(request.resource.data);
+      // El coordinador confirma o no; el publicador puede volver a pedir si antes no se lo confirmaron.
+      allow update: if conSesion() && (
+                     (gestiona(resource.data.cid) &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'actualizado', 'por']) &&
+                      request.resource.data.estado in ['pendiente', 'confirmado', 'rechazado']) ||
+                     (resource.data.uid == request.auth.uid && resource.data.estado == 'rechazado' && pedidoValido(request.resource.data)));
+      allow delete: if conSesion() && (resource.data.uid == request.auth.uid || gestiona(resource.data.cid));
+    }
+  }
+}
