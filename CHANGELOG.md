@@ -1,5 +1,11 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Detalles del rediseño — 29 sep 2026 (caché ppam-v8)
+
+- Sin emojis: íconos de línea en la configuración de puntos (carrito, stand, ubicación, fotos), en "Estoy acá", "Buscar en el mapa", "Pegar link", en los botones de WhatsApp y en el buscador del mapa.
+- Administración con el mismo estilo: cada campaña con sus botones abajo, sin textos apretados.
+- 74 pruebas de la página.
+
 ## Rediseño premium — 29 sep 2026 (caché ppam-v7)
 
 - Diseño nuevo desde cero: fondo marfil, verde petróleo con detalle dorado, letra Inter, íconos de línea y barra fija abajo (Inicio · Mis turnos · Coordinar).

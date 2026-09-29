@@ -367,3 +367,18 @@ label.sbtn { cursor: pointer; }
 .mf-acts .btn { margin: 0; }
 .mf-acts .btn.alt { flex: 0 0 34%; }
 
+
+/* Detalles: filas de configuración, botón de volver del mapa y administración */
+.er-t { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.er-ic { width: 28px; height: 28px; border-radius: 9px; background: var(--pri-bg); color: var(--pri); display: grid; place-items: center; flex-shrink: 0; }
+.er-t ~ small { margin-left: 36px; }
+.edit-row.adm { grid-template-columns: 1fr; }
+.edit-row.adm > div:last-child { justify-content: flex-start; }
+.edit-row.adm b { font-size: 15px; }
+.mf-back { display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,.14); border: none; color: inherit; border-radius: 999px; padding: 7px 12px 7px 8px; font-size: 13px; font-weight: 600; }
+.mf-top { background: var(--pri) !important; color: #fff !important; }
+.mf-res button { display: flex !important; align-items: center; }
+.mf-bus .sbtn { background: #0E1A24 !important; border-color: #0E1A24 !important; color: #fff !important; }
+.card > .note { color: var(--ink2); }
+.card .fld textarea { font-size: 15px; }
+.acts .sbtn .ic { width: 16px; height: 16px; }

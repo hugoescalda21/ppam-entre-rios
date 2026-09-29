@@ -21,7 +21,7 @@
   const DOW = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   const DOW_L = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   const MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-  const TIPOS = { carrito: ['🛒', 'Carrito'], stand: ['⛺', 'Stand'], otro: ['📍', 'Punto'] };
+  const TIPOS = { carrito: ['cart', 'Carrito'], stand: ['stand', 'Stand'], otro: ['pin', 'Punto'] };
   const COLORES = ['linear-gradient(160deg,#1C5C56,#0F3A36)', 'linear-gradient(160deg,#5E7F8C,#34505C)', 'linear-gradient(160deg,#C2A060,#8A6A2E)', 'linear-gradient(160deg,#7C8C62,#4E5E3C)', 'linear-gradient(160deg,#86677A,#5A3F50)', 'linear-gradient(160deg,#557593,#2F4B66)'];
 
   /* ---------- Fechas (hora local del celular) ---------- */
@@ -589,7 +589,7 @@
     if (!dias.length) return '<div class="empty">No hay días con turnos por delante. Revisá las fechas y los turnos en Configurar.</div>';
     if (!S.coord.semana || !dias.includes(S.coord.semana)) S.coord.semana = dias[0];
     const i0 = dias.indexOf(S.coord.semana), ds = dias.slice(i0, i0 + 7);
-    let h = `<div class="acts" style="margin:0 0 10px;"><button type="button" class="sbtn" data-sem="-7" ${i0 === 0 ? 'disabled' : ''}>‹ Anteriores</button><button type="button" class="sbtn" data-sem="7" ${i0 + 7 >= dias.length ? 'disabled' : ''}>Siguientes ›</button></div>`;
+    let h = `<div class="acts" style="margin:0 0 10px;"><button type="button" class="sbtn" data-sem="-7" ${i0 === 0 ? 'disabled' : ''}>${I('back', 'width:15px;height:15px')}Anteriores</button><button type="button" class="sbtn" data-sem="7" ${i0 + 7 >= dias.length ? 'disabled' : ''}>Siguientes${I('chev', 'width:15px;height:15px')}</button></div>`;
     Object.keys(c.puntos || {}).forEach(pid => {
       const p = c.puntos[pid];
       const franjas = [...new Set(Object.values(c.turnos || {}).filter(t => t.punto === pid).map(t => t.desde + '-' + t.hasta))].sort();
@@ -608,7 +608,7 @@
       });
       h += '</div>';
     });
-    h += `<div class="acts"><button type="button" class="sbtn pri" data-voluntarios>📣 Pedir voluntarios por WhatsApp</button></div><p class="note">Arma un mensaje con los turnos de estos días que todavía no están completos y el link a la campaña.</p>`;
+    h += `<div class="acts"><button type="button" class="sbtn pri" data-voluntarios>${I('chat')}Pedir voluntarios por WhatsApp</button></div><p class="note">Arma un mensaje con los turnos de estos días que todavía no están completos y el link a la campaña.</p>`;
     return h;
   }
   function coordDia(c, dias, peds) {
@@ -620,7 +620,7 @@
       const ps = peds.filter(p => p.fecha === S.coord.dia && p.tid === t.id && p.estado === 'confirmado');
       return `<div class="row" style="display:block"><b>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc(c.puntos[t.punto].nombre)}</b><small>${ps.length ? ps.map(p => esc(p.nombre + ' ' + p.apellido) + ' (' + esc(p.congregacion) + ')').join(' · ') : 'Nadie confirmado todavía'} · ${ps.length}/${cupoDe(c, t)}</small></div>`;
     }).join('') + '</div>';
-    h += `<div class="acts"><button type="button" class="sbtn pri" data-listadia>📤 Compartir la lista por WhatsApp</button></div>`;
+    h += `<div class="acts"><button type="button" class="sbtn pri" data-listadia>${I('share')}Compartir la lista por WhatsApp</button></div>`;
     return h;
   }
   async function cambiarEstado(pid, estado) {
@@ -644,7 +644,7 @@
       const n = cupoDe(c, t), oc = Object.keys((S.coord.cupos[cupoId(c.id, d, t.id)] || {}).ocupados || {}).length;
       if (oc < n) lin.push(`• ${cap(fmtDia(d))} · ${fmtHora(t.desde)} a ${fmtHora(t.hasta)} · ${c.puntos[t.punto].nombre} (falta${n - oc > 1 ? 'n ' + (n - oc) : ' 1'})`);
     }));
-    return `*PPAM · ${c.nombre}* (${c.ciudad || ''})\nNecesitamos voluntarios para estos turnos:\n\n${lin.join('\n') || 'Por ahora están todos cubiertos 🙌'}\n\nPedí tu turno acá: ${linkCampana(c)}`;
+    return `*PPAM · ${c.nombre}* (${c.ciudad || ''})\nNecesitamos voluntarios para estos turnos:\n\n${lin.join('\n') || 'Por ahora están todos cubiertos.'}\n\nPedí tu turno acá: ${linkCampana(c)}`;
   }
   function textoDia(c, peds) {
     const d = S.coord.dia, ts = turnosDelDia(c, d);
@@ -660,14 +660,14 @@
     const turnos = Object.keys(c.turnos || {}).map(id => Object.assign({ id }, c.turnos[id])).sort((a, b) => (a.punto + a.desde).localeCompare(b.punto + b.desde));
     let h = `<div class="sec">Datos de la campaña</div><div class="card" style="padding:12px 13px 4px;">
       <div class="lbl">Foto de portada</div><div class="portada"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></div>
-      <div class="pills"><label class="sbtn">📷 ${c.portada ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" id="cfFoto" hidden></label>${c.portada ? '<button type="button" class="sbtn bad" id="cfFotoDel">Quitar foto</button>' : ''}</div>
+      <div class="pills"><label class="sbtn">${I('camera')}${c.portada ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" id="cfFoto" hidden></label>${c.portada ? '<button type="button" class="sbtn bad" id="cfFotoDel">Quitar foto</button>' : ''}</div>
       <p class="small-hint">Una foto apaisada del lugar, sin personas reconocibles. Se achica sola antes de subirse. Sin foto se usa el color de la campaña.</p>
       <div class="fld"><label for="cfNom">Nombre</label><input id="cfNom" value="${esc(c.nombre)}"></div>
       <div class="two"><div class="fld"><label for="cfCiu">Ciudad</label><input id="cfCiu" value="${esc(c.ciudad || '')}"></div><div class="fld"><label for="cfLug">Lugar (opcional)</label><input id="cfLug" value="${esc(c.lugar || '')}"></div></div>
       <div class="two"><div class="fld"><label for="cfDes">Desde</label><input id="cfDes" type="date" value="${esc(c.desde || '')}"></div><div class="fld"><label for="cfHas">Hasta</label><input id="cfHas" type="date" value="${esc(c.hasta || '')}"></div></div>
       <label class="ck"><input type="checkbox" id="cfAct"${c.activa !== false ? ' checked' : ''}> <span>Visible para todos (si la desmarcás, deja de aparecer en el inicio)</span></label>
       <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div>`;
-    h += `<div class="sec">Puntos <button type="button" class="sbtn" data-punto="">+ Punto</button></div><div class="card">` + (puntos.map(p => `<div class="edit-row"><div><b>${(TIPOS[p.tipo] || TIPOS.otro)[0]} ${esc(p.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc((TIPOS[p.tipo] || TIPOS.otro)[1])} · ${cupoDe(c, { punto: p.id })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small><small style="display:block;font-size:11.5px;color:${tieneUbic(p) ? 'var(--ok)' : 'var(--faint)'};">${tieneUbic(p) ? '📍 Con ubicación' : 'Sin ubicación'}${(p.fotos || []).length ? ' · 📷 ' + p.fotos.length + ((p.fotos.length === 1) ? ' foto' : ' fotos') : ''}</small></div><button type="button" class="sbtn" data-punto="${esc(p.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá el primer punto (un carrito, un stand…).</div>') + '</div>';
+    h += `<div class="sec">Puntos <button type="button" class="sbtn" data-punto="">+ Punto</button></div><div class="card">` + (puntos.map(p => `<div class="edit-row"><div><b class="er-t"><span class="er-ic">${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin', 'width:16px;height:16px')}</span>${esc(p.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc((TIPOS[p.tipo] || TIPOS.otro)[1])} · ${cupoDe(c, { punto: p.id })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small><small style="display:block;font-size:11.5px;color:${tieneUbic(p) ? 'var(--ok)' : 'var(--faint)'};">${tieneUbic(p) ? 'Con ubicación' : 'Sin ubicación'}${(p.fotos || []).length ? ' · ' + p.fotos.length + ((p.fotos.length === 1) ? ' foto' : ' fotos') : ''}</small></div><button type="button" class="sbtn" data-punto="${esc(p.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá el primer punto (un carrito, un stand…).</div>') + '</div>';
     h += `<div class="sec">Turnos <button type="button" class="sbtn" data-turno="" ${puntos.length ? '' : 'disabled'}>+ Turno</button></div><div class="card">` + (turnos.map(t => `<div class="edit-row"><div><b>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc((c.puntos[t.punto] || {}).nombre || '¿?')}</b><small style="display:block;color:var(--soft);font-size:12px;">${(t.dias || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', ') || 'Ningún día'}</small></div><button type="button" class="sbtn" data-turno="${esc(t.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá los horarios de cada punto (por ejemplo, 8 a 10, de lunes a sábado).</div>') + '</div>';
     return h;
   }
@@ -756,7 +756,7 @@
   // Pantalla completa: buscar por nombre o dirección y marcar con comodidad.
   function buscarEnMapa(c, st, listo) {
     const ov = document.createElement('div'); ov.className = 'mapfull';
-    ov.innerHTML = `<div class="mf-top"><button type="button" class="back" data-mf-cerrar>‹ Volver al punto</button><h3>Marcar en el mapa</h3>
+    ov.innerHTML = `<div class="mf-top"><button type="button" class="mf-back" data-mf-cerrar>${I('back')}Volver al punto</button><h3>Marcar en el mapa</h3>
       <form class="mf-bus" id="mfForm"><input id="mfQ" placeholder="Buscá un lugar o una dirección" autocomplete="off"><button type="submit" class="sbtn pri">Buscar</button></form><div class="mf-res hidden" id="mfRes"></div></div>
       <div class="mf-map" id="mfMap"><div class="mapmsg">Cargando el mapa…</div></div>
       <div class="mf-bot"><div id="mfDir" class="mf-dir">Tocá el mapa donde va el punto.</div><div class="mf-acts"><button type="button" class="btn alt" data-mf-cerrar>Cancelar</button><button type="button" class="btn" id="mfOk" disabled>✓ Usar este lugar</button></div></div>`;
@@ -781,7 +781,7 @@
       const box = q('#mfRes'); box.classList.remove('hidden'); box.innerHTML = '<div>Buscando…</div>';
       try {
         const rs = await buscarLugar(c.ciudad && !t.toLowerCase().includes(c.ciudad.toLowerCase()) ? t + ', ' + c.ciudad : t).then(r => r.length ? r : buscarLugar(t));
-        box.innerHTML = rs.length ? rs.map((r, i) => `<button type="button" data-mf-r="${i}">📍 ${esc(r.nombre ? r.nombre + ' · ' + r.dir : r.txt)}</button>`).join('') : '<div>No encontré ese lugar. Probá con otra forma de escribirlo, o tocá el mapa.</div>';
+        box.innerHTML = rs.length ? rs.map((r, i) => `<button type="button" data-mf-r="${i}">${I('pin', 'width:15px;height:15px;margin-right:6px;color:var(--pri)')}${esc(r.nombre ? r.nombre + ' · ' + r.dir : r.txt)}</button>`).join('') : '<div>No encontré ese lugar. Probá con otra forma de escribirlo, o tocá el mapa.</div>';
         box.querySelectorAll('[data-mf-r]').forEach(b => b.addEventListener('click', () => { const r = rs[+b.dataset.mfR]; box.classList.add('hidden'); elegir(r.lat, r.lng, r.dir, true); }));
       } catch (err) { box.innerHTML = '<div>No se pudo buscar. Revisá la conexión.</div>'; }
     });
@@ -813,7 +813,7 @@
       <div class="lbl">Ubicación · tocá el mapa donde va el punto</div>
       <div class="mapedit" id="ptMap"><div class="mapmsg">Cargando el mapa…</div></div>
       <div class="okline" id="ptUbi"></div>
-      <div class="pills" style="margin-top:8px"><button type="button" class="sbtn" id="ptGeo">◎ Estoy acá</button><button type="button" class="sbtn" id="ptFull">🔎 Buscar en el mapa</button><button type="button" class="sbtn" id="ptLinkB">🔗 Pegar link</button></div>
+      <div class="pills" style="margin-top:8px"><button type="button" class="sbtn" id="ptGeo">${I('target')}Estoy acá</button><button type="button" class="sbtn" id="ptFull">${I('search')}Buscar en el mapa</button><button type="button" class="sbtn" id="ptLinkB">${I('link')}Pegar link</button></div>
       <div class="fld hidden" id="ptLinkF" style="margin:8px 0 0"><input id="ptLink" placeholder="Pegá acá el link de Google Maps" inputmode="url"></div>
       <p class="small-hint">Tocá el mapa donde va el carrito o el stand; el pin se puede arrastrar para afinar. La dirección se completa sola.</p>
       <div class="lbl">Fotos del lugar (hasta 3)</div><div class="up" id="ptFotos"></div>
@@ -849,7 +849,7 @@
     q('#ptFull').addEventListener('click', () => buscarEnMapa(c, st, (lat, lng, dir) => marcar(lat, lng, dir, true)));
     function pintarFotos() {
       q('#ptFotos').innerHTML = st.fotos.map(f => `<div class="img"${st.nuevas[f] ? ` style="background-image:url('${st.nuevas[f]}')"` : fotoAttr(c.id, f)}><button type="button" data-qf="${esc(f)}" aria-label="Quitar foto">✕</button></div>`).join('') +
-        (st.fotos.length < 3 ? '<label class="add">📷<br>Agregar foto<input type="file" accept="image/*" id="ptFile"></label>' : '');
+        (st.fotos.length < 3 ? '<label class="add">' + I('camera', 'width:20px;height:20px;margin:0 auto 3px;display:block') + 'Agregar foto<input type="file" accept="image/*" id="ptFile"></label>' : '');
       ov.querySelectorAll('[data-qf]').forEach(b => b.addEventListener('click', () => { const f = b.dataset.qf; st.fotos = st.fotos.filter(x => x !== f); if (st.nuevas[f]) delete st.nuevas[f]; else st.borrar.push(f); pintarFotos(); }));
       if (q('#ptFile')) q('#ptFile').addEventListener('change', async (e) => {
         const file = e.target.files && e.target.files[0]; if (!file) return;
@@ -870,9 +870,9 @@
       if (!navigator.geolocation) { toast('Este navegador no da la ubicación.'); return; }
       q('#ptGeo').disabled = true; q('#ptGeo').textContent = 'Buscando…';
       navigator.geolocation.getCurrentPosition((pos) => {
-        q('#ptGeo').disabled = false; q('#ptGeo').textContent = '◎ Estoy acá';
+        q('#ptGeo').disabled = false; q('#ptGeo').innerHTML = I('target') + 'Estoy acá';
         marcar(pos.coords.latitude, pos.coords.longitude, '', true);
-      }, () => { q('#ptGeo').disabled = false; q('#ptGeo').textContent = '◎ Estoy acá'; toast('No se pudo obtener la ubicación. Revisá el permiso del navegador.'); }, { enableHighAccuracy: true, timeout: 15000 });
+      }, () => { q('#ptGeo').disabled = false; q('#ptGeo').innerHTML = I('target') + 'Estoy acá'; toast('No se pudo obtener la ubicación. Revisá el permiso del navegador.'); }, { enableHighAccuracy: true, timeout: 15000 });
     });
     q('#ptOk').addEventListener('click', async () => {
       const d = { nombre: q('#ptNom').value.trim(), tipo: q('#ptTipo').value, cupo: Math.min(20, Math.max(1, parseInt(q('#ptCupo').value, 10) || 2)), detalle: q('#ptDet').value.trim() };
@@ -936,7 +936,7 @@
     if (!S.isAdmin) { $('app').innerHTML = '<div class="empty">Esta sección es para los administradores.</div>'; return; }
     const cs = Object.values(S.campanas).sort((a, b) => String(b.desde || '').localeCompare(String(a.desde || '')));
     let h = `<div class="sec">Campañas <button type="button" class="sbtn pri" data-nueva>+ Campaña</button></div><div class="card">`;
-    h += cs.map(c => `<div class="edit-row"><div><b>${esc(c.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc(c.ciudad || '')} · ${esc(campRango(c))}${c.activa === false ? ' · oculta' : ''}</small><small style="display:block;color:var(--soft);font-size:12px;">Coordinan: ${esc((S.coordEmails[c.id] || []).join(', ') || '—')}</small></div><div style="display:flex;gap:6px;"><button type="button" class="sbtn" data-coords="${esc(c.id)}">Coordinadores</button><button type="button" class="sbtn" data-go="#/coord/${esc(c.id)}">Abrir</button></div></div>`).join('') || '<div class="empty">Creá la primera campaña.</div>';
+    h += cs.map(c => `<div class="edit-row adm"><div><b>${esc(c.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc(c.ciudad || '')} · ${esc(campRango(c))}${c.activa === false ? ' · oculta' : ''}</small><small style="display:block;color:var(--soft);font-size:12px;">Coordinan: ${esc((S.coordEmails[c.id] || []).join(', ') || '—')}</small></div><div style="display:flex;gap:6px;"><button type="button" class="sbtn" data-coords="${esc(c.id)}">Coordinadores</button><button type="button" class="sbtn" data-go="#/coord/${esc(c.id)}">Abrir</button></div></div>`).join('') || '<div class="empty">Creá la primera campaña.</div>';
     h += `</div><div class="sec">Congregaciones</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Una por renglón, con la ciudad: "San Agustín (Paraná)". Es la lista que eligen los publicadores al pedir un turno.</p><div class="fld"><textarea id="adCongs" rows="8">${esc((S.publico.congregaciones || []).join('\n'))}</textarea></div><button type="button" class="btn" id="adCongsOk">Guardar lista</button></div>`;
     h += `<div class="sec">Administradores</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Pueden crear campañas y elegir sus coordinadores. Un email por renglón.</p><div class="fld"><textarea id="adAdm" rows="3">${esc(S.admins.join('\n'))}</textarea></div><button type="button" class="btn" id="adAdmOk">Guardar</button></div>`;
     $('app').innerHTML = h;

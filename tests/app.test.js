@@ -222,7 +222,7 @@ const SEED = {
   const p1 = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; const pt = cp.puntos.p1; const f = pt.fotos && window.__store['fotos/parana-terminal__' + pt.fotos[0]]; return { pt, f: f && { cid: f.cid, ini: f.data.slice(0, 23), largo: f.data.length } }; });
   check('guarda dirección, ubicación, indicaciones y retiro del punto', p1.pt.direccion === 'Av. Ramírez 2598' && p1.pt.lat === -31.741234 && p1.pt.lng === -60.523678 && /a la derecha/.test(p1.pt.indicaciones) && /planta baja/.test(p1.pt.retiro) && p1.pt.nombre === 'Andén 1' && p1.pt.cupo === 2, p1.pt);
   check('la foto se guarda achicada como JPEG en fotos/{campaña}__{id}', p1.f && p1.f.cid === 'parana-terminal' && p1.f.ini === 'data:image/jpeg;base64,' && p1.f.largo < 440000, p1.f);
-  check('la lista de puntos muestra que tiene ubicación y foto', /Andén 1[\s\S]*📍 Con ubicación · 📷 1 foto/.test(await text(c, '#app')));
+  check('la lista de puntos muestra que tiene ubicación y foto', /Andén 1[\s\S]*Con ubicación · 1 foto/.test(await text(c, '#app')));
   await c.click('[data-punto="p2"]'); await c.waitForTimeout(80);
   await c.click('#ptLinkB'); await c.fill('#ptLink', 'https://maps.app.goo.gl/AbCd123XyZ');
   check('un link corto de Maps se guarda como link', /Link de Maps guardado/.test(await text(c, '#ptUbi')));
@@ -309,6 +309,7 @@ const SEED = {
   const a = await open([{ uid: 'u-ad', email: 'admin@x.com', displayName: 'Admin' }], '#/admin');
   await a.click('#userBtn'); await a.waitForTimeout(300);
   check('ve la administración', /Campañas[\s\S]*Congregaciones[\s\S]*Administradores/i.test(await text(a, '#app')));
+  await a.screenshot({ path: SHOTS + '/admin.png', fullPage: true });
   await a.click('[data-nueva]'); await a.fill('#ncNom', 'Plaza San Martín'); await a.fill('#ncCiu', 'Gualeguaychú'); await a.click('#ncOk'); await a.waitForTimeout(200);
   const nueva = await a.evaluate(() => Object.keys(window.__store).find(k => k.startsWith('campanas/gualeguaychu-plaza-san-martin')));
   check('crea una campaña y va a configurarla', !!nueva && /#\/coord\/gualeguaychu-plaza-san-martin/.test(await a.evaluate(() => location.hash)), nueva);
