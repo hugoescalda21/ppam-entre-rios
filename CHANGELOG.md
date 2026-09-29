@@ -1,6 +1,6 @@
 # Registro de cambios — PPAM Entre Ríos
 
-## Diseño cálido, fotos y ubicación — 29 sep 2026 (caché ppam-v2)
+## Diseño cálido, fotos y ubicación — 29 sep 2026 (caché ppam-v3)
 
 - Nuevo diseño "Cálido" (terracota, verde y crema, títulos con letra de revista), también en modo oscuro. Arreglado el título que se montaba sobre "Iniciar sesión" en celulares angostos.
 - Inicio: cada campaña con su foto de portada (o su color con la ilustración) y cuántos lugares faltan cubrir en la primera semana.
