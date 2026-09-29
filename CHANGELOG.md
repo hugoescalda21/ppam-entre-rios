@@ -1,5 +1,12 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Marcar el punto en el mapa — 29 sep 2026 (caché ppam-v4)
+
+- Al editar un punto hay un mapa (Leaflet + OpenStreetMap): se toca donde va el carrito o el stand y el pin se puede arrastrar. Arranca en la ciudad de la campaña o en otro punto ya marcado.
+- "Buscar en el mapa": pantalla completa con buscador de lugares y direcciones de Entre Ríos (Nominatim, gratis).
+- La dirección escrita se completa sola al marcar el punto (y se puede corregir). "Estoy acá" (GPS) y "Pegar link" siguen disponibles.
+- 68 pruebas de la página.
+
 ## Diseño cálido, fotos y ubicación — 29 sep 2026 (caché ppam-v3)
 
 - Nuevo diseño "Cálido" (terracota, verde y crema, títulos con letra de revista), también en modo oscuro. Arreglado el título que se montaba sobre "Iniciar sesión" en celulares angostos.

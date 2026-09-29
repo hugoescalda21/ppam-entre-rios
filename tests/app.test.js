@@ -160,6 +160,17 @@ const SEED = {
   await ctx2.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
   await ctx2.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
   await ctx2.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED2)}, ${JSON.stringify([coordUser])})`);
+  // Leaflet desde una copia local y Nominatim simulado (las pruebas no salen a internet)
+  const LF = [path.resolve(__dirname, '..', 'node_modules', 'leaflet', 'dist'), path.resolve(__dirname, '..', '..', 'lf', 'package', 'dist')].find(d => require('fs').existsSync(d));
+  if (LF) await ctx2.route(/unpkg\.com\/leaflet@1\.9\.4\/dist\/leaflet\.(js|css)$/, r => r.fulfill({ path: path.join(LF, r.request().url().endsWith('.css') ? 'leaflet.css' : 'leaflet.js') }));
+  const nomis = [];
+  await ctx2.route(/nominatim\.openstreetmap\.org/, r => {
+    const u = new URL(r.request().url()); nomis.push(u.pathname + '?' + u.searchParams.get('q'));
+    const body = u.pathname.includes('reverse') ? { name: '', address: { road: 'Calle Simulada', house_number: '100', city: 'Paraná' } }
+      : /Paraná, Entre Ríos/.test(u.searchParams.get('q')) ? [{ lat: '-31.7333', lon: '-60.5297', name: 'Paraná', address: { city: 'Paraná' } }]
+      : [{ lat: '-31.7442', lon: '-60.5190', name: 'Plaza 1 de Mayo', display_name: 'Plaza 1 de Mayo, Paraná', address: { road: 'Peatonal San Martín', city: 'Paraná' } }];
+    r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(body) });
+  });
   const c = await ctx2.newPage(); c.errs = []; c.on('pageerror', e => c.errs.push(e.message));
   await c.goto(FILE); await c.waitForTimeout(300);
   await c.click('#userBtn'); await c.waitForTimeout(250);
@@ -198,7 +209,7 @@ const SEED = {
   await c.click('[data-punto="p1"]'); await c.waitForTimeout(80);
   await c.fill('#ptDir', 'Av. Ramírez 2598');
   await c.click('#ptLinkB'); await c.fill('#ptLink', 'https://www.google.com/maps/place/Terminal/@-31.7401,-60.5202,17z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d-31.741234!4d-60.523678');
-  check('pegar un link de Google Maps toma el punto exacto del lugar', /Ubicación guardada \(-31\.741234, -60\.523678\)/.test(await text(c, '#ptUbi')), await text(c, '#ptUbi'));
+  check('pegar un link de Google Maps toma el punto exacto del lugar', /Ubicación marcada \(-31\.741234, -60\.523678\)/.test(await text(c, '#ptUbi')), await text(c, '#ptUbi'));
   await c.fill('#ptInd', 'Entrando por Av. Ramírez, a la derecha.'); await c.fill('#ptRet', 'Oficina de administración, planta baja.');
   await c.setInputFiles('#ptFile', ICON); await c.waitForTimeout(400);
   check('la foto nueva aparece en el formulario', await c.evaluate(() => document.querySelectorAll('#ptFotos .img').length === 1));
@@ -214,8 +225,25 @@ const SEED = {
   check('…y queda en el punto', await c.evaluate(() => window.__store['campanas/parana-terminal'].puntos.p2.mapsUrl === 'https://maps.app.goo.gl/AbCd123XyZ'));
   await c.click('[data-punto="' + await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; return Object.keys(cp.puntos).find(k => cp.puntos[k].nombre === 'Salida Av. Ramírez'); }) + '"]'); await c.waitForTimeout(80);
   await c.click('#ptGeo'); await c.waitForTimeout(300);
-  check('"Usar mi ubicación actual" toma el GPS del celular', /Ubicación guardada \(-31\.73, -60\.52\)/.test(await text(c, '#ptUbi')), await text(c, '#ptUbi'));
-  await c.click('[data-cerrar]'); await c.waitForTimeout(80);
+  check('"Usar mi ubicación actual" toma el GPS del celular', /Ubicación marcada \(-31\.73, -60\.52\)/.test(await text(c, '#ptUbi')), await text(c, '#ptUbi'));
+  await c.click('.sheet [data-cerrar]'); await c.waitForTimeout(80);
+  // Marcar en el mapa
+  await c.click('[data-punto=""]'); await c.waitForTimeout(600);
+  await c.fill('#ptNom', 'Plaza 1 de Mayo');
+  check('el editor del punto trae un mapa (centrado en la ciudad o en otro punto ya marcado)', await c.evaluate(() => !!document.querySelector('#ptMap.leaflet-container') && !!document.querySelector('#ptMap .leaflet-tile-pane')));
+  await c.click('#ptMap', { position: { x: 120, y: 90 } }); await c.waitForTimeout(400);
+  check('tocar el mapa marca el punto con un pin', /Ubicación marcada \(-31\.\d+, -60\.\d+\)/.test(await text(c, '#ptUbi')) && await c.evaluate(() => !!document.querySelector('#ptMap .pinx')), await text(c, '#ptUbi'));
+  check('…y completa sola la dirección', await c.evaluate(() => document.getElementById('ptDir').value === 'Calle Simulada 100, Paraná'));
+  await c.click('#ptFull'); await c.waitForTimeout(600);
+  check('"Buscar en el mapa" abre el mapa en pantalla completa', await c.evaluate(() => !!document.querySelector('.mapfull #mfMap.leaflet-container')));
+  await c.fill('#mfQ', 'plaza 1 de mayo'); await c.press('#mfQ', 'Enter'); await c.waitForTimeout(300);
+  check('busca en Entre Ríos y sugiere lugares', /Plaza 1 de Mayo · Peatonal San Martín, Paraná/.test(await text(c, '#mfRes')) && nomis.some(x => /search\?plaza 1 de mayo, Paraná/.test(x)), [await text(c, '#mfRes'), nomis]);
+  await c.screenshot({ path: SHOTS + '/buscar-mapa.png' });
+  await c.click('[data-mf-r="0"]'); await c.waitForTimeout(200); await c.click('#mfOk'); await c.waitForTimeout(200);
+  check('"Usar este lugar" deja marcado el lugar elegido y cambia la dirección automática', /Ubicación marcada \(-31\.7442, -60\.519\)/.test(await text(c, '#ptUbi')) && await c.evaluate(() => document.getElementById('ptDir').value === 'Peatonal San Martín, Paraná' && !document.querySelector('.mapfull')), await text(c, '#ptUbi'));
+  await c.screenshot({ path: SHOTS + '/marcar-mapa.png' });
+  await c.click('#ptOk'); await c.waitForTimeout(200);
+  check('se guarda el punto con la ubicación del mapa', await c.evaluate(() => Object.values(window.__store['campanas/parana-terminal'].puntos).some(p => p.nombre === 'Plaza 1 de Mayo' && p.lat === -31.7442 && p.lng === -60.519 && p.direccion === 'Peatonal San Martín, Paraná')));
   // Foto de portada
   await c.setInputFiles('#cfFoto', ICON); await c.waitForTimeout(500);
   const port = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; return { id: cp.portada, f: !!window.__store['fotos/parana-terminal__' + cp.portada] }; });

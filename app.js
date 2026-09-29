@@ -563,6 +563,104 @@
       try { await S.db.doc('campanas/' + c.id).update(d); toast('Guardado'); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
     });
   }
+  /* ---------- Mapa para marcar un punto (Leaflet + OpenStreetMap; buscador y direcciones: Nominatim) ---------- */
+  const LEAFLET = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet';
+  const ER = { centro: [-31.73, -60.53], caja: '-60.85,-30.1,-57.8,-34.1' };   // Entre Ríos (Paraná al centro)
+  function cargarLeaflet() {
+    if (window.L && window.L.map) return Promise.resolve(window.L);
+    if (cargarLeaflet.p) return cargarLeaflet.p;
+    cargarLeaflet.p = new Promise((res, rej) => {
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = LEAFLET + '.css'; document.head.appendChild(l);
+      const sc = document.createElement('script'); sc.src = LEAFLET + '.js';
+      sc.onload = () => (window.L ? res(window.L) : rej(new Error('leaflet')));
+      sc.onerror = () => { cargarLeaflet.p = null; rej(new Error('leaflet')); };
+      document.head.appendChild(sc);
+    });
+    return cargarLeaflet.p;
+  }
+  async function nominatim(ruta, params) {
+    const u = 'https://nominatim.openstreetmap.org/' + ruta + '?' + new URLSearchParams(Object.assign({ format: 'jsonv2', 'accept-language': 'es' }, params));
+    const r = await fetch(u, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error('nominatim');
+    return r.json();
+  }
+  function textoDir(a, nombre) {
+    a = a || {};
+    const calle = a.road || a.pedestrian || a.footway || a.square || a.neighbourhood || '';
+    const loc = a.city || a.town || a.village || a.municipality || '';
+    const s = [calle && (calle + (a.house_number ? ' ' + a.house_number : '')), loc].filter(Boolean).join(', ');
+    return (s || nombre || '').slice(0, 150);
+  }
+  async function direccionDe(lat, lng) {
+    try { const r = await nominatim('reverse', { lat, lon: lng, zoom: 18, addressdetails: 1 }); return textoDir(r.address, r.name); } catch (e) { return ''; }
+  }
+  async function buscarLugar(txt) {
+    const r = await nominatim('search', { q: txt, countrycodes: 'ar', viewbox: ER.caja, bounded: 1, limit: 6, addressdetails: 1 });
+    return (r || []).map(x => ({ lat: +x.lat, lng: +x.lon, nombre: x.name || '', dir: textoDir(x.address, x.name), txt: x.display_name || '' }));
+  }
+  S.geoCiudad = {};
+  async function centroMapa(c, st) {
+    if (st.lat != null) return { ll: [st.lat, st.lng], z: 17 };
+    const otro = Object.values(c.puntos || {}).find(p => p.lat != null);
+    if (otro) return { ll: [otro.lat, otro.lng], z: 16 };
+    const ciu = (c.ciudad || '').trim();
+    if (ciu) {
+      if (!(ciu in S.geoCiudad)) { try { const r = await buscarLugar(ciu + ', Entre Ríos'); S.geoCiudad[ciu] = r[0] ? [r[0].lat, r[0].lng] : null; } catch (e) { S.geoCiudad[ciu] = null; } }
+      if (S.geoCiudad[ciu]) return { ll: S.geoCiudad[ciu], z: 14 };
+    }
+    return { ll: ER.centro, z: 8 };
+  }
+  function crearMapa(el, cen, pos, alTocar) {
+    const L = window.L;
+    const map = L.map(el, { attributionControl: true }).setView(cen.ll, cen.z);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+    const icon = L.divIcon({ className: 'pinx', html: '<i></i>', iconSize: [30, 40], iconAnchor: [15, 38] });
+    let mk = null;
+    const poner = (lat, lng, mover) => {
+      if (!mk) { mk = L.marker([lat, lng], { draggable: true, icon }).addTo(map); mk.on('dragend', () => alTocar(mk.getLatLng())); }
+      else mk.setLatLng([lat, lng]);
+      if (mover) map.setView([lat, lng], Math.max(map.getZoom(), 17));
+    };
+    if (pos) poner(pos[0], pos[1]);
+    map.on('click', (e) => { poner(e.latlng.lat, e.latlng.lng); alTocar(e.latlng); });
+    setTimeout(() => map.invalidateSize(), 60);
+    return { map, poner, quitar: () => { if (mk) { map.removeLayer(mk); mk = null; } } };
+  }
+  // Pantalla completa: buscar por nombre o dirección y marcar con comodidad.
+  function buscarEnMapa(c, st, listo) {
+    const ov = document.createElement('div'); ov.className = 'mapfull';
+    ov.innerHTML = `<div class="mf-top"><button type="button" class="back" data-mf-cerrar>‹ Volver al punto</button><h3>Marcar en el mapa</h3>
+      <form class="mf-bus" id="mfForm"><input id="mfQ" placeholder="Buscá un lugar o una dirección" autocomplete="off"><button type="submit" class="sbtn pri">Buscar</button></form><div class="mf-res hidden" id="mfRes"></div></div>
+      <div class="mf-map" id="mfMap"><div class="mapmsg">Cargando el mapa…</div></div>
+      <div class="mf-bot"><div id="mfDir" class="mf-dir">Tocá el mapa donde va el punto.</div><div class="mf-acts"><button type="button" class="btn alt" data-mf-cerrar>Cancelar</button><button type="button" class="btn" id="mfOk" disabled>✓ Usar este lugar</button></div></div>`;
+    document.body.appendChild(ov);
+    const q = (s) => ov.querySelector(s);
+    let sel = st.lat != null ? { lat: st.lat, lng: st.lng, dir: '' } : null, mapa = null;
+    const elegir = (lat, lng, dir, mover) => {
+      sel = { lat, lng, dir: dir || '' }; q('#mfOk').disabled = false;
+      if (mapa) mapa.poner(lat, lng, mover);
+      q('#mfDir').innerHTML = dir ? `<b>${esc(dir)}</b><br><small>Podés arrastrar el pin para afinar.</small>` : 'Buscando la dirección…';
+      if (!dir) direccionDe(lat, lng).then(d => { if (sel && sel.lat === lat && sel.lng === lng) { sel.dir = d; q('#mfDir').innerHTML = `<b>${esc(d || 'Lugar marcado')}</b><br><small>Podés arrastrar el pin para afinar.</small>`; } });
+    };
+    if (sel) q('#mfOk').disabled = false;
+    ov.addEventListener('click', (e) => { if (e.target.closest('[data-mf-cerrar]')) ov.remove(); });
+    centroMapa(c, st).then(async (cen) => {
+      try { await cargarLeaflet(); if (!ov.isConnected) return; q('#mfMap').innerHTML = ''; mapa = crearMapa(q('#mfMap'), cen, sel ? [sel.lat, sel.lng] : null, (ll) => elegir(ll.lat, ll.lng)); }
+      catch (e) { q('#mfMap').innerHTML = '<div class="mapmsg">No se pudo cargar el mapa. Revisá la conexión.</div>'; }
+    });
+    q('#mfForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const t = q('#mfQ').value.trim(); if (!t) return;
+      const box = q('#mfRes'); box.classList.remove('hidden'); box.innerHTML = '<div>Buscando…</div>';
+      try {
+        const rs = await buscarLugar(c.ciudad && !t.toLowerCase().includes(c.ciudad.toLowerCase()) ? t + ', ' + c.ciudad : t).then(r => r.length ? r : buscarLugar(t));
+        box.innerHTML = rs.length ? rs.map((r, i) => `<button type="button" data-mf-r="${i}">📍 ${esc(r.nombre ? r.nombre + ' · ' + r.dir : r.txt)}</button>`).join('') : '<div>No encontré ese lugar. Probá con otra forma de escribirlo, o tocá el mapa.</div>';
+        box.querySelectorAll('[data-mf-r]').forEach(b => b.addEventListener('click', () => { const r = rs[+b.dataset.mfR]; box.classList.add('hidden'); elegir(r.lat, r.lng, r.dir, true); }));
+      } catch (err) { box.innerHTML = '<div>No se pudo buscar. Revisá la conexión.</div>'; }
+    });
+    q('#mfOk').addEventListener('click', () => { if (!sel) return; ov.remove(); listo(sel.lat, sel.lng, sel.dir); });
+  }
+
   async function subirPortada(c, file) {
     toast('Subiendo la foto…');
     try {
@@ -585,22 +683,43 @@
       <div class="fld"><label for="ptCupo">Personas por turno</label><input id="ptCupo" type="number" min="1" max="20" value="${esc(p.cupo)}"></div></div>
       <div class="fld"><label for="ptDet">Detalle corto (opcional)</label><input id="ptDet" value="${esc(p.detalle || '')}" placeholder="Frente a boleterías"></div>
       <div class="fld"><label for="ptDir">Dirección (opcional)</label><input id="ptDir" value="${esc(p.direccion || '')}" placeholder="Av. Ramírez 2598"></div>
-      <div class="lbl">Ubicación en el mapa</div>
-      <div class="pills"><button type="button" class="sbtn" id="ptGeo">📍 Usar mi ubicación actual</button><button type="button" class="sbtn" id="ptLinkB">🔗 Pegar link de Maps</button></div>
-      <div class="fld hidden" id="ptLinkF" style="margin:8px 0 0"><input id="ptLink" placeholder="Pegá acá el link de Google Maps" inputmode="url"></div>
+      <div class="lbl">Ubicación · tocá el mapa donde va el punto</div>
+      <div class="mapedit" id="ptMap"><div class="mapmsg">Cargando el mapa…</div></div>
       <div class="okline" id="ptUbi"></div>
-      <p class="small-hint">Parado en el lugar, tocá "Usar mi ubicación actual". Si no, en Google Maps buscá el lugar, tocá Compartir → Copiar vínculo y pegalo.</p>
+      <div class="pills" style="margin-top:8px"><button type="button" class="sbtn" id="ptGeo">◎ Estoy acá</button><button type="button" class="sbtn" id="ptFull">🔎 Buscar en el mapa</button><button type="button" class="sbtn" id="ptLinkB">🔗 Pegar link</button></div>
+      <div class="fld hidden" id="ptLinkF" style="margin:8px 0 0"><input id="ptLink" placeholder="Pegá acá el link de Google Maps" inputmode="url"></div>
+      <p class="small-hint">Tocá el mapa donde va el carrito o el stand; el pin se puede arrastrar para afinar. La dirección se completa sola.</p>
       <div class="lbl">Fotos del lugar (hasta 3)</div><div class="up" id="ptFotos"></div>
       <p class="small-hint">Del lugar, sin personas reconocibles. Se achican solas antes de subirse.</p>
       <div class="fld"><label for="ptInd">Cómo encontrarlo (opcional)</label><textarea id="ptInd" rows="2" placeholder="Entrando por Av. Ramírez, a la derecha, entre las boleterías 4 y 5.">${esc(p.indicaciones || '')}</textarea></div>
       <div class="fld"><label for="ptRet" id="ptRetL">${retiroLabel(p)} (opcional)</label><textarea id="ptRet" rows="2" placeholder="Dónde se busca y se devuelve">${esc(p.retiro || '')}</textarea></div>
       <button type="button" class="btn" id="ptOk">Guardar</button>${pidIn ? '<button type="button" class="btn alt" id="ptDel" style="color:var(--bad)">Borrar este punto</button>' : ''}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
     const q = (s) => ov.querySelector(s);
+    let mapa = null, dirAuto = '';
     function pintarUbi() {
-      q('#ptUbi').innerHTML = st.lat != null ? `✓ Ubicación guardada (${st.lat}, ${st.lng}) · <button type="button" class="linkish" id="ptUbiX">quitar</button>`
+      q('#ptUbi').innerHTML = st.lat != null ? `✓ Ubicación marcada (${st.lat}, ${st.lng}) · <button type="button" class="linkish" id="ptUbiX">quitar</button>`
         : st.mapsUrl ? '✓ Link de Maps guardado · <button type="button" class="linkish" id="ptUbiX">quitar</button>' : '';
-      if (q('#ptUbiX')) q('#ptUbiX').addEventListener('click', () => { st.lat = st.lng = null; st.mapsUrl = ''; q('#ptLink').value = ''; pintarUbi(); });
+      if (q('#ptUbiX')) q('#ptUbiX').addEventListener('click', () => { st.lat = st.lng = null; st.mapsUrl = ''; q('#ptLink').value = ''; if (mapa) mapa.quitar(); pintarUbi(); });
     }
+    // Marca un lugar (desde el mapa, el GPS, el buscador o un link) y completa la dirección si está vacía.
+    function marcar(lat, lng, dirSugerida, mover) {
+      st.lat = +(+lat).toFixed(6); st.lng = +(+lng).toFixed(6); st.mapsUrl = '';
+      if (mapa) mapa.poner(st.lat, st.lng, mover);
+      pintarUbi();
+      const campo = q('#ptDir'), libre = () => !campo.value.trim() || campo.value.trim() === dirAuto;
+      if (!libre()) return;
+      const llenar = (d) => { if (d && libre()) { campo.value = d; dirAuto = d; } };
+      if (dirSugerida) llenar(dirSugerida); else direccionDe(st.lat, st.lng).then(llenar);
+    }
+    centroMapa(c, st).then(async (cen) => {
+      try {
+        await cargarLeaflet();
+        if (!ov.isConnected) return;
+        q('#ptMap').innerHTML = '';
+        mapa = crearMapa(q('#ptMap'), cen, st.lat != null ? [st.lat, st.lng] : null, (ll) => marcar(ll.lat, ll.lng));
+      } catch (e) { q('#ptMap').innerHTML = '<div class="mapmsg">No se pudo cargar el mapa. Usá "Estoy acá" o pegá un link de Google Maps.</div>'; }
+    });
+    q('#ptFull').addEventListener('click', () => buscarEnMapa(c, st, (lat, lng, dir) => marcar(lat, lng, dir, true)));
     function pintarFotos() {
       q('#ptFotos').innerHTML = st.fotos.map(f => `<div class="img"${st.nuevas[f] ? ` style="background-image:url('${st.nuevas[f]}')"` : fotoAttr(c.id, f)}><button type="button" data-qf="${esc(f)}" aria-label="Quitar foto">✕</button></div>`).join('') +
         (st.fotos.length < 3 ? '<label class="add">📷<br>Agregar foto<input type="file" accept="image/*" id="ptFile"></label>' : '');
@@ -616,17 +735,17 @@
     q('#ptLinkB').addEventListener('click', () => { q('#ptLinkF').classList.remove('hidden'); q('#ptLink').focus(); });
     q('#ptLink').addEventListener('input', () => {
       const v = q('#ptLink').value.trim(), g = parseMapsLink(v);
-      if (g) { st.lat = g.lat; st.lng = g.lng; st.mapsUrl = ''; }
-      else if (/^https?:\/\/\S+$/.test(v)) { st.lat = st.lng = null; st.mapsUrl = v.slice(0, 500); }
+      if (g) { marcar(g.lat, g.lng, '', true); return; }
+      if (/^https?:\/\/\S+$/.test(v)) { st.lat = st.lng = null; st.mapsUrl = v.slice(0, 500); if (mapa) mapa.quitar(); }
       pintarUbi();
     });
     q('#ptGeo').addEventListener('click', () => {
       if (!navigator.geolocation) { toast('Este navegador no da la ubicación.'); return; }
       q('#ptGeo').disabled = true; q('#ptGeo').textContent = 'Buscando…';
       navigator.geolocation.getCurrentPosition((pos) => {
-        st.lat = +pos.coords.latitude.toFixed(6); st.lng = +pos.coords.longitude.toFixed(6); st.mapsUrl = '';
-        q('#ptGeo').disabled = false; q('#ptGeo').textContent = '📍 Usar mi ubicación actual'; pintarUbi();
-      }, () => { q('#ptGeo').disabled = false; q('#ptGeo').textContent = '📍 Usar mi ubicación actual'; toast('No se pudo obtener la ubicación. Revisá el permiso del navegador.'); }, { enableHighAccuracy: true, timeout: 15000 });
+        q('#ptGeo').disabled = false; q('#ptGeo').textContent = '◎ Estoy acá';
+        marcar(pos.coords.latitude, pos.coords.longitude, '', true);
+      }, () => { q('#ptGeo').disabled = false; q('#ptGeo').textContent = '◎ Estoy acá'; toast('No se pudo obtener la ubicación. Revisá el permiso del navegador.'); }, { enableHighAccuracy: true, timeout: 15000 });
     });
     q('#ptOk').addEventListener('click', async () => {
       const d = { nombre: q('#ptNom').value.trim(), tipo: q('#ptTipo').value, cupo: Math.min(20, Math.max(1, parseInt(q('#ptCupo').value, 10) || 2)), detalle: q('#ptDet').value.trim() };
