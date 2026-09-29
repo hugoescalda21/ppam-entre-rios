@@ -5,32 +5,53 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PPAM Entre Ríos</title>
 <meta name="description" content="Campañas de predicación pública metropolitana en Entre Ríos: horarios, puntos y turnos.">
-<meta name="theme-color" content="#0F1B2D">
+<meta name="theme-color" content="#F6F5F1">
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./icon-192.png">
-<link rel="stylesheet" href="./app.css?v=5">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@600;700&display=swap">
+<link rel="stylesheet" href="./app.css?v=6">
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
-<script src="./firebase-config.js?v=5"></script>
+<script src="./firebase-config.js?v=6"></script>
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-nav" viewBox="0 0 24 24"><path d="M3 11 21 3l-8 18-2-8z"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 20l1.4-4A8 8 0 1 1 8 18.7z"/></symbol>
+    <symbol id="i-cart" viewBox="0 0 24 24"><path d="M3 4h2l2.2 11h10.3L20 7H6.3"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/></symbol>
+    <symbol id="i-stand" viewBox="0 0 24 24"><path d="M4 9h16l-2-5H6zM5 9v11M19 9v11M8 20h8M9 13h6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="logo" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.8-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.2-6.5 11-6.5 11z" fill="#fff"/><circle cx="12" cy="10" r="2.6" fill="#B8924A"/></symbol>
+  </defs></svg>
+
   <header class="tb" id="tb">
-    <svg class="ilus" id="tbIlus" width="200" height="110" viewBox="0 0 200 110" aria-hidden="true"><path d="M0 110V70h18V52h14v18h10V38h22v72Z"/><path d="M60 110V58h16V44l12-10 12 10v14h14v52Z" opacity=".85"/><path d="M116 110V66h20V50h16v16h12V30h20v80Z"/><circle class="sol" cx="160" cy="18" r="10"/></svg>
     <div class="tb-in">
       <div class="tb-row">
-        <button type="button" class="back hidden" id="backBtn">‹ Volver</button>
+        <button type="button" class="back hidden" id="backBtn" aria-label="Volver"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
+        <div class="brand" id="brand"><span class="mark"><svg width="20" height="20" aria-hidden="true"><use href="#logo"/></svg></span><div><b>PPAM Entre Ríos</b><small>Predicación pública</small></div></div>
         <span class="sp"></span>
-        <div class="tb-actions">
-          <button type="button" class="tb-btn sec2 hidden" id="coordBtn">Coordinación</button>
-          <button type="button" class="tb-btn" id="userBtn">Iniciar sesión</button>
-        </div>
+        <button type="button" class="round hidden" id="shareBtn" aria-label="Compartir campaña"><svg class="ic" aria-hidden="true"><use href="#i-share"/></svg></button>
+        <button type="button" class="login" id="userBtn">Ingresar</button>
       </div>
       <div class="tb-txt">
-        <small id="tbKicker">Predicación pública · Entre Ríos</small>
-        <h1 id="tbTitle">Sumate a un turno</h1>
-        <p id="tbSub">Elegí una campaña, un día y un horario.</p>
+        <small id="tbKicker"></small>
+        <h1 id="tbTitle"></h1>
+        <p id="tbSub"></p>
         <div id="tbExtra"></div>
       </div>
     </div>
@@ -44,7 +65,13 @@
     <button type="button" class="linkish" id="privBtn">Cómo se usan tus datos</button>
   </footer>
 
+  <nav class="tabbar" id="tabbar" aria-label="Secciones">
+    <button type="button" id="tabHome" data-go="#/"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg>Inicio</button>
+    <button type="button" id="tabMis" data-go="#/mis"><svg class="ic" aria-hidden="true"><use href="#i-cal"/></svg>Mis turnos</button>
+    <button type="button" id="coordBtn" class="hidden"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>Coordinar</button>
+  </nav>
+
   <div class="toast" id="toast" role="status"></div>
-  <script src="./app.js?v=5"></script>
+  <script src="./app.js?v=6"></script>
 </body>
 </html>

@@ -1,5 +1,15 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Rediseño premium — 29 sep 2026 (caché ppam-v7)
+
+- Diseño nuevo desde cero: fondo marfil, verde petróleo con detalle dorado, letra Inter, íconos de línea y barra fija abajo (Inicio · Mis turnos · Coordinar).
+- Inicio según cada caso: bienvenida con lugares libres de la semana (sin sesión o sin turnos), tu próximo turno como un pase (esperando confirmación, confirmado, "Hoy · en 1 h 20" con Cómo llegar grande), "Tenés N turnos más" y, para coordinadores, la franja de pedidos por confirmar.
+- Campaña: la foto como encabezado, calendario con barra de cobertura por día, turnos agrupados por punto con lugares en cuadraditos y el botón "Anotarme".
+- Anotarse: resumen (día, horario, lugar y lugares que quedan) y un solo botón.
+- Nueva pantalla "Tu turno": mapa, estado paso a paso (Pedido, Confirmado, El día) y acciones Llegar, Agendar (archivo de calendario con aviso 1 h antes), Compartir y Cancelar.
+- Coordinación: números clave, pedidos como tarjetas con WhatsApp directo y botones Confirmar / No confirmar.
+- Se quitaron los momentos del día del encabezado. 74 pruebas de la página.
+
 ## Vuelta al diseño original (azul) — 29 sep 2026 (caché ppam-v6)
 
 - Vuelve el diseño azul de la primera versión (encabezado azul marino, fondo gris azulado, acento azul, letra del sistema), sin perder nada de lo agregado: fotos, ubicación, "Ver lugar", "Cómo llegar", el mapa para marcar puntos y la cobertura.

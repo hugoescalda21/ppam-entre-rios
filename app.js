@@ -22,8 +22,7 @@
   const DOW_L = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   const MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
   const TIPOS = { carrito: ['🛒', 'Carrito'], stand: ['⛺', 'Stand'], otro: ['📍', 'Punto'] };
-  const COLORES = ['linear-gradient(135deg,#1D4ED8,#3B82F6)', 'linear-gradient(135deg,#0E7490,#22D3EE)', 'linear-gradient(135deg,#059669,#34D399)', 'linear-gradient(135deg,#7C3AED,#DB2777)', 'linear-gradient(135deg,#B45309,#F59E0B)', 'linear-gradient(135deg,#BE123C,#FB7185)'];
-  const ILUS = '<svg class="ilus" viewBox="0 0 200 110" aria-hidden="true"><path d="M0 110V70h18V52h14v18h10V38h22v72Z"/><path d="M60 110V58h16V44l12-10 12 10v14h14v52Z"/><path d="M116 110V66h20V50h16v16h12V30h20v80Z"/><circle class="sol" cx="160" cy="18" r="10"/></svg>';
+  const COLORES = ['linear-gradient(160deg,#1C5C56,#0F3A36)', 'linear-gradient(160deg,#5E7F8C,#34505C)', 'linear-gradient(160deg,#C2A060,#8A6A2E)', 'linear-gradient(160deg,#7C8C62,#4E5E3C)', 'linear-gradient(160deg,#86677A,#5A3F50)', 'linear-gradient(160deg,#557593,#2F4B66)'];
 
   /* ---------- Fechas (hora local del celular) ---------- */
   const pad = (n) => String(n).padStart(2, '0');
@@ -36,6 +35,8 @@
   const fmtCorto = (s) => { const d = parseIso(s); return `${DOW[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; };
   const fmtHora = (h) => String(h || '').replace(/^0(\d)/, '$1').replace(/:00$/, '');
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const I = (n, st) => `<svg class="ic"${st ? ` style="${st}"` : ''} aria-hidden="true"><use href="#i-${n}"/></svg>`;
+  const iniciales = (n) => String(n || '').trim().split(/\s+/).slice(0, 2).map(x => x.charAt(0).toUpperCase()).join('') || '·';
 
   /* ---------- Estado ---------- */
   const S = {
@@ -45,7 +46,7 @@
     cc: {}, ccUnsub: {}, fotos: {},
     mis: {}, misUnsub: null,
     coord: { cid: null, tab: 'pedidos', pedidos: {}, cupos: {}, unsub: [] , semana: null },
-    admins: [], coordEmails: {}
+    admins: [], coordEmails: {}, pend: {}, pendUnsub: {}
   };
   window.__ppam = S;   // para las pruebas
 
@@ -66,7 +67,7 @@
     }, (e) => { console.error(e); $('app').innerHTML = '<div class="empty">No se pudieron cargar las campañas. Revisá la conexión.</div>'; });
     S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin') render(); }, () => {});
     S.auth.onAuthStateChanged(onUser);
-    setInterval(aplicarMomento, 5 * 60000);
+    setInterval(() => { if (S.route.name === 'home') renderHome(); }, 60000);
     window.addEventListener('hashchange', () => { readRoute(); render(); });
     readRoute();
   }
@@ -90,10 +91,11 @@
     }
   }
 
-  /* ---------- Rutas: #/ · #/c/{cid} · #/mis · #/coord/{cid} · #/admin ---------- */
+  /* ---------- Rutas: #/ · #/c/{cid} · #/t/{pedido} · #/mis · #/coord/{cid} · #/admin ---------- */
   function readRoute() {
     const h = (location.hash || '#/').slice(1).split('/').filter(Boolean);
     if (h[0] === 'c' && h[1]) S.route = { name: 'camp', cid: h[1] };
+    else if (h[0] === 't' && h[1]) S.route = { name: 'turno', pid: decodeURIComponent(h[1]) };
     else if (h[0] === 'mis') S.route = { name: 'mis' };
     else if (h[0] === 'coord') S.route = { name: 'coord', cid: h[1] || null };
     else if (h[0] === 'admin') S.route = { name: 'admin' };
@@ -105,23 +107,29 @@
   function renderTop() {
     const r = S.route, c = r.cid && S.campanas[r.cid];
     document.body.className = 'r-' + r.name;
-    $('backBtn').classList.toggle('hidden', r.name === 'home');
-    $('backBtn').textContent = r.name === 'camp' ? '‹ Campañas' : '‹ Volver';
-    $('coordBtn').classList.toggle('hidden', !(S.user && (S.isAdmin || S.coordDe.length)) || r.name === 'coord' || r.name === 'admin');
-    $('userBtn').textContent = S.user ? (S.user.displayName ? S.user.displayName.split(' ')[0] : 'Mi cuenta') : 'Iniciar sesión';
-    let k = 'Predicación pública · Entre Ríos', t = 'Sumate a un turno', s = 'Elegí una campaña, un día y un horario.';
+    const esCoord = !!(S.user && (S.isAdmin || S.coordDe.length));
+    const atras = r.name === 'camp' || r.name === 'turno' || r.name === 'admin' || (r.name === 'coord' && r.cid && (S.isAdmin || S.coordDe.length > 1));
+    $('backBtn').classList.toggle('hidden', !atras);
+    $('brand').classList.toggle('hidden', r.name !== 'home');
+    $('shareBtn').classList.toggle('hidden', r.name !== 'camp' || !c);
+    const ub = $('userBtn');
+    ub.className = S.user ? 'av' : 'login';
+    ub.textContent = S.user ? iniciales(S.user.displayName || S.user.email) : 'Ingresar';
+    ub.setAttribute('aria-label', S.user ? 'Mi cuenta' : 'Ingresar');
+    $('coordBtn').classList.toggle('hidden', !esCoord);
+    [['tabHome', ['home', 'camp']], ['tabMis', ['mis', 'turno']], ['coordBtn', ['coord', 'admin']]].forEach(([id, rs]) => $(id).classList.toggle('on', rs.includes(r.name)));
+    let k = '', t = '', s = '';
     if (r.name === 'camp' && c) { k = c.ciudad || ''; t = c.nombre; s = campRango(c); }
-    else if (r.name === 'mis') { t = 'Mis turnos'; s = 'Los turnos que pediste, su estado y cómo llegar.'; }
-    else if (r.name === 'coord') { k = 'Coordinación' + (c ? ' · ' + (c.ciudad || '') : ''); t = c ? c.nombre : 'Mis campañas'; s = c ? 'Pedidos, cobertura y listas del día.' : 'Elegí la campaña.'; }
-    else if (r.name === 'admin') { k = 'Administración'; t = 'PPAM Entre Ríos'; s = 'Campañas, coordinadores y congregaciones.'; }
+    else if (r.name === 'mis') { t = 'Mis turnos'; s = 'Tus turnos, su estado y cómo llegar.'; }
+    else if (r.name === 'turno') { t = 'Tu turno'; }
+    else if (r.name === 'coord') { k = 'Coordinación'; t = c ? c.nombre : 'Tus campañas'; s = c ? (c.ciudad || '') + ' · ' + campRango(c) : ''; }
+    else if (r.name === 'admin') { k = 'Administración'; t = 'Campañas y equipo'; }
     $('tbKicker').textContent = k; $('tbTitle').textContent = t; $('tbSub').textContent = s;
     $('tbExtra').innerHTML = '';
-    // En la campaña, la foto de portada (o su color) como banner
+    // En la campaña, la foto de portada (o su color) como encabezado grande
     const tb = $('tb'), fk = r.name === 'camp' && c && c.portada ? fotoKey(c.id, c.portada) : '';
     tb.dataset.foto = fk; tb.classList.remove('foto');
     tb.style.backgroundImage = r.name === 'camp' && c ? colorDe(c) : '';
-    tb.classList.toggle('tb-camp', r.name === 'camp' && !!c);
-    aplicarMomento();
     if (fk) { pedirFoto(fk); if (S.fotos[fk]) { tb.style.backgroundImage = `url("${S.fotos[fk]}")`; tb.classList.add('foto'); } }
   }
   function campRango(c) {
@@ -129,50 +137,6 @@
     const a = parseIso(c.desde), b = parseIso(c.hasta);
     return `Del ${a.getDate()} de ${MES[a.getMonth()]} al ${b.getDate()} de ${MES[b.getMonth()]}${c.lugar ? ' · ' + c.lugar : ''}`;
   }
-  /* ---------- Momentos del día: el encabezado sigue al sol real de Entre Ríos ---------- */
-  // Salida y puesta del sol (fórmulas de NOAA) para Paraná, en minutos de la hora local del celular.
-  function solDelDia(d) {
-    const lat = -31.73, lng = -60.53, rad = Math.PI / 180;
-    const base = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-    const n = Math.round((base - Date.UTC(d.getFullYear(), 0, 1)) / 864e5) + 1, g = 2 * Math.PI / 365 * (n - 1);
-    const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
-    const dec = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
-    const ha = Math.acos(Math.cos(90.833 * rad) / (Math.cos(lat * rad) * Math.cos(dec)) - Math.tan(lat * rad) * Math.tan(dec)) / rad;
-    const local = (m) => { const x = new Date(base + m * 60000); return x.getHours() * 60 + x.getMinutes(); };
-    return { sale: local(720 - 4 * (lng + ha) - eq), pone: local(720 - 4 * (lng - ha) - eq) };
-  }
-  function momentoAhora(now) {
-    now = now || new Date();
-    const m = now.getHours() * 60 + now.getMinutes(), s = solDelDia(now);
-    const f = (m - s.sale) / (s.pone - s.sale);
-    const mo = m < s.sale - 40 || m > s.pone + 40 ? 'noche' : m < s.sale + 80 ? 'amanecer' : m > s.pone - 80 ? 'atardecer' : 'dia';
-    return { mo, f };
-  }
-  const EDIF = '<path d="M0 110V70h18V52h14v18h10V38h22v72Z"/><path d="M60 110V58h16V44l12-10 12 10v14h14v52Z"/><path d="M116 110V66h20V50h16v16h12V30h20v80Z"/>';
-  const LUCES = [[22, 76], [48, 50], [48, 64], [82, 64], [92, 78], [138, 72], [170, 40], [170, 56], [180, 78]];
-  const TEMA = { amanecer: '#3B5BA9', dia: '#0F1B2D', atardecer: '#1E3A8A', noche: '#03060E' };
-  function ilusMomento(mo, f) {
-    let cielo = '';
-    if (mo === 'noche') {
-      cielo = '<g class="est">' + [[20, 20], [70, 12], [110, 30], [185, 60], [90, 55], [130, 8], [40, 44]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.1"/>`).join('') + '</g>' +
-        '<g class="luna"><circle cx="160" cy="22" r="11" class="lu"/><circle cx="166" cy="17" r="10" class="lu2"/></g>';
-    } else {
-      const k = Math.max(-0.06, Math.min(1.06, f)), x = Math.round(172 - k * 144), y = Math.round(66 - Math.sin(Math.PI * Math.max(0, Math.min(1, k))) * 50);
-      cielo = `<g class="sol-g"><circle cx="${x}" cy="${y}" r="21" class="halo"/><circle cx="${x}" cy="${y}" r="11" class="sol"/></g>`;
-    }
-    const luces = mo === 'noche' ? '<g class="luz">' + LUCES.map(([x, y]) => `<rect x="${x}" y="${y}" width="4" height="5"/>`).join('') + '</g>' : '';
-    return cielo + EDIF + luces;
-  }
-  function aplicarMomento() {
-    const { mo, f } = momentoAhora(), el = $('tbIlus');
-    if (document.body.dataset.m !== mo || S.solF === undefined || Math.abs(S.solF - f) > 0.01) {
-      document.body.dataset.m = mo; S.solF = f;
-      if (el) el.innerHTML = ilusMomento(mo, f);
-      const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', TEMA[mo]);
-    }
-  }
-  window.__ppamMomento = momentoAhora;   // para las pruebas
-
   function rangoCorto(c) {
     if (!c.desde || !c.hasta) return '';
     const a = parseIso(c.desde), b = parseIso(c.hasta), m = (d) => MES[d.getMonth()].slice(0, 3);
@@ -243,6 +207,7 @@
     if (!S.loaded) { $('app').innerHTML = '<div class="empty">Cargando…</div>'; return; }
     if (r.name === 'camp') return renderCamp();
     if (r.name === 'mis') return renderMis();
+    if (r.name === 'turno') return renderTurno();
     if (r.name === 'coord') return renderCoord();
     if (r.name === 'admin') return renderAdmin();
     renderHome();
@@ -280,37 +245,102 @@
     return { total, ocup, faltan: total - ocup };
   }
 
+  /* ---------- Pedidos por confirmar (para la franja del coordinador en el inicio) ---------- */
+  function listenPend(cid) {
+    if (S.pendUnsub[cid]) return;
+    S.pendUnsub[cid] = true;
+    S.pendUnsub[cid] = S.db.collection('pedidos').where('cid', '==', cid).onSnapshot((qs) => {
+      let n = 0; qs.forEach(d => { const x = d.data(); if (x.estado === 'pendiente' && x.fecha >= hoy()) n++; });
+      S.pend[cid] = n; if (S.route.name === 'home') luego();
+    }, () => {});
+  }
+
   /* ---------- Inicio ---------- */
+  const minutos = (hhmm) => { const [a, b] = String(hhmm || '0:0').split(':'); return (+a) * 60 + (+b || 0); };
+  function misProximos() {
+    const ahora = new Date(), m = ahora.getHours() * 60 + ahora.getMinutes();
+    return Object.keys(S.mis).map(id => Object.assign({ id }, S.mis[id]))
+      .filter(p => p.estado !== 'rechazado' && (p.fecha > hoy() || (p.fecha === hoy() && minutos(p.hasta) > m)))
+      .sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
+  }
+  function cuandoTexto(p) {
+    const dias = Math.round((parseIso(p.fecha) - parseIso(hoy())) / 864e5);
+    if (dias > 1) return `Faltan ${dias} días`;
+    if (dias === 1) return 'Mañana';
+    const ahora = new Date(), falta = minutos(p.desde) - (ahora.getHours() * 60 + ahora.getMinutes());
+    if (falta <= 0) return 'Ahora';
+    return 'Hoy · en ' + (falta >= 60 ? `${Math.floor(falta / 60)} h${falta % 60 ? ' ' + (falta % 60) : ''}` : `${falta} min`);
+  }
+  function ticket(p) {
+    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, conf = p.estado === 'confirmado';
+    const esHoy = p.fecha === hoy(), url = pt.nombre ? comoLlegarUrl(pt, c) : '', cuando = cuandoTexto(p);
+    const pill = conf ? '<span class="pill g"><i></i>Confirmado</span>' : '<span class="pill w"><i></i>Esperando confirmación</span>';
+    const top = esHoy ? `<span class="today">${I('clock', 'width:13px;height:13px')}${esc(cuando)}</span>${pill}` : `<span class="d">${esc(DOW[parseIso(p.fecha).getDay()] + ' ' + parseIso(p.fecha).getDate() + ' de ' + MES[parseIso(p.fecha).getMonth()])}</span>${pill}`;
+    let hint = '';
+    if (!conf) hint = '<div class="hint">Un coordinador lo revisa y te confirma. Lo vas a ver acá y en Mis turnos.</div>';
+    else if (esHoy && pt.retiro) hint = `<div class="hint">${esc(retiroLabel(pt))}: ${esc(pt.retiro)}</div>`;
+    let acts;
+    if (!conf) acts = `<button type="button" class="btn gh" data-go="#/t/${esc(p.id)}">Ver detalle</button><button type="button" class="btn gh sm" data-cancelar="${esc(p.id)}">Cancelar</button>`;
+    else if (esHoy && url) acts = `<a class="btn w big2" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Cómo llegar</a><button type="button" class="btn gh sm" data-go="#/t/${esc(p.id)}">Detalle</button>`;
+    else acts = (url ? `<a class="btn w" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Cómo llegar</a>` : '') + `<button type="button" class="btn gh" data-go="#/t/${esc(p.id)}">Ver detalle</button>`;
+    return `<div class="ticket${conf ? '' : ' pend'}"><div class="top">${top}</div><div class="t num">${esc(p.desde)} – ${esc(p.hasta)}</div>${esHoy ? '' : `<div class="cuando">${esc(cuando)}</div>`}<div class="p">${I('pin')}${esc(c.nombre || '')}${pt.nombre ? ' · ' + esc(pt.nombre) : ''}</div>${hint}<div class="sep"></div><div class="acts">${acts}</div></div>`;
+  }
+  function libresSemana(cs) {
+    let n = 0, mejor = null, max = 0;
+    cs.forEach(c => { const ds = diasDe(c).filter(d => d <= addDays(hoy(), 6)); if (!ds.length) return; listenCC(c.id); const k = cobertura(c, ds); n += k.faltan; if (k.faltan > max) { max = k.faltan; mejor = c; } });
+    return { n, mejor };
+  }
   function renderHome() {
     const list = Object.values(S.campanas).filter(c => c.activa !== false && (!c.hasta || c.hasta >= hoy()))
       .sort((a, b) => String(a.desde || '').localeCompare(String(b.desde || '')) || String(a.nombre).localeCompare(String(b.nombre)));
     const ciudades = [...new Set(list.map(c => c.ciudad).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
     if (S.ciudad !== 'todas' && !ciudades.includes(S.ciudad)) S.ciudad = 'todas';
     const vis = list.filter(c => S.ciudad === 'todas' || c.ciudad === S.ciudad);
-    $('tbExtra').innerHTML = ciudades.length > 1 ? `<div class="chips">${['todas', ...ciudades].map(x => `<button type="button" class="chip${x === S.ciudad ? ' on' : ''}" data-ciudad="${esc(x)}">${x === 'todas' ? 'Todas' : esc(x)}</button>`).join('')}</div>` : '';
+    const prox = S.user ? misProximos() : [];
     let h = '';
-    const misProx = Object.values(S.mis).filter(p => p.fecha >= hoy() && p.estado !== 'rechazado').sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
-    if (misProx.length) h += `<div class="card"><div class="card-h">Mis próximos turnos <a href="#/mis">Ver todos</a></div>${misProx.slice(0, 3).map(pedidoRow).join('')}</div><div class="sec">Campañas</div>`;
+    if (prox.length) {
+      h += `<div class="lbl">${prox[0].fecha === hoy() ? 'Hoy' : 'Tu próximo turno'}</div>` + ticket(prox[0]);
+      if (prox.length > 1) {
+        const otros = prox.slice(1, 3).map(p => { const d = parseIso(p.fecha); return `${DOW[d.getDay()].toLowerCase()} ${d.getDate()}`; });
+        h += `<button type="button" class="more" data-go="#/mis"><span><b>Tenés ${prox.length - 1} ${prox.length === 2 ? 'turno' : 'turnos'} más</b><small>${esc(cap(otros.join(' y ')))}${prox.length > 3 ? '…' : ''}</small></span><span class="lk">Ver todos${I('chev', 'width:15px;height:15px')}</span></button>`;
+      }
+    } else {
+      const { n, mejor } = libresSemana(vis);
+      const donde = S.ciudad !== 'todas' ? 'En ' + S.ciudad : 'En Entre Ríos';
+      h += `<div class="lbl">${S.user ? 'Todavía no tenés turnos' : 'Predicación pública'}</div><div class="welcome">`;
+      h += S.user ? `<h4>¿Te sumás esta semana?</h4><p>${esc(donde)} ${n === 1 ? 'falta <b>1 lugar</b>' : `faltan <b>${n} lugares</b>`} en los próximos 7 días.</p>`
+        : `<h4>Sumate a un turno</h4><p>Elegí una campaña, un día y un horario. Un coordinador te confirma.</p><div class="stats"><div><b class="num">${list.length}</b><small>${list.length === 1 ? 'campaña activa' : 'campañas activas'}</small></div><div><b class="num">${n}</b><small>lugares libres esta semana</small></div></div>`;
+      if (mejor) h += `<button type="button" class="btn p" data-go="#/c/${esc(mejor.id)}">Ver turnos libres</button>`;
+      h += '</div>';
+    }
+    // Coordinadores: pedidos por confirmar
+    if (S.user && (S.isAdmin || S.coordDe.length)) {
+      const mias = list.filter(c => S.isAdmin || S.coordDe.includes(c.id));
+      mias.forEach(c => listenPend(c.id));
+      const n = mias.reduce((a, c) => a + (S.pend[c.id] || 0), 0);
+      const dest = mias.length === 1 ? '#/coord/' + mias[0].id : '#/coord';
+      h += `<button type="button" class="coordbar" data-go="${esc(dest)}"><span class="n num${n ? '' : ' cero'}">${n}</span><span class="tx">${n === 1 ? 'Pedido por confirmar' : n ? 'Pedidos por confirmar' : 'Coordinación · todo al día'}<small>${esc(mias.length === 1 ? mias[0].nombre : mias.length + ' campañas')}</small></span>${I('chev')}</button>`;
+    }
+    h += `<div class="sh"><b>Campañas</b>${ciudades.length > 1 ? `<label class="flt">${esc(S.ciudad === 'todas' ? 'Toda la provincia' : S.ciudad)}${I('down', 'width:14px;height:14px')}<select id="fCiudad" aria-label="Filtrar por ciudad">${['todas', ...ciudades].map(x => `<option value="${esc(x)}"${x === S.ciudad ? ' selected' : ''}>${x === 'todas' ? 'Toda la provincia' : esc(x)}</option>`).join('')}</select></label>` : ''}</div>`;
     h += vis.length ? vis.map(campCard).join('') : '<div class="card"><div class="empty">Todavía no hay campañas publicadas.</div></div>';
     $('app').innerHTML = h;
   }
   function campCard(c) {
     listenCC(c.id);
     const dias = diasDe(c), pts = Object.values(c.puntos || {});
-    const tipos = [...new Set(pts.map(p => (TIPOS[p.tipo] || TIPOS.otro)[1].toLowerCase()))];
-    let cob = '<div class="cob"><span>Todavía sin turnos cargados</span></div>';
+    let cob = '<small class="falt">Todavía sin turnos cargados</small>';
     if (dias.length) {
       const k = cobertura(c, dias.filter(d => d <= addDays(dias[0], 6)));
       const pct = k.total ? Math.round(k.ocup * 100 / k.total) : 0;
       const cuando = dias[0] <= addDays(hoy(), 6) ? 'en los próximos 7 días' : 'la primera semana';
-      cob = `<div class="bar"><i style="width:${pct}%"></i></div><div class="cob"><span>${k.faltan > 0 ? `Faltan ${k.faltan} ${k.faltan === 1 ? 'lugar' : 'lugares'} ${cuando}` : `Todo cubierto ${cuando} 🙌`}</span><b>${pct}%</b></div>`;
+      cob = `<span class="meter"><i style="--w:${pct}%"></i><span class="num">${pct}%</span></span><small class="falt">${k.faltan > 0 ? `Faltan ${k.faltan} ${k.faltan === 1 ? 'lugar' : 'lugares'} ${cuando}` : `Todo cubierto ${cuando}`}</small>`;
     }
-    return `<div class="card"><button type="button" class="camp" data-go="#/c/${esc(c.id)}"><div class="ph"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}>${ILUS}<span class="city">${esc(c.ciudad || '')}</span>${c.desde ? `<span class="when">${esc(rangoCorto(c))}</span>` : ''}</div><div class="bd"><b>${esc(c.nombre)}</b><small>${pts.length} ${pts.length === 1 ? 'punto' : 'puntos'}${tipos.length ? ' · ' + esc(tipos.join(' y ')) : ''}${c.lugar ? ' · ' + esc(c.lugar) : ''}</small>${cob}</div></button></div>`;
+    return `<button type="button" class="cc camp" data-go="#/c/${esc(c.id)}"><span class="th"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), pts.length + (pts.length === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small>${cob}</span>${I('chev')}</button>`;
   }
-  const ESTADOS = { pendiente: 'Pendiente', confirmado: 'Confirmado', rechazado: 'No confirmado' };
+  const ESTADOS = { pendiente: 'Esperando confirmación', confirmado: 'Confirmado', rechazado: 'No confirmado' };
   function pedidoRow(p) {
     const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, d = parseIso(p.fecha);
-    return `<div class="row"><div class="dt${p.estado === 'confirmado' ? ' ok' : ''}"><b>${d.getDate()}</b><small>${DOW[d.getDay()]}</small></div><div class="tx"><b>${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))}</b><small>${esc(c.nombre || '')} · ${esc(pt.nombre || '')}</small></div><span class="tag ${esc(p.estado)}">${esc(ESTADOS[p.estado] || p.estado)}</span></div>`;
+    return `<button type="button" class="row" data-go="#/t/${esc(p.id || '')}"><span class="dt${p.estado === 'confirmado' ? ' ok' : ''}"><small>${DOW[d.getDay()]}</small><b>${d.getDate()}</b></span><span class="tx"><b>${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))}</b><small>${esc(c.nombre || '')} · ${esc(pt.nombre || '')}</small></span><span class="tag ${esc(p.estado)}">${esc(ESTADOS[p.estado] || p.estado)}</span></button>`;
   }
 
   /* ---------- Campaña ---------- */
@@ -321,30 +351,31 @@
     const dias = diasDe(c);
     if (S.diaCid !== c.id || !dias.includes(S.dia)) { S.dia = dias[0]; S.diaCid = c.id; }
     if (!dias.length) { $('app').innerHTML = '<div class="card"><div class="empty">No hay días con turnos por delante.</div></div>'; return; }
-    let h = `<div class="sec">Elegí el día</div><div class="days">${dias.map(d => {
+    const md = parseIso(S.dia);
+    let h = `<div class="month"><b>${cap(MES[md.getMonth()])}</b><span class="leyenda"><i class="c"></i>confirmado<i class="p"></i>pedido<i></i>libre</span></div>`;
+    h += `<div class="days">${dias.map(d => {
       const x = parseIso(d), k = cobertura(c, [d]);
-      const cls = k.faltan <= 0 ? 'lleno' : k.faltan / k.total <= 0.34 ? 'poco' : '';
-      return `<button type="button" class="day${d === S.dia ? ' on' : ''}" data-dia="${d}"><small>${DOW[x.getDay()]}</small><b>${x.getDate()}</b><i>${MES[x.getMonth()].slice(0, 3)}</i><u class="${cls}"></u></button>`;
+      const nivel = k.faltan <= 0 ? 'lleno' : k.faltan / k.total <= 0.34 ? 'poco' : 'libre';
+      const llenos = k.total ? Math.round(k.ocup * 3 / k.total) : 0;
+      return `<button type="button" class="day ${nivel}${d === S.dia ? ' on' : ''}" data-dia="${d}"><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><span class="cap3">${[0, 1, 2].map(i => `<i class="${i < llenos ? 'f' : ''}"></i>`).join('')}</span></button>`;
     }).join('')}</div>`;
-    h += '<div class="leyenda"><span><i style="background:var(--ok)"></i>Hay lugar</span><span><i style="background:var(--poco)"></i>Quedan pocos</span><span><i style="background:var(--line2)"></i>Completo</span></div>';
     const ts = turnosDelDia(c, S.dia);
     h += `<div class="sec">${esc(cap(fmtDia(S.dia)))}</div>`;
     const orden = Object.keys(c.puntos || {}).filter(pid => ts.some(t => t.punto === pid));
     if (!orden.length) h += '<div class="card"><div class="empty">No hay turnos ese día.</div></div>';
     orden.forEach(pid => {
       const p = c.puntos[pid], tp = TIPOS[p.tipo] || TIPOS.otro;
-      h += `<div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${tp[0]}</div><div class="tx"><b>${esc(p.nombre)}</b><small>${esc(tp[1])} · ${cupoDe(c, { punto: pid })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small></div>${tieneLugar(p) ? `<button type="button" class="loc" data-lugar="${esc(c.id)}|${esc(pid)}">📍 Ver lugar</button>` : ''}</div>`;
+      h += `<div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}</div><div class="tx"><b>${esc(p.nombre)}</b><small>${esc(tp[1])} · ${cupoDe(c, { punto: pid })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small></div>${tieneLugar(p) ? `<button type="button" class="loc" data-lugar="${esc(c.id)}|${esc(pid)}">${I('pin', 'width:15px;height:15px')}Ver lugar</button>` : ''}</div><div class="slots">`;
       h += ts.filter(t => t.punto === pid).map(t => {
         const oc = ocupDe(c.id, S.dia, t.id), n = cupoDe(c, t), vals = Object.values(oc), conf = vals.filter(v => v === 'c').length, pend = vals.length - conf;
         const mio = S.user && oc[S.user.uid];
         const falta = n - vals.length, full = falta <= 0;
-        const dots = Array.from({ length: Math.max(n, vals.length) }, (_, k) => `<i class="${k < conf ? 'c' : k < conf + pend ? 'p' : ''}"></i>`).join('');
-        const btn = mio ? `<button type="button" class="sbtn mine" data-mio="${esc(t.id)}">${oc[S.user.uid] === 'c' ? 'Confirmado' : 'Pedido'}</button>`
-          : `<button type="button" class="sbtn" data-pedir="${esc(t.id)}" ${full ? 'disabled' : ''}>${full ? 'Completo' : 'Pedir'}</button>`;
-        return `<div class="row slot"><div class="h">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))}</div><div class="tx"><div class="dots">${dots}</div><small>${full ? 'completo' : falta === 1 ? 'falta 1' : 'faltan ' + falta}</small></div>${btn}</div>`;
-      }).join('');
+        const seats = Array.from({ length: Math.max(n, vals.length) }, (_, k) => `<i class="${k < conf ? 'c' : k < conf + pend ? 'p' : ''}"></i>`).join('');
+        const btn = mio ? `<button type="button" class="sbtn mine" data-mio="${esc(t.id)}">${oc[S.user.uid] === 'c' ? 'Tu turno' : 'Pedido'}</button>`
+          : `<button type="button" class="sbtn pri" data-pedir="${esc(t.id)}" ${full ? 'disabled' : ''}>${full ? 'Completo' : 'Anotarme'}</button>`;
+        return `<div class="row slot"><div class="hr"><b class="num">${esc(t.desde)}</b><small>hasta ${esc(t.hasta)}</small></div><div class="tx"><div class="seats">${seats}</div><small>${full ? 'sin lugar' : falta === 1 ? 'falta 1' : 'faltan ' + falta}</small></div>${btn}</div>`;
+      }).join('') + '</div>';
     });
-    h += `<p class="note">Círculo lleno: lugar confirmado · con borde: pedido, falta que lo confirme un coordinador · gris: libre.</p>`;
     $('app').innerHTML = h;
   }
   function verLugar(cid, pid) {
@@ -353,10 +384,10 @@
     const tp = TIPOS[p.tipo] || TIPOS.otro, url = comoLlegarUrl(p, c);
     const dir = p.direccion || (p.lat != null ? `${p.lat}, ${p.lng}` : '');
     const fotos = (p.fotos || []).map(f => `<div${fotoAttr(cid, f)}></div>`).join('');
-    sheet(`${fotos ? `<div class="fotos">${fotos}</div>` : ''}<h3>${tp[0]} ${esc(p.nombre)}</h3><span class="sub">${esc(tp[1])} · ${cupoDe(c, { punto: pid })} por turno</span>
+    sheet(`${fotos ? `<div class="fotos">${fotos}</div>` : ''}<h3>${esc(p.nombre)}</h3><span class="sub">${esc(tp[1])} · ${cupoDe(c, { punto: pid })} por turno</span>
       ${p.lat != null ? `<div class="mapa"><iframe loading="lazy" title="Mapa de ${esc(p.nombre)}" src="${esc(mapaUrl(p))}"></iframe></div>` : ''}
-      <div class="dir"><span>📍</span><div><b>${esc(c.nombre)}${c.ciudad ? ' · ' + esc(c.ciudad) : ''}</b>${dir ? '<br>' + esc(dir) : ''}${p.detalle ? '<br>' + esc(p.detalle) : ''}</div></div>
-      ${url ? `<div class="lugar-acts"><a class="go" href="${esc(url)}" target="_blank" rel="noopener">🧭 Cómo llegar</a>${dir ? `<button type="button" class="sbtn" data-copiar="${esc(dir)}">📋 Copiar dirección</button>` : ''}</div>` : ''}
+      <div class="dir">${I('pin')}<div><b>${esc(c.nombre)}${c.ciudad ? ' · ' + esc(c.ciudad) : ''}</b>${dir ? '<br>' + esc(dir) : ''}${p.detalle ? '<br>' + esc(p.detalle) : ''}</div></div>
+      ${url ? `<div class="lugar-acts"><a class="go" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Cómo llegar</a>${dir ? `<button type="button" class="sbtn" data-copiar="${esc(dir)}">${I('copy')}Copiar dirección</button>` : ''}</div>` : ''}
       ${p.indicaciones ? `<div class="info"><b>Cómo encontrarlo</b>${esc(p.indicaciones)}</div>` : ''}
       ${p.retiro ? `<div class="info"><b>${retiroLabel(p)}</b>${esc(p.retiro)}</div>` : ''}
       <button type="button" class="btn alt" data-cerrar style="margin-top:14px">Cerrar</button>`);
@@ -378,23 +409,24 @@
     const c = S.campanas[S.route.cid], t = c && c.turnos[tid] && Object.assign({ id: tid }, c.turnos[tid]);
     if (!t) return;
     if (!S.user) {
-      const ov = sheet(`<h3>Iniciá sesión para pedir el turno</h3><p class="hint">Usamos tu cuenta de Google solo para saber que sos vos: así nadie puede pedir turnos a tu nombre y podés ver "Mis turnos".</p><button type="button" class="btn" id="lgBtn">Iniciar sesión con Google</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+      const ov = sheet(`<h3>Ingresá para anotarte</h3><p class="hint">Usamos tu cuenta de Google solo para saber que sos vos: así nadie puede anotarse a tu nombre y podés ver tus turnos.</p><button type="button" class="btn" id="lgBtn">Ingresar con Google</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
       ov.querySelector('#lgBtn').addEventListener('click', async () => { await login(); ov.remove(); if (S.user) pedir(tid); });
       return;
     }
     const pf = perfil(), p = c.puntos[t.punto];
     const congs = (S.publico.congregaciones || []).slice().sort((a, b) => a.localeCompare(b, 'es'));
     const opts = congs.map(x => `<option${x === pf.congregacion ? ' selected' : ''}>${esc(x)}</option>`).join('') + `<option value="__otra"${pf.congregacion && !congs.includes(pf.congregacion) ? ' selected' : ''}>Otra…</option>`;
-    const ov = sheet(`<h3>Pedir este turno</h3><p class="hint">Lo confirma uno de los coordinadores de la campaña.</p>
-      <div class="sum"><b>${esc(c.nombre)}</b> · ${esc(c.ciudad || '')}<br>${esc(cap(fmtDia(S.dia)))} · ${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} h · ${esc(p.nombre)}</div>
+    const libres = cupoDe(c, t) - Object.keys(ocupDe(c.id, S.dia, t.id)).length;
+    const ov = sheet(`<h3>Confirmá tu turno</h3><p class="hint">Un coordinador lo revisa y te confirma.</p>
+      <div class="sum"><div>${I('cal')}${esc(cap(fmtDia(S.dia)))}</div><div>${I('clock')}<span class="num">${esc(t.desde)} – ${esc(t.hasta)}</span><small>${libres === 1 ? 'Queda 1 lugar' : `Quedan ${libres} lugares`}</small></div><div>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}${esc(p.nombre)} · ${esc(c.nombre)}</div></div>
       <div class="two"><div class="fld"><label for="pNom">Nombre</label><input id="pNom" autocomplete="given-name" value="${esc(pf.nombre || (S.user.displayName || '').split(' ')[0] || '')}"></div>
       <div class="fld"><label for="pApe">Apellido</label><input id="pApe" autocomplete="family-name" value="${esc(pf.apellido || (S.user.displayName || '').split(' ').slice(1).join(' ') || '')}"></div></div>
       <div class="fld"><label for="pCong">Congregación</label><select id="pCong">${congs.length ? '<option value="">Elegí tu congregación</option>' : ''}${opts}</select></div>
       <div class="fld${pf.congregacion && !congs.includes(pf.congregacion) ? '' : ' hidden'}" id="pOtraF"><label for="pOtra">¿Cuál?</label><input id="pOtra" value="${esc(pf.congregacion && !congs.includes(pf.congregacion) ? pf.congregacion : '')}" placeholder="Nombre de tu congregación y ciudad"></div>
       <div class="fld"><label for="pCel">Celular (WhatsApp)</label><input id="pCel" type="tel" autocomplete="tel" value="${esc(pf.celular || '')}" placeholder="343 555-0000"></div>
-      <label class="ck"><input type="checkbox" id="pOk"${pf.acepto ? ' checked' : ''}> <span>Acepto que los coordinadores de esta campaña vean mis datos para organizar los turnos. No se usan para nada más. <a href="#" data-priv>Más info</a></span></label>
+      <label class="ck"><input type="checkbox" id="pOk"${pf.acepto ? ' checked' : ''}> <span>Solo los coordinadores de esta campaña ven mis datos, para organizar los turnos. <a href="#" data-priv>Más info</a></span></label>
       <p class="err hidden" id="pErr"></p>
-      <button type="button" class="btn" id="pGo">Pedir turno</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+      <button type="button" class="btn" id="pGo">Anotarme en este turno</button><button type="button" class="btn alt" data-cerrar>Cancelar</button><p class="fine">Tus datos quedan guardados en este celular para la próxima vez.</p>`);
     const q = (s) => ov.querySelector(s);
     q('#pCong').addEventListener('change', () => q('#pOtraF').classList.toggle('hidden', q('#pCong').value !== '__otra'));
     q('[data-priv]').addEventListener('click', (e) => { e.preventDefault(); privacidad(); });
@@ -411,9 +443,10 @@
       try {
         await enviarPedido(c, t, S.dia, { nombre, apellido, congregacion, celular });
         ov.remove();
-        sheet(`<div class="ok-big"><div class="o">✓</div><h3>¡Listo! Pediste el turno</h3><p>${esc(cap(fmtDia(S.dia)))} · ${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} h · ${esc(p.nombre)}.</p><p><span class="tag pendiente">Pendiente</span> Cuando un coordinador lo confirme lo vas a ver en "Mis turnos".</p></div><button type="button" class="btn" data-cerrar>Listo</button>`);
+        const pid = cupoId(c.id, S.dia, t.id) + '__' + S.user.uid;
+        sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>¡Listo! Te anotaste</h3><p>${esc(cap(fmtDia(S.dia)))} · ${esc(t.desde)} a ${esc(t.hasta)} · ${esc(p.nombre)}</p><p><span class="tag pendiente">Esperando confirmación</span><br>Cuando un coordinador lo confirme lo vas a ver en el inicio y en Mis turnos.</p></div><button type="button" class="btn" data-go="#/t/${esc(pid)}" data-cerrar>Ver mi turno</button><button type="button" class="btn alt" data-cerrar>Listo</button>`);
       } catch (e) {
-        console.error(e); b.disabled = false; b.textContent = 'Pedir turno';
+        console.error(e); b.disabled = false; b.textContent = 'Anotarme en este turno';
         err(/permission|insufficient/i.test(e && (e.code || e.message) || '') ? 'Ese turno se acaba de completar. Elegí otro.' : 'No se pudo enviar. Revisá la conexión y probá de nuevo.');
       }
     });
@@ -435,26 +468,72 @@
     const batch = S.db.batch();
     batch.update(S.db.doc('cupos/' + cupoId(p.cid, p.fecha, p.tid)), { ['ocupados.' + p.uid]: S.del() });
     batch.delete(S.db.doc('pedidos/' + pid));
-    try { await batch.commit(); toast('Turno cancelado'); } catch (e) { console.error(e); toast('No se pudo cancelar. Probá de nuevo.'); }
+    try { await batch.commit(); toast('Turno cancelado'); if (S.route.name === 'turno') go('#/mis'); } catch (e) { console.error(e); toast('No se pudo cancelar. Probá de nuevo.'); }
   }
   S.del = () => (window.__ppamMock ? window.__ppamMock.del() : firebase.firestore.FieldValue.delete());
 
   /* ---------- Mis turnos ---------- */
   function renderMis() {
-    if (!S.user) { $('app').innerHTML = '<div class="card"><div class="empty">Iniciá sesión para ver tus turnos.</div></div><button type="button" class="btn" data-login>Iniciar sesión con Google</button>'; return; }
+    if (!S.user) { $('app').innerHTML = '<div class="welcome"><h4>Tus turnos</h4><p>Ingresá con tu cuenta de Google para ver los turnos que pediste.</p><button type="button" class="btn p" data-login>Ingresar con Google</button></div>'; return; }
     const all = Object.keys(S.mis).map(id => Object.assign({ id }, S.mis[id])).sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
     const prox = all.filter(p => p.fecha >= hoy()), pas = all.filter(p => p.fecha < hoy()).reverse();
-    let h = prox.length ? prox.map(misCard).join('') : '<div class="card"><div class="empty">No tenés turnos pedidos. Elegí una campaña en el inicio.</div></div>';
+    let h = prox.length ? prox.map(misCard).join('') : '<div class="welcome"><h4>No tenés turnos</h4><p>Elegí una campaña en el inicio y anotate en un horario libre.</p><button type="button" class="btn p" data-go="#/">Ver campañas</button></div>';
     if (pas.length) h += '<div class="sec">Anteriores</div><div class="card">' + pas.slice(0, 20).map(pedidoRow).join('') + '</div>';
     $('app').innerHTML = h;
   }
   function misCard(p) {
     const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, tp = TIPOS[pt.tipo] || TIPOS.otro;
     const url = pt.nombre && p.estado !== 'rechazado' ? comoLlegarUrl(pt, c) : '';
-    let acts = url ? `<a class="go" href="${esc(url)}" target="_blank" rel="noopener">🧭 Cómo llegar</a>` : '';
-    if (pt.nombre && tieneLugar(pt)) acts += `<button type="button" class="sbtn ok" data-lugar="${esc(p.cid)}|${esc(p.punto)}">📍 Lugar</button>`;
-    if (p.estado !== 'rechazado') acts += `<button type="button" class="sbtn bad x" data-cancelar="${esc(p.id)}">Cancelar</button>`;
-    return `<div class="mt"><div class="ph"${fotoAttr(p.cid, (pt.fotos || [])[0])}>${tp[0]}<span class="tag ${esc(p.estado)}">${p.estado === 'confirmado' ? '✓ ' : ''}${esc(ESTADOS[p.estado] || p.estado)}</span></div><div class="b"><div class="when">${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))}</div><div class="m">${esc(c.nombre || '')} · ${tp[0]} ${esc(pt.nombre || '')}${c.ciudad ? ' · ' + esc(c.ciudad) : ''}</div>${acts ? `<div class="acts">${acts}</div>` : ''}</div></div>`;
+    let acts = url ? `<a class="go" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Cómo llegar</a>` : '';
+    acts += `<button type="button" class="sbtn" data-go="#/t/${esc(p.id)}">Detalle</button>`;
+    if (p.estado !== 'rechazado') acts += `<button type="button" class="sbtn bad x" data-cancelar="${esc(p.id)}" aria-label="Cancelar turno">${I('x')}</button>`;
+    return `<div class="mt"><div class="ph"${fotoAttr(p.cid, (pt.fotos || [])[0], `background-image:${colorDe(c.id ? c : { id: p.cid })};`)}><span class="tag ${esc(p.estado)}">${p.estado === 'confirmado' ? '✓ ' : ''}${esc(ESTADOS[p.estado] || p.estado)}</span></div><div class="b"><div class="when">${esc(cap(fmtDia(p.fecha)))} · ${esc(p.desde)} a ${esc(p.hasta)}</div><div class="m">${esc([c.nombre, pt.nombre, c.ciudad].filter(Boolean).join(' · '))}</div><div class="acts">${acts}</div></div></div>`;
+  }
+  function renderTurno() {
+    if (!S.user) { $('app').innerHTML = '<div class="welcome"><h4>Tu turno</h4><p>Ingresá con tu cuenta para ver el detalle.</p><button type="button" class="btn p" data-login>Ingresar con Google</button></div>'; return; }
+    const pid = S.route.pid, p = S.mis[pid] && Object.assign({ id: pid }, S.mis[pid]);
+    if (!p) { $('app').innerHTML = '<div class="card"><div class="empty">Ese turno ya no está en tu lista.</div></div><button type="button" class="btn" data-go="#/mis">Ver mis turnos</button>'; return; }
+    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, conf = p.estado === 'confirmado', rech = p.estado === 'rechazado';
+    const url = rech ? '' : comoLlegarUrl(pt, c), d = parseIso(p.fecha), pasado = p.fecha < hoy();
+    let h = pt.lat != null ? `<div class="mapa big"><iframe loading="lazy" title="Mapa de ${esc(pt.nombre || '')}" src="${esc(mapaUrl(pt))}"></iframe></div>`
+      : `<div class="mapa big foto"${fotoAttr(p.cid, (pt.fotos || [])[0], `background-image:${colorDe(c.id ? c : { id: p.cid })};`)}></div>`;
+    h += `<div class="det"><div class="st ${esc(p.estado)}"><i></i>${conf ? 'Confirmado por un coordinador' : rech ? 'No fue confirmado' : 'Esperando confirmación'}</div>`;
+    h += `<h2>${esc(cap(DOW_L[d.getDay()]))} ${d.getDate()} de ${MES[d.getMonth()]} · <span class="num">${esc(p.desde)} a ${esc(p.hasta)}</span></h2>`;
+    h += `<div class="m">${esc([c.nombre, pt.nombre, pt.direccion].filter(Boolean).join(' · '))}</div>`;
+    if (!rech) h += `<div class="tl"><span class="ok"><span class="dot">${I('check')}</span>Pedido</span><span class="ln on"></span><span class="${conf ? 'ok' : ''}"><span class="dot">${conf ? I('check') : ''}</span>Confirmado</span><span class="ln${pasado ? ' on' : ''}"></span><span class="${pasado ? 'ok' : ''}"><span class="dot">${pasado ? I('check') : ''}</span>El día</span></div>`;
+    h += '<div class="grid4">';
+    h += url ? `<a class="pr" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Llegar</a>` : `<button type="button" disabled>${I('nav')}Llegar</button>`;
+    h += `<button type="button" data-ics="${esc(p.id)}">${I('cal')}Agendar</button><button type="button" data-comp="${esc(p.id)}">${I('share')}Compartir</button>`;
+    h += !rech && !pasado ? `<button type="button" data-cancelar="${esc(p.id)}">${I('x')}Cancelar</button>` : `<button type="button" disabled>${I('x')}Cancelar</button>`;
+    h += '</div>';
+    if (pt.indicaciones) h += `<div class="info"><b>Cómo encontrarlo</b><p>${esc(pt.indicaciones)}</p></div>`;
+    if (pt.retiro) h += `<div class="info"><b>${esc(retiroLabel(pt))}</b><p>${esc(pt.retiro)}</p></div>`;
+    if (tieneLugar(pt)) h += `<button type="button" class="btn alt" data-lugar="${esc(p.cid)}|${esc(p.punto)}">${I('pin')}Ver fotos y datos del lugar</button>`;
+    h += '</div>';
+    $('app').innerHTML = h;
+  }
+  function textoTurno(p) {
+    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, url = comoLlegarUrl(pt, c);
+    return `Tengo turno en la PPAM: ${cap(fmtDia(p.fecha))} de ${p.desde} a ${p.hasta} · ${pt.nombre || ''} (${c.nombre || ''}${c.ciudad ? ', ' + c.ciudad : ''}).${url ? '\nCómo llegar: ' + url : ''}`;
+  }
+  function agendar(pid) {
+    const p = S.mis[pid]; if (!p) return;
+    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {};
+    const f = p.fecha.replace(/-/g, ''), hh = (x) => x.replace(':', '') + '00', ahora = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+    const escIcs = (x) => String(x || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
+    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PPAM Entre Rios//ES', 'BEGIN:VEVENT', `UID:${pid}@ppam-entre-rios`, `DTSTAMP:${ahora}`,
+      `DTSTART:${f}T${hh(p.desde)}`, `DTEND:${f}T${hh(p.hasta)}`, `SUMMARY:${escIcs('PPAM · ' + (pt.nombre || '') + ' (' + (c.nombre || '') + ')')}`,
+      `LOCATION:${escIcs([pt.direccion, c.nombre, c.ciudad].filter(Boolean).join(', '))}`, `DESCRIPTION:${escIcs([pt.indicaciones, pt.retiro && retiroLabel(pt) + ': ' + pt.retiro].filter(Boolean).join('\n'))}`,
+      'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', 'DESCRIPTION:Turno PPAM', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    S.ultimoIcs = ics;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = 'turno-ppam-' + p.fecha + '.ics';
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  async function compartirTurno(pid) {
+    const p = S.mis[pid]; if (!p) return;
+    const txt = textoTurno(p);
+    if (navigator.share && !window.__ppamMock) { try { await navigator.share({ title: 'Mi turno PPAM', text: txt }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+    compartir(txt);
   }
 
   /* ---------- Coordinación ---------- */
@@ -470,8 +549,8 @@
     const mias = misCampanas();
     if (!S.route.cid) {
       if (mias.length === 1 && !S.isAdmin) { go('#/coord/' + mias[0].id); return; }
-      let h = S.isAdmin ? '<div class="acts" style="margin:0 0 12px;"><button type="button" class="sbtn pri" data-go="#/admin">⚙️ Administración</button></div>' : '';
-      h += mias.length ? '<div class="card">' + mias.map(c => `<button type="button" class="row camp" data-go="#/coord/${esc(c.id)}" style="border-top:1px solid var(--line)"><div class="ic">📋</div><div class="tx"><b>${esc(c.nombre)}</b><small>${esc(c.ciudad || '')} · ${esc(campRango(c))}</small></div></button>`).join('') + '</div>' : '<div class="empty">No coordinás ninguna campaña todavía.</div>';
+      let h = S.isAdmin ? `<button type="button" class="coordbar" data-go="#/admin"><span class="n">${I('grid', 'width:15px;height:15px')}</span><span class="tx">Administración<small>Campañas, coordinadores y congregaciones</small></span>${I('chev')}</button><div class="sec">Campañas</div>` : '';
+      h += mias.length ? mias.map(c => `<button type="button" class="cc camp" data-go="#/coord/${esc(c.id)}"><span class="th"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc(c.ciudad || '')} · ${esc(campRango(c))}</small></span>${I('chev')}</button>`).join('') : '<div class="card"><div class="empty">No coordinás ninguna campaña todavía.</div></div>';
       $('app').innerHTML = h; return;
     }
     const c = S.campanas[S.route.cid];
@@ -483,8 +562,8 @@
     let total = 0, ocup = 0;
     dias.forEach(d => turnosDelDia(c, d).forEach(t => { total += cupoDe(c, t); ocup += Math.min(cupoDe(c, t), Object.values((S.coord.cupos[cupoId(c.id, d, t.id)] || {}).ocupados || {}).filter(v => v === 'c').length); }));
     const personas = new Set(peds.filter(p => p.estado === 'confirmado').map(p => p.uid)).size;
-    let h = `<div class="kpis"><div class="kpi${pend.length ? ' w' : ''}"><b>${pend.length}</b><span>por confirmar</span></div><div class="kpi"><b>${total ? Math.round(ocup * 100 / total) : 0}%</b><span>cubierto</span></div><div class="kpi"><b>${personas}</b><span>publicadores</span></div></div>`;
-    const tabs = [['pedidos', 'Pedidos'], ['cobertura', 'Cobertura'], ['dia', 'Lista del día'], ['config', 'Configurar']];
+    let h = `<div class="kpis"><div class="kpi hl"><b class="num">${pend.length}</b><span>por confirmar</span></div><div class="kpi"><b class="num">${total ? Math.round(ocup * 100 / total) : 0}%</b><span>cubierto</span></div><div class="kpi"><b class="num">${personas}</b><span>publicadores</span></div></div>`;
+    const tabs = [['pedidos', 'Pedidos'], ['cobertura', 'Cobertura'], ['dia', 'Del día'], ['config', 'Ajustes']];
     h += `<div class="tabs">${tabs.map(([k, l]) => `<button type="button" class="${S.coord.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
     if (S.coord.tab === 'pedidos') h += coordPedidos(c, pend, peds);
     else if (S.coord.tab === 'cobertura') h += coordCobertura(c, dias);
@@ -496,11 +575,12 @@
   function pedidoCoordRow(c, p, acciones) {
     const pt = (c.puntos || {})[p.punto] || {};
     const wa = String(p.celular || '').replace(/\D/g, '');
-    return `<div class="row" style="display:block"><b>${esc(p.nombre)} ${esc(p.apellido)} · ${esc(p.congregacion)}</b><small>${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))} · ${esc(pt.nombre || '')} · <a href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}" target="_blank" rel="noopener">${esc(p.celular)}</a></small>${acciones ? `<div class="acts">${acciones}</div>` : ''}</div>`;
+    const pal = ['#E5EEEB|#12433F', '#F4ECDC|#8A6A2E', '#E6ECF5|#2F4B7A', '#F3E6EC|#7A3553'][(p.nombre || '').length % 4].split('|');
+    return `<div class="rq"><div class="t"><span class="ini" style="background:${pal[0]};color:${pal[1]}">${esc(iniciales(p.nombre + ' ' + p.apellido))}</span><div class="who"><b>${esc(p.nombre)} ${esc(p.apellido)}</b><small>${esc(p.congregacion)}</small></div><a class="wa" href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}" target="_blank" rel="noopener" aria-label="WhatsApp">${I('chat')}</a></div><div class="w">${I('cal', 'width:15px;height:15px')}<span>${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))} · ${esc(pt.nombre || '')}</span><span class="num tel">${esc(p.celular)}</span></div>${acciones ? `<div class="bb">${acciones}</div>` : ''}</div>`;
   }
   function coordPedidos(c, pend, peds) {
     let h = `<div class="sec">Por confirmar</div>`;
-    h += pend.length ? '<div class="card">' + pend.map(p => pedidoCoordRow(c, p, `<button type="button" class="sbtn bad" data-rechazar="${esc(p.id)}">No confirmar</button><button type="button" class="sbtn pri" data-confirmar="${esc(p.id)}">Confirmar</button>`)).join('') + '</div>' : '<div class="empty">No hay pedidos nuevos. 👍</div>';
+    h += pend.length ? pend.map(p => pedidoCoordRow(c, p, `<button type="button" class="sbtn nk" data-rechazar="${esc(p.id)}">${I('x', 'width:15px;height:15px')}No confirmar</button><button type="button" class="sbtn pri" data-confirmar="${esc(p.id)}">${I('check', 'width:15px;height:15px')}Confirmar</button>`)).join('') : '<div class="card"><div class="empty">No hay pedidos nuevos. Todo al día.</div></div>';
     const conf = peds.filter(p => p.estado === 'confirmado' && p.fecha >= hoy()).sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
     if (conf.length) h += `<div class="sec">Confirmados (${conf.length})</div><div class="card">` + conf.slice(0, 40).map(p => pedidoCoordRow(c, p, `<button type="button" class="sbtn bad" data-quitar="${esc(p.id)}">Quitar del turno</button>`)).join('') + '</div>';
     return h;
@@ -917,17 +997,18 @@
   document.addEventListener('click', (e) => {
     const t = e.target.closest('button, a[data-go]'); if (!t) return;
     const ds = t.dataset;
-    if (t.id === 'backBtn') { const r = S.route; go((r.name === 'coord' && r.cid) || r.name === 'admin' ? '#/coord' : '#/'); return; }
+    if (t.id === 'backBtn') { const r = S.route; go((r.name === 'coord' && r.cid) || r.name === 'admin' ? '#/coord' : r.name === 'turno' ? '#/mis' : '#/'); return; }
+    if (t.id === 'shareBtn') { const c = S.campanas[S.route.cid]; if (!c) return; const txt = `PPAM · ${c.nombre} (${c.ciudad || ''}). Anotate en un turno: ${linkCampana(c)}`; if (navigator.share && !window.__ppamMock) navigator.share({ title: c.nombre, text: txt }).catch(() => {}); else compartir(txt); return; }
     if (t.id === 'userBtn') {
       if (!S.user) { login(); return; }
-      const ov = sheet(`<h3>${esc(S.user.displayName || 'Mi cuenta')}</h3><p class="hint">${esc(S.user.email)}</p><button type="button" class="btn" id="uMis">Mis turnos</button><button type="button" class="btn alt" id="uOut">Cerrar sesión</button>`);
+      const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(S.user.displayName || S.user.email))}</span><div><h3>${esc(S.user.displayName || 'Mi cuenta')}</h3><p class="hint">${esc(S.user.email)}</p></div></div><button type="button" class="btn" id="uMis">Mis turnos</button><button type="button" class="btn alt" id="uOut">Cerrar sesión</button>`);
       ov.querySelector('#uMis').addEventListener('click', () => { ov.remove(); go('#/mis'); });
       ov.querySelector('#uOut').addEventListener('click', async () => { ov.remove(); await S.auth.signOut(); go('#/'); });
       return;
     }
     if (t.id === 'coordBtn') { go('#/coord'); return; }
     if (t.id === 'privBtn') { privacidad(); return; }
-    if (ds.go) { go(ds.go); return; }
+    if (ds.go) { const ov = t.closest('.ov'); if (ov) ov.remove(); go(ds.go); return; }
     if (ds.login !== undefined) { login(); return; }
     if (ds.ciudad) { S.ciudad = ds.ciudad; renderHome(); return; }
     if (ds.dia) { S.dia = ds.dia; renderCamp(); return; }
@@ -935,6 +1016,8 @@
     if (ds.mio) { go('#/mis'); return; }
     if (ds.lugar) { const [cid, pid] = ds.lugar.split('|'); verLugar(cid, pid); return; }
     if (ds.copiar) { copiar(ds.copiar); return; }
+    if (ds.ics) { agendar(ds.ics); return; }
+    if (ds.comp) { compartirTurno(ds.comp); return; }
     if (ds.cancelar) { cancelarPedido(ds.cancelar); return; }
     if (ds.tab) { S.coord.tab = ds.tab; renderCoord(); return; }
     if (ds.confirmar) { cambiarEstado(ds.confirmar, 'confirmado'); return; }
@@ -949,6 +1032,8 @@
     if (ds.nueva !== undefined) { nuevaCampana(); return; }
     if (ds.coords) { editarCoordinadores(ds.coords); return; }
   });
+
+  document.addEventListener('change', (e) => { if (e.target.id === 'fCiudad') { S.ciudad = e.target.value; renderHome(); } });
 
   if ('serviceWorker' in navigator && !window.__ppamMock && location.protocol === 'https:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});
   init();

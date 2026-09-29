@@ -1,6 +1,6 @@
 // Service worker de PPAM Entre Ríos: guarda la página para que abra rápido (los datos vienen siempre de Firestore).
-const CACHE = 'ppam-v6';
-const ASSETS = ['./', './index.html', './app.js?v=5', './app.css?v=5', './firebase-config.js?v=5', './manifest.json', './icon-192.png', './icon-512.png'];
+const CACHE = 'ppam-v7';
+const ASSETS = ['./', './index.html', './app.js?v=6', './app.css?v=6', './firebase-config.js?v=6', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
