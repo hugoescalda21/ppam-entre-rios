@@ -346,6 +346,68 @@ const SEED = {
     await cx.close();
   }
 
+  console.log('\nNota para el coordinador');
+  {
+    const luis = { uid: 'u-luis', email: 'luis@x.com', displayName: 'Luis Gómez' };
+    const cx = await b.newContext({ viewport: { width: 390, height: 1100 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    await cx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+    await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, ${JSON.stringify([luis])})`);
+    const m = await cx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
+    await m.goto(FILE + '#/c/parana-terminal'); await m.waitForTimeout(250); await m.click('#userBtn'); await m.waitForTimeout(300);
+    await m.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await m.waitForTimeout(150);
+    await m.click('[data-dia="2026-10-03"]'); await m.click('[data-pedir="t3"]'); await m.waitForTimeout(100);
+    check('el formulario tiene "Nota para el coordinador (opcional)" con 4 atajos y 0/200', /Nota para el coordinador\s*\(opcional\)\s*0\/200/i.test(await text(m, '.sheet')) && await m.evaluate(() => document.querySelectorAll('[data-atajo]').length === 4));
+    await m.click('[data-atajo="Voy con mi esposa/o"]'); await m.click('[data-atajo="Puedo llevar el carrito"]');
+    let v = await m.evaluate(() => ({ t: document.querySelector('#pNota').value, on: document.querySelectorAll('[data-atajo].on').length, c: document.querySelector('#pNotaCnt').textContent }));
+    check('los atajos se suman al texto y quedan marcados', v.t === 'Voy con mi esposa/o. Puedo llevar el carrito.' && v.on === 2 && v.c === '45/200', v);
+    await m.click('[data-atajo="Voy con mi esposa/o"]');
+    v = await m.evaluate(() => document.querySelector('#pNota').value);
+    check('tocar de nuevo un atajo lo saca', v === 'Puedo llevar el carrito.', v);
+    await m.fill('#pNota', 'x'.repeat(250));
+    check('no deja pasar de 200 letras', await m.evaluate(() => document.querySelector('#pNota').value.length === 200));
+    await m.fill('#pNota', 'Voy con mi esposa (Marta). Puedo llevar el carrito.');
+    await m.selectOption('#pCong', 'San Agustín (Paraná)'); await m.fill('#pCel', '343 555-2222'); await m.check('#pOk');
+    await m.screenshot({ path: SHOTS + '/pedir-nota.png' });
+    await m.click('#pGo'); await m.waitForTimeout(250);
+    const pid = 'parana-terminal__2026-10-03__t3__u-luis';
+    let ped = await m.evaluate((id) => window.__store['pedidos/' + id], pid);
+    check('la nota se guarda en el pedido (privado), no en el cupo', ped && ped.nota === 'Voy con mi esposa (Marta). Puedo llevar el carrito.' && !JSON.stringify(await m.evaluate(() => window.__store['cupos/parana-terminal__2026-10-03__t3'])).includes('Marta'), ped);
+    check('no queda guardada para el próximo turno', await m.evaluate(() => !JSON.stringify(localStorage).includes('Marta')));
+    await m.click('.sheet .btn.alt[data-cerrar]'); await m.waitForTimeout(80);
+    await m.evaluate((id) => { location.hash = '#/t/' + id; }, pid); await m.waitForTimeout(200);
+    check('"Tu turno" muestra la nota con "Cambiar"', /Nota para el coordinador\s*Voy con mi esposa \(Marta\)\. Puedo llevar el carrito\.\s*Cambiar/i.test(await text(m, '#app')), await text(m, '#app'));
+    await m.click('[data-nota]'); await m.waitForTimeout(100);
+    check('al cambiar, viene con la nota', await m.evaluate(() => document.querySelector('.sheet #pNota').value.startsWith('Voy con mi esposa')));
+    await m.fill('.sheet #pNota', 'Llego unos minutos tarde.'); await m.click('#nOk'); await m.waitForTimeout(200);
+    ped = await m.evaluate((id) => window.__store['pedidos/' + id], pid);
+    check('se guarda la nota nueva', ped.nota === 'Llego unos minutos tarde.' && ped.estado === 'pendiente', ped);
+    await m.click('[data-nota]'); await m.waitForTimeout(100); await m.fill('.sheet #pNota', ''); await m.click('#nOk'); await m.waitForTimeout(200);
+    ped = await m.evaluate((id) => window.__store['pedidos/' + id], pid);
+    check('vacía, se borra del pedido', !('nota' in ped) && /Sin nota\.\s*Agregar una nota/.test(await text(m, '#app')), ped);
+    await m.click('[data-nota]'); await m.waitForTimeout(100); await m.fill('.sheet #pNota', 'Es mi primera vez.'); await m.click('#nOk'); await m.waitForTimeout(200);
+    const seed2 = await m.evaluate(() => JSON.parse(JSON.stringify(window.__store)));
+    check('sin errores (nota)', m.errs.length === 0, m.errs);
+    await cx.close();
+    // El coordinador la ve
+    const cy = await b.newContext({ viewport: { width: 390, height: 1100 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    await cy.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+    await cy.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await cy.addInitScript(`(${mock.toString()})(${JSON.stringify(seed2)}, ${JSON.stringify([{ uid: 'u-co', email: 'coord@x.com', displayName: 'Carlos Vega' }])})`);
+    const k = await cy.newPage(); k.errs = []; k.on('pageerror', e => k.errs.push(e.message));
+    await k.goto(FILE); await k.waitForTimeout(250); await k.click('#userBtn'); await k.waitForTimeout(300); await k.click('#coordBtn'); await k.waitForTimeout(250);
+    check('el coordinador ve la nota en el pedido', /Luis Gómez[\s\S]*343 555-2222\s*Nota: Es mi primera vez\.\s*No confirmar\s*Confirmar/.test(await text(k, '#app')), await text(k, '#app'));
+    await k.screenshot({ path: SHOTS + '/coord-nota.png' });
+    await k.click('[data-confirmar]'); await k.waitForTimeout(200);
+    await k.click('[data-tab="dia"]'); await k.click('[data-cdia="2026-10-03"]'); await k.waitForTimeout(100);
+    check('y en la lista del día, debajo del turno', /Hall central\s*Luis Gómez \(San Agustín \(Paraná\)\) · 1\/3\s*Luis: Es mi primera vez\./.test(await text(k, '#app')), await text(k, '#app'));
+    await k.click('[data-listadia]');
+    const msg = await k.evaluate(() => decodeURIComponent(window.__opened.pop().split('text=')[1]));
+    check('la lista que se comparte por WhatsApp no lleva la nota', /Luis Gómez/.test(msg) && !/primera vez/.test(msg), msg);
+    check('sin errores (coordinador, nota)', k.errs.length === 0, k.errs);
+    await cy.close();
+  }
+
   await b.close(); console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;
 })();

@@ -405,6 +405,44 @@
     ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-cerrar]')) ov.remove(); });
     return ov;
   }
+  /* ---------- Nota para el coordinador (opcional, privada como el celular) ---------- */
+  const NOTA_MAX = 200;
+  const NOTA_ATAJOS = ['Voy con mi esposa/o', 'Puedo llevar el carrito', 'Es mi primera vez', 'Llego unos minutos tarde'];
+  function notaCampo(valor) {
+    return `<div class="fld nota-fld"><label for="pNota">Nota para el coordinador <span class="opc">(opcional)</span><span class="nt-cnt" id="pNotaCnt">${(valor || '').length}/${NOTA_MAX}</span></label>
+      <div class="nt-chips">${NOTA_ATAJOS.map(x => `<button type="button" data-atajo="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+      <textarea id="pNota" rows="2" maxlength="${NOTA_MAX}" placeholder="Por ejemplo: con quién vas, si podés llevar el carrito…">${esc(valor || '')}</textarea></div>`;
+  }
+  function bindNota(root) {
+    const ta = root.querySelector('#pNota'), cnt = root.querySelector('#pNotaCnt');
+    const pinta = () => {
+      cnt.textContent = ta.value.length + '/' + NOTA_MAX;
+      root.querySelectorAll('[data-atajo]').forEach(b => b.classList.toggle('on', ta.value.toLowerCase().includes(b.dataset.atajo.toLowerCase())));
+    };
+    ta.addEventListener('input', pinta);
+    root.querySelectorAll('[data-atajo]').forEach(b => b.addEventListener('click', () => {
+      const x = b.dataset.atajo;
+      const k = ta.value.toLowerCase().indexOf(x.toLowerCase());
+      if (k >= 0) ta.value = (ta.value.slice(0, k) + ta.value.slice(k + x.length).replace(/^\./, '')).replace(/\s{2,}/g, ' ').trim();
+      else ta.value = (ta.value.trim() ? ta.value.trim().replace(/[.]?$/, '. ') : '') + x + '.';
+      ta.value = ta.value.slice(0, NOTA_MAX);
+      pinta();
+    }));
+    pinta();
+  }
+  const notaHTML = (n, cls) => n ? `<div class="${cls || 'nota'}">${I('edit', 'width:15px;height:15px')}<span><b>Nota:</b> ${esc(n)}</span></div>` : '';
+  function editarNota(pid) {
+    const p = S.mis[pid]; if (!p) return;
+    const ov = sheet(`<h3>Nota para el coordinador</h3><p class="hint">La ven solo los coordinadores de esta campaña.</p>${notaCampo(p.nota)}
+      <p class="err hidden" id="nErr"></p><button type="button" class="btn" id="nOk">Guardar nota</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    bindNota(ov);
+    ov.querySelector('#nOk').addEventListener('click', async () => {
+      const v = ov.querySelector('#pNota').value.trim().slice(0, NOTA_MAX);
+      const b = ov.querySelector('#nOk'); b.disabled = true; b.textContent = 'Guardando…';
+      try { await S.db.doc('pedidos/' + pid).update({ nota: v ? v : S.del() }); ov.remove(); toast(v ? 'Nota guardada' : 'Nota borrada'); }
+      catch (e) { console.error(e); b.disabled = false; b.textContent = 'Guardar nota'; ov.querySelector('#nErr').textContent = 'No se pudo guardar. Probá de nuevo.'; ov.querySelector('#nErr').classList.remove('hidden'); }
+    });
+  }
   async function pedir(tid) {
     const c = S.campanas[S.route.cid], t = c && c.turnos[tid] && Object.assign({ id: tid }, c.turnos[tid]);
     if (!t) return;
@@ -424,14 +462,17 @@
       <div class="fld"><label for="pCong">Congregación</label><select id="pCong">${congs.length ? '<option value="">Elegí tu congregación</option>' : ''}${opts}</select></div>
       <div class="fld${pf.congregacion && !congs.includes(pf.congregacion) ? '' : ' hidden'}" id="pOtraF"><label for="pOtra">¿Cuál?</label><input id="pOtra" value="${esc(pf.congregacion && !congs.includes(pf.congregacion) ? pf.congregacion : '')}" placeholder="Nombre de tu congregación y ciudad"></div>
       <div class="fld"><label for="pCel">Celular (WhatsApp)</label><input id="pCel" type="tel" autocomplete="tel" value="${esc(pf.celular || '')}" placeholder="343 555-0000"></div>
+      ${notaCampo('')}
       <label class="ck"><input type="checkbox" id="pOk"${pf.acepto ? ' checked' : ''}> <span>Solo los coordinadores de esta campaña ven mis datos, para organizar los turnos. <a href="#" data-priv>Más info</a></span></label>
       <p class="err hidden" id="pErr"></p>
       <button type="button" class="btn" id="pGo">Anotarme en este turno</button><button type="button" class="btn alt" data-cerrar>Cancelar</button><p class="fine">Tus datos quedan guardados en este celular para la próxima vez.</p>`);
     const q = (s) => ov.querySelector(s);
+    bindNota(ov);
     q('#pCong').addEventListener('change', () => q('#pOtraF').classList.toggle('hidden', q('#pCong').value !== '__otra'));
     q('[data-priv]').addEventListener('click', (e) => { e.preventDefault(); privacidad(); });
     q('#pGo').addEventListener('click', async () => {
       const nombre = q('#pNom').value.trim(), apellido = q('#pApe').value.trim(), celular = q('#pCel').value.trim();
+      const nota = q('#pNota').value.trim().slice(0, NOTA_MAX);
       const congregacion = q('#pCong').value === '__otra' ? q('#pOtra').value.trim() : q('#pCong').value;
       const err = (m) => { q('#pErr').textContent = m; q('#pErr').classList.remove('hidden'); };
       if (!nombre || !apellido) return err('Completá tu nombre y apellido.');
@@ -441,7 +482,7 @@
       guardarPerfil({ nombre, apellido, congregacion, celular, acepto: true });
       const b = q('#pGo'); b.disabled = true; b.textContent = 'Enviando…';
       try {
-        await enviarPedido(c, t, S.dia, { nombre, apellido, congregacion, celular });
+        await enviarPedido(c, t, S.dia, { nombre, apellido, congregacion, celular, nota });
         ov.remove();
         const pid = cupoId(c.id, S.dia, t.id) + '__' + S.user.uid;
         sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>¡Listo! Te anotaste</h3><p>${esc(cap(fmtDia(S.dia)))} · ${esc(t.desde)} a ${esc(t.hasta)} · ${esc(p.nombre)}</p><p><span class="tag pendiente">Esperando confirmación</span><br>Cuando un coordinador lo confirme lo vas a ver en el inicio y en Mis turnos.</p></div><button type="button" class="btn" data-go="#/t/${esc(pid)}" data-cerrar>Ver mi turno</button><button type="button" class="btn alt" data-cerrar>Listo</button>`);
@@ -458,7 +499,7 @@
     batch.set(S.db.doc('pedidos/' + id + '__' + u.uid), {
       cid: c.id, fecha, tid: t.id, punto: t.punto, desde: t.desde, hasta: t.hasta, uid: u.uid, email: u.email.toLowerCase(),
       nombre: datos.nombre.slice(0, 60), apellido: datos.apellido.slice(0, 60), congregacion: datos.congregacion.slice(0, 80), celular: datos.celular.slice(0, 30),
-      estado: 'pendiente', creado: new Date().toISOString()
+      estado: 'pendiente', creado: new Date().toISOString(), ...(datos.nota ? { nota: String(datos.nota).slice(0, NOTA_MAX) } : {})
     });
     await batch.commit();
   }
@@ -536,6 +577,8 @@
     h += `<button type="button" data-ics="${esc(p.id)}">${I('cal')}Agendar</button><button type="button" data-comp="${esc(p.id)}">${I('share')}Compartir</button>`;
     h += !rech && !pasado ? `<button type="button" data-cancelar="${esc(p.id)}">${I('x')}Cancelar</button>` : `<button type="button" disabled>${I('x')}Cancelar</button>`;
     h += '</div>';
+    if (!rech && !pasado) h += `<div class="info nota-info"><b>Nota para el coordinador</b><p>${p.nota ? esc(p.nota) : '<span class="faint">Sin nota.</span>'}</p><button type="button" class="sbtn" data-nota="${esc(p.id)}">${I('edit', 'width:15px;height:15px')}${p.nota ? 'Cambiar' : 'Agregar una nota'}</button></div>`;
+    else if (p.nota) h += `<div class="info"><b>Nota para el coordinador</b><p>${esc(p.nota)}</p></div>`;
     if (pt.indicaciones) h += `<div class="info"><b>Cómo encontrarlo</b><p>${esc(pt.indicaciones)}</p></div>`;
     if (pt.retiro) h += `<div class="info"><b>${esc(retiroLabel(pt))}</b><p>${esc(pt.retiro)}</p></div>`;
     if (tieneLugar(pt)) h += `<button type="button" class="btn alt" data-lugar="${esc(p.cid)}|${esc(p.punto)}">${I('pin')}Ver fotos y datos del lugar</button>`;
@@ -606,7 +649,7 @@
     const pt = (c.puntos || {})[p.punto] || {};
     const wa = String(p.celular || '').replace(/\D/g, '');
     const pal = ['#E5EEEB|#12433F', '#F4ECDC|#8A6A2E', '#E6ECF5|#2F4B7A', '#F3E6EC|#7A3553'][(p.nombre || '').length % 4].split('|');
-    return `<div class="rq"><div class="t"><span class="ini" style="background:${pal[0]};color:${pal[1]}">${esc(iniciales(p.nombre + ' ' + p.apellido))}</span><div class="who"><b>${esc(p.nombre)} ${esc(p.apellido)}</b><small>${esc(p.congregacion)}</small></div><a class="wa" href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}" target="_blank" rel="noopener" aria-label="WhatsApp">${I('chat')}</a></div><div class="w">${I('cal', 'width:15px;height:15px')}<span>${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))} · ${esc(pt.nombre || '')}</span><span class="num tel">${esc(p.celular)}</span></div>${acciones ? `<div class="bb">${acciones}</div>` : ''}</div>`;
+    return `<div class="rq"><div class="t"><span class="ini" style="background:${pal[0]};color:${pal[1]}">${esc(iniciales(p.nombre + ' ' + p.apellido))}</span><div class="who"><b>${esc(p.nombre)} ${esc(p.apellido)}</b><small>${esc(p.congregacion)}</small></div><a class="wa" href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}" target="_blank" rel="noopener" aria-label="WhatsApp">${I('chat')}</a></div><div class="w">${I('cal', 'width:15px;height:15px')}<span>${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))} · ${esc(pt.nombre || '')}</span><span class="num tel">${esc(p.celular)}</span></div>${notaHTML(p.nota)}${acciones ? `<div class="bb">${acciones}</div>` : ''}</div>`;
   }
   function coordPedidos(c, pend, peds) {
     let h = `<div class="sec">Por confirmar</div>`;
@@ -648,7 +691,7 @@
     const ts = turnosDelDia(c, S.coord.dia);
     h += '<div class="card">' + ts.map(t => {
       const ps = peds.filter(p => p.fecha === S.coord.dia && p.tid === t.id && p.estado === 'confirmado');
-      return `<div class="row" style="display:block"><b>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc(c.puntos[t.punto].nombre)}</b><small>${ps.length ? ps.map(p => esc(p.nombre + ' ' + p.apellido) + ' (' + esc(p.congregacion) + ')').join(' · ') : 'Nadie confirmado todavía'} · ${ps.length}/${cupoDe(c, t)}</small></div>`;
+      return `<div class="row" style="display:block"><b>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc(c.puntos[t.punto].nombre)}</b><small>${ps.length ? ps.map(p => esc(p.nombre + ' ' + p.apellido) + ' (' + esc(p.congregacion) + ')').join(' · ') : 'Nadie confirmado todavía'} · ${ps.length}/${cupoDe(c, t)}</small>${ps.filter(p => p.nota).map(p => `<div class="nota chica">${I('edit', 'width:14px;height:14px')}<span><b>${esc(p.nombre)}:</b> ${esc(p.nota)}</span></div>`).join('')}</div>`;
     }).join('') + '</div>';
     h += `<div class="acts"><button type="button" class="sbtn pri" data-listadia>${I('share')}Compartir la lista por WhatsApp</button></div>`;
     return h;
@@ -1048,6 +1091,7 @@
     if (ds.copiar) { copiar(ds.copiar); return; }
     if (ds.ics) { agendar(ds.ics); return; }
     if (ds.comp) { compartirTurno(ds.comp); return; }
+    if (ds.nota) { editarNota(ds.nota); return; }
     if (ds.cancelar) { cancelarPedido(ds.cancelar); return; }
     if (ds.tab) { S.coord.tab = ds.tab; renderCoord(); return; }
     if (ds.confirmar) { cambiarEstado(ds.confirmar, 'confirmado'); return; }

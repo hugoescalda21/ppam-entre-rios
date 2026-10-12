@@ -1,5 +1,14 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Nota para el coordinador — 12 oct 2026 (caché ppam-v10)
+
+- Al pedir un turno hay una **nota opcional para el coordinador** (hasta 200 letras), con atajos de un toque: "Voy con mi esposa/o", "Puedo llevar el carrito", "Es mi primera vez" y "Llego unos minutos tarde" (se tocan de nuevo para sacarlos).
+- El coordinador la ve en el pedido (recuadro amarillo, antes de Confirmar) y en la lista del día, debajo del turno. No va en la lista que se comparte por WhatsApp.
+- Es privada como el celular: se guarda solo en el pedido y se borra si se cancela el turno. No queda guardada para el próximo pedido.
+- En "Tu turno" se puede agregar, cambiar o borrar.
+- Reglas: el pedido acepta `nota` (texto de 1 a 200 letras) y quien pidió puede cambiar solo su nota. Hay que publicarlas: desde `firebase/`, `firebase deploy --only firestore:rules`.
+- 93 pruebas de la página.
+
 ## Mis turnos más completa — 29 sep 2026 (caché ppam-v9)
 
 - Resumen del mes (turnos, horas y por confirmar), secciones Hoy · Próximos · Realizados y hojita de calendario en cada turno, con la miniatura de la foto del lugar si tiene.

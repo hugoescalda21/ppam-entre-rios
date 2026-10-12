@@ -93,9 +93,12 @@ service cloud.firestore {
 
     // Pedidos: los datos de quien pide un turno.
     match /pedidos/{id} {
+      // Nota para el coordinador: opcional, texto de hasta 200 letras.
+      function notaOk(d) { return !('nota' in d) || (d.nota is string && d.nota.size() > 0 && d.nota.size() <= 200); }
       function pedidoValido(d) {
         let cupo = /databases/$(database)/documents/cupos/$(d.cid + '__' + d.fecha + '__' + d.tid);
-        return d.keys().hasOnly(['cid', 'fecha', 'tid', 'punto', 'desde', 'hasta', 'uid', 'email', 'nombre', 'apellido', 'congregacion', 'celular', 'estado', 'creado']) &&
+        return d.keys().hasOnly(['cid', 'fecha', 'tid', 'punto', 'desde', 'hasta', 'uid', 'email', 'nombre', 'apellido', 'congregacion', 'celular', 'estado', 'creado', 'nota']) &&
+               notaOk(d) &&
                d.uid == request.auth.uid && d.email == mail() && d.estado == 'pendiente' &&
                id == d.cid + '__' + d.fecha + '__' + d.tid + '__' + request.auth.uid &&
                d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 60 &&
@@ -111,7 +114,9 @@ service cloud.firestore {
                      (gestiona(resource.data.cid) &&
                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'actualizado', 'por']) &&
                       request.resource.data.estado in ['pendiente', 'confirmado', 'rechazado']) ||
-                     (resource.data.uid == request.auth.uid && resource.data.estado == 'rechazado' && pedidoValido(request.resource.data)));
+                     (resource.data.uid == request.auth.uid && resource.data.estado == 'rechazado' && pedidoValido(request.resource.data)) ||
+                     // quien pidió puede cambiar o borrar su nota
+                     (resource.data.uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nota']) && notaOk(request.resource.data)));
       allow delete: if conSesion() && (resource.data.uid == request.auth.uid || gestiona(resource.data.cid));
     }
   }

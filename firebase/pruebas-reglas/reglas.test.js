@@ -111,6 +111,17 @@ const section = (t) => console.log('\n' + t);
   await check('el coordinador borra fotos de su campaña', assertSucceeds(db(CO).doc('fotos/' + CID + '__f1').delete()));
   await check('el coordinador guarda la ubicación de un punto', assertSucceeds(db(CO).doc('campanas/' + CID).update({ 'puntos.p1.lat': -31.74, 'puntos.p1.lng': -60.52, 'puntos.p1.direccion': 'Av. Ramírez 2598', portada: 'portada-x' })));
 
+  section('Nota para el coordinador');
+  await check('Beto pide con una nota', assertSucceeds(pedir(B, 't2', { nota: 'Voy con mi esposa.' })));
+  await check('Beto cambia su nota', assertSucceeds(db(B).doc(ped('t2', uidOf(B))).update({ nota: 'Es mi primera vez.' })));
+  await check('Beto borra su nota', assertSucceeds(db(B).doc(ped('t2', uidOf(B))).update({ nota: require('firebase/compat/app').default.firestore.FieldValue.delete() })));
+  await check('NO una nota de más de 200 letras', assertFails(db(B).doc(ped('t2', uidOf(B))).update({ nota: 'x'.repeat(201) })));
+  await check('NO una nota vacía', assertFails(db(B).doc(ped('t2', uidOf(B))).update({ nota: '' })));
+  await check('con la nota NO cambia otros datos', assertFails(db(B).doc(ped('t2', uidOf(B))).update({ nota: 'ok', estado: 'confirmado' })));
+  await check('otro NO cambia la nota de Beto', assertFails(db(A).doc(ped('t2', uidOf(B))).update({ nota: 'hola' })));
+  await check('el coordinador NO cambia la nota', assertFails(db(CO).doc(ped('t2', uidOf(B))).update({ nota: 'hola' })));
+  await check('NO se pide con una nota de más de 200 letras', assertFails(pedir(B, 't1', { nota: 'x'.repeat(201) })));
+
   await env.cleanup();
   console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;
