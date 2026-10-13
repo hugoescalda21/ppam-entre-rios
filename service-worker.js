@@ -1,11 +1,12 @@
 // Service worker de PPAM Entre Ríos: guarda la página para que abra rápido (los datos vienen siempre de Firestore).
-const CACHE = 'ppam-v18';
-const ASSETS = ['./', './index.html', './app.js?v=16', './app.css?v=16', './firebase-config.js?v=16', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png', './icon-64.png'];
+const CACHE = 'ppam-v19';
+const ASSETS = ['./', './index.html', './app.js?v=17', './app.css?v=17', './firebase-config.js?v=17', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png', './icon-64.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.origin !== location.origin) return;
   // Primero la red (así siempre ves la última versión); si no hay conexión, lo guardado.
-  e.respondWith(fetch(e.request).then(r => { const cp = r.clone(); caches.open(CACHE).then(c => c.put(e.request, cp)); return r; }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html'))));
+  // cache: 'no-cache' = siempre pregunta al servidor si hay algo nuevo (si no cambió, la respuesta es mínima).
+  e.respondWith(fetch(e.request, { cache: 'no-cache' }).then(r => { const cp = r.clone(); caches.open(CACHE).then(c => c.put(e.request, cp)); return r; }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html'))));
 });

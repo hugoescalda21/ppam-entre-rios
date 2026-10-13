@@ -543,3 +543,5 @@ label.sbtn { cursor: pointer; }
 .aviso-mapa b { display: block; font-size: 14px; }
 .pp.sel.conpts .lab { display: none; }
 .pp.sel.conpts .fan { top: -60px; }
+.macc { display: flex; gap: 8px; margin-top: 10px; }
+.macc .sbtn, .macc .go { flex: 1; justify-content: center; padding: 10px; }

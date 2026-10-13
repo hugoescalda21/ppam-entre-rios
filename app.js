@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '16';
+  const VERSION = '17';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -1363,7 +1363,7 @@
   // Lo que se muestra según el zoom: campañas o, muy de cerca, sus puntos.
   function itemsMapa() {
     const z = S.mapa.map.getZoom();
-    if (z >= 14.5) return S.mapa.cs.flatMap(x => x.pts.length ? x.pts.map(p => ({ tipo: 'pt', key: x.c.id + ':' + p.id, lat: p.lat, lng: p.lng, xs: [x], lab: p.nombre || x.c.nombre })) : [{ tipo: 'camp', key: x.c.id, lat: x.lat, lng: x.lng, xs: [x], lab: x.c.nombre }]);
+    if (z >= 14.5) return S.mapa.cs.flatMap(x => x.pts.length ? x.pts.map(p => ({ tipo: 'pt', key: x.c.id + ':' + p.id, lat: p.lat, lng: p.lng, xs: [x], lab: p.nombre || x.c.nombre, p })) : [{ tipo: 'camp', key: x.c.id, lat: x.lat, lng: x.lng, xs: [x], lab: x.c.nombre }]);
     return S.mapa.cs.map(x => ({ tipo: 'camp', key: x.c.id, lat: x.lat, lng: x.lng, xs: [x], lab: x.c.nombre }));
   }
   function agruparMapa(list) {
@@ -1389,12 +1389,19 @@
     S.mapa.capa.clearLayers();
     const gs = agruparMapa(itemsMapa()); S.mapa.grupos = gs;
     gs.forEach(g => {
-      const fan = g.xs.slice(0, 3).map((x, j, a) => `<span class="ph" style="left:${(j - (a.length - 1) / 2) * 50}px;transition-delay:${(.1 + j * .08).toFixed(2)}s"><span class="phi"${fotoAttr(x.c.id, x.c.portada, `background-image:${colorDe(x.c)};`)}>${x.c.portada ? '' : esc(iniciales(x.c.nombre))}</span></span>`).join('');
+      const fan = g.tipo === 'pt' && g.n === 1 ? fotoPunto(g.xs[0], g.items[0].p, 0)
+        : g.xs.slice(0, 3).map((x, j, a) => `<span class="ph" style="left:${(j - (a.length - 1) / 2) * 50}px;transition-delay:${(.1 + j * .08).toFixed(2)}s"><span class="phi"${fotoAttr(x.c.id, x.c.portada, `background-image:${colorDe(x.c)};`)}>${x.c.portada ? '' : esc(iniciales(x.c.nombre))}</span></span>`).join('');
       const html = `<div class="pp${g.tipo === 'pt' ? ' pt' : ''}${S.mapa.sel === g.key ? ' sel' : ''}" data-mk="${esc(g.key)}"><span class="rip"></span>${pinSvgMapa(COL_MAPA[g.est], g.n > 1 ? g.n : '')}<span class="fan">${fan}</span><span class="lab">${esc(g.lab)}${g.sub ? `<small>${esc(g.sub)}</small>` : ''}</span></div>`;
       const mk = L.marker([g.lat, g.lng], { icon: L.divIcon({ className: 'ppi', html, iconSize: [0, 0] }), title: g.lab + (g.sub ? ' ' + g.sub : ''), riseOnHover: true });
       mk.on('click', (ev) => { L.DomEvent.stopPropagation(ev); tocarPin(g, mk); });
       mk.addTo(S.mapa.capa); g.mk = mk;
     });
+  }
+  // La foto de un punto (la primera de sus fotos; si no tiene, la portada de la campaña).
+  function fotoPunto(x, p, left) {
+    const f = (p.fotos || [])[0], c = x.c;
+    const attr = f ? fotoAttr(c.id, f, `background-image:${colorDe(c)};`) : fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`);
+    return `<span class="ph" style="left:${left}px;transition-delay:.1s"><span class="phi"${attr}>${f || c.portada ? '' : esc(iniciales(p.nombre || c.nombre))}</span></span>`;
   }
   function tocarPin(g, mk) {
     const m = S.mapa.map;
@@ -1408,26 +1415,40 @@
     if (S.mapa.sel === g.key) { cerrarPin(); return; }
     document.querySelectorAll('.pp.sel').forEach(e => e.classList.remove('sel'));
     S.mapa.sel = g.key;
-    const el = mk.getElement() && mk.getElement().querySelector('.pp');
+    const el = g.tipo !== 'pt' && mk.getElement() && mk.getElement().querySelector('.pp');
     if (el) { el.classList.add('sel'); el.classList.toggle('conpts', g.tipo !== 'pt' && x.pts.length > 0); el.classList.remove('ripgo'); void el.offsetWidth; el.classList.add('ripgo'); }
     S.mapa.el.classList.add('dim');
     // Los carritos y stands de la campaña elegida, con su nombre, y el mapa encuadrado sobre ellos.
-    puntosCamp(x, g.tipo === 'pt' ? g.items[0].key : null);
+    if (g.tipo === 'pt') (S.mapa.grupos || []).forEach(gr => { if (gr.mk && gr.xs.length === 1 && gr.xs[0].c.id === c.id && S.mapa.capa.hasLayer(gr.mk)) S.mapa.capa.removeLayer(gr.mk); });   // sus carritos reemplazan al pin de la campaña
+    puntosCamp(x, g.tipo === 'pt' ? g.key : null);
     const H = m.getSize().y;
     if (g.tipo !== 'pt' && x.pts.length > 1) m.flyToBounds(window.L.latLngBounds(x.pts.map(p => [p.lat, p.lng])), { paddingTopLeft: [40, 70], paddingBottomRight: [40, Math.round(H * .45)], maxZoom: 16.5, duration: .7 });
     else { const z = Math.max(m.getZoom(), g.tipo === 'pt' ? m.getZoom() : 15); const pt = m.project([g.lat, g.lng], z).add([0, H * .22]); m.flyTo(m.unproject(pt, z), z, { duration: .6 }); }
     const npt = (c.puntos ? Object.keys(c.puntos).length : 0);
-    $('msBody').innerHTML = `<h4>${esc(c.ciudad || '')}${g.tipo === 'pt' ? ' · ' + esc(g.items[0].lab) : ''}</h4><div class="mcc"><span class="im"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), npt + (npt === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small><span class="f ${x.e.est}">${esc(x.e.txt)}</span></span><button type="button" class="go" data-go="#/c/${esc(c.id)}">Ver turnos</button></div>${x.pts.length < npt ? `<p class="mnota">${x.pts.length ? `${npt - x.pts.length} de ${npt} puntos todavía no están marcados en el mapa.` : `Los puntos de esta campaña todavía no están marcados en el mapa: aparece en el centro de ${esc(c.ciudad || 'su localidad')}.`}</p>` : ''}`;
+    if (g.tipo === 'pt' && g.items[0].p) {
+      const p = g.items[0].p, f = (p.fotos || [])[0];
+      $('msBody').innerHTML = `<h4>${esc(c.ciudad || '')} · ${esc(c.nombre)}</h4><div class="mcc"><span class="im"${f ? fotoAttr(c.id, f, `background-image:${colorDe(c)};`) : fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(p.nombre || 'Punto')}</b><small>${esc([(TIPOS[p.tipo] || TIPOS.otro)[1], p.detalle || p.direccion].filter(Boolean).join(' · '))}</small><span class="f ${x.e.est}">${esc(x.e.txt)}</span></span></div><div class="macc">${tieneLugar(p) ? `<button type="button" class="sbtn" data-lugar="${esc(c.id)}|${esc(p.id)}">${I('pin', 'width:15px;height:15px')}Ver lugar${(p.fotos || []).length > 1 ? ` (${p.fotos.length} fotos)` : ''}</button>` : ''}<button type="button" class="go" data-go="#/c/${esc(c.id)}">Ver turnos</button></div>`;
+    } else $('msBody').innerHTML = `<h4>${esc(c.ciudad || '')}${g.tipo === 'pt' ? ' · ' + esc(g.items[0].lab) : ''}</h4><div class="mcc"><span class="im"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), npt + (npt === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small><span class="f ${x.e.est}">${esc(x.e.txt)}</span></span><button type="button" class="go" data-go="#/c/${esc(c.id)}">Ver turnos</button></div>${x.pts.length < npt ? `<p class="mnota">${x.pts.length ? `${npt - x.pts.length} de ${npt} puntos todavía no están marcados en el mapa.` : `Los puntos de esta campaña todavía no están marcados en el mapa: aparece en el centro de ${esc(c.ciudad || 'su localidad')}.`}</p>` : ''}`;
     const sh = $('msheet'); sh.classList.remove('on'); void sh.offsetWidth; sh.classList.add('on');
     // Que se vea la tarjeta: si el mapa queda cortado abajo (por la barra), se acomoda la página.
     const r = $('mapw') && $('mapw').getBoundingClientRect(), tb = ($('tabbar') && $('tabbar').offsetHeight) || 0;
     if (r && r.bottom > window.innerHeight - tb) window.scrollBy({ top: r.bottom - (window.innerHeight - tb) + 8, behavior: 'smooth' });
   }
   // Pines chicos de los puntos de la campaña elegida (se ven aunque el mapa esté lejos).
-  function puntosCamp(x, menos) {
+  function puntosCamp(x, menos) {   // menos: el punto elegido (se muestra con su foto)
     const L = window.L;
     if (S.mapa.ptsCapa) S.mapa.ptsCapa.remove();
-    S.mapa.ptsCapa = L.layerGroup(x.pts.filter(p => x.c.id + ':' + p.id !== menos).map(p => L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'ppi', html: `<div class="pp pt pso">${pinSvgMapa(COL_MAPA[x.e.est], '')}<span class="lab">${esc(p.nombre || 'Punto')}</span></div>`, iconSize: [0, 0] }), interactive: false, zIndexOffset: 500 }))).addTo(S.mapa.map);
+    S.mapa.ptsCapa = L.layerGroup(x.pts.map(p => {
+      const esSel = x.c.id + ':' + p.id === menos;
+      const mk = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'ppi', html: `<div class="pp pt pso${esSel ? ' sel ripgo' : ''}">${pinSvgMapa(COL_MAPA[x.e.est], '')}<span class="fan">${fotoPunto(x, p, 0)}</span><span class="lab">${esc(p.nombre || 'Punto')}</span></div>`, iconSize: [0, 0] }), title: p.nombre || 'Punto', zIndexOffset: 500 });
+      mk.on('click', (ev) => {   // tocar un carrito de la campaña: su foto y sus datos
+        L.DomEvent.stopPropagation(ev);
+        const it = { tipo: 'pt', key: x.c.id + ':' + p.id, lat: p.lat, lng: p.lng, xs: [x], lab: p.nombre || x.c.nombre, p };
+        if (S.mapa.sel === it.key) { cerrarPin(); return; }
+        S.mapa.sel = null; tocarPin({ tipo: 'pt', n: 1, xs: [x], items: [it], lat: p.lat, lng: p.lng, key: it.key }, mk);
+      });
+      return mk;
+    })).addTo(S.mapa.map);
   }
   function cerrarPin(sinRedibujar) {
     if (!S.mapa.el) return;
@@ -1512,6 +1533,15 @@
 
   document.addEventListener('change', (e) => { if (e.target.id === 'fCiudad') { S.ciudad = e.target.value; renderHome(); } });
 
-  if ('serviceWorker' in navigator && !window.__ppamMock && location.protocol === 'https:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+  // Versión nueva: el service worker se busca sin caché al abrir (y cada vez que se vuelve a la app);
+  // cuando la nueva toma el control, la página se recarga sola una vez para mostrarla.
+  if ('serviceWorker' in navigator && !window.__ppamMock && location.protocol === 'https:') {
+    const habia = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).then((reg) => {
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+    }).catch(() => {});
+    let recargo = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (habia && !recargo) { recargo = true; location.reload(); } });
+  }
   init();
 })();

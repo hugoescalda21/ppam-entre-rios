@@ -1,5 +1,12 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Foto de cada carrito en el mapa y actualización al instante — 13 oct 2026 (caché ppam-v19)
+
+- Al tocar un carrito o stand en el mapa se muestra **su** foto (la primera de las que cargó el coordinador; si no tiene, la portada de la campaña), su nombre, el tipo y la dirección, con **Ver lugar** (todas sus fotos, mapa y "Cómo llegar") y **Ver turnos**.
+- Los carritos de la campaña elegida se pueden tocar uno por uno; reemplazan al pin de la campaña.
+- Actualización: la página pregunta siempre al servidor si hay algo nuevo y, cuando llega una versión, se recarga sola una vez. Ya no hay que esperar ni cerrar la app.
+- Versión 17. 151 pruebas de la página.
+
 ## Mapa: arranca sobre las campañas y más limpio — 13 oct 2026 (caché ppam-v17)
 
 - El mapa arranca encuadrado sobre las campañas (sus puntos), no sobre toda la provincia; si se filtra por ciudad, se vuelve a encuadrar. El botón de encuadrar vuelve a mostrar todas.

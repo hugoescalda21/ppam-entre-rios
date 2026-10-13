@@ -546,6 +546,8 @@ const SEED = {
     const seed = JSON.parse(JSON.stringify(SEED)); delete seed['campanas/vieja'];
     seed['campanas/parana-terminal'].puntos.p1.lat = -31.7376; seed['campanas/parana-terminal'].puntos.p1.lng = -60.5243;
     seed['campanas/parana-terminal'].puntos.p2.lat = -31.7381; seed['campanas/parana-terminal'].puntos.p2.lng = -60.5235;
+    seed['campanas/parana-terminal'].puntos.p2.fotos = ['fhall'];
+    seed['fotos/parana-terminal__fhall'] = { cid: 'parana-terminal', data: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==', creado: 'x' };
     seed['campanas/parana-costanera'] = { nombre: 'Costanera', ciudad: 'Paraná', desde: '2026-10-01', hasta: '2026-11-30', activa: true, puntos: { p1: { nombre: 'Rosedal', tipo: 'stand', cupo: 2, lat: -31.7194, lng: -60.5333 } }, turnos: { t1: { punto: 'p1', desde: '09:00', hasta: '11:00', dias: [1, 3, 5, 6] } } };
     seed['campanas/feliciano-x'] = { nombre: 'Plaza', ciudad: 'Pueblo Inventado', desde: '2026-10-01', hasta: '2026-11-30', activa: true, puntos: { p1: { nombre: 'Plaza', tipo: 'stand', cupo: 2 } }, turnos: {} };
     const cx = await b.newContext({ viewport: { width: 390, height: 900 }, timezoneId: 'America/Argentina/Buenos_Aires', geolocation: { latitude: -32.618, longitude: -60.155 }, permissions: ['geolocation'] });
@@ -576,6 +578,10 @@ const SEED = {
     check('la campaña elegida muestra sus puntos con su nombre (Hall central)', await m.evaluate(() => [...document.querySelectorAll('.pso .lab')].map(x => x.textContent).join() === 'Hall central' || [...document.querySelectorAll('.pso .lab')].map(x => x.textContent).sort().join() === 'Andén 1,Hall central'));
     check('tocar una campaña: se vuelve su foto y sube la tarjeta con los lugares que faltan', ab.sel && ab.dim && ab.on && /Terminal de ómnibus/.test(ab.t) && /2 puntos/.test(ab.t) && /Faltan \d+ lugares|Falta 1 lugar/.test(ab.t), ab);
     await m.screenshot({ path: SHOTS + '/mapa-terminal.png' });
+    await m.evaluate(() => [...document.querySelectorAll('.pso')].find(x => /Hall central/.test(x.textContent)).querySelector('.pin').dispatchEvent(new MouseEvent('click', { bubbles: true }))); await m.waitForTimeout(900);
+    const hp = await m.evaluate(() => ({ t: document.getElementById('msBody').innerText.replace(/\s+/g, ' '), foto: (document.querySelector('#msBody .im') || {}).dataset && document.querySelector('#msBody .im').dataset.foto, pin: !!document.querySelector('.pso.sel [data-foto="parana-terminal__fhall"]'), lugar: !!document.querySelector('#msBody [data-lugar="parana-terminal|p2"]') }));
+    check('tocar un carrito: muestra SU foto, su nombre y "Ver lugar"', /Hall central/.test(hp.t) && hp.foto === 'parana-terminal__fhall' && hp.pin && hp.lugar, hp);
+    await m.screenshot({ path: SHOTS + '/mapa-punto.png' });
     // una campaña sin puntos marcados: lo avisa en la tarjeta
     await m.evaluate(() => { const S = window.__ppam; S.mapa.cs.push({ c: { id: 'x1', nombre: 'Sin marcar', ciudad: 'Crespo', puntos: { a: { nombre: 'A' }, b: { nombre: 'B' } } }, e: { est: 'ok', txt: 'Faltan 2 lugares esta semana' }, lat: -32.028, lng: -60.307, pts: [] }); });
     await m.evaluate(() => { const S = window.__ppam; S.mapa.sel = null; });
