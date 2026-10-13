@@ -110,6 +110,17 @@ const SEED = {
   check('inicio: las campañas vigentes (no la que ya terminó)', /Terminal de ómnibus/.test(home) && /Costanera/.test(home) && !/Campaña vieja/.test(home), home);
   check('cobertura de la primera semana en la tarjeta', /Terminal de ómnibus[\s\S]*11%\s*Faltan 24 lugares en los próximos 7 días/.test(home) && /Costanera[\s\S]*0%\s*Faltan 6 lugares en los próximos 7 días/.test(home), home);
   check('sin sesión: bienvenida con campañas activas y lugares libres de la semana', /Sumate a un turno[\s\S]*2\s*campañas activas\s*\d+\s*lugares libres esta semana\s*Ver turnos libres/.test(home) && await p.evaluate(() => document.getElementById('userBtn').textContent === 'Ingresar'), home.slice(0, 300));
+  check('accesibilidad: la pantalla no se relee entera en cada cambio (sin aria-live en <main>)', await p.evaluate(() => !document.getElementById('app').hasAttribute('aria-live') && !document.getElementById('app').hasAttribute('aria-busy') && window.__ppamOk === true && document.getElementById('toast').getAttribute('role') === 'status'));
+  {
+    const cx = await b.newContext({ viewport: { width: 390, height: 844 } });
+    await cx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+    await cx.route(/gstatic|googleapis|openstreetmap|app\.js/, r => r.abort());
+    const q = await cx.newPage(); await q.goto(FILE); await q.waitForTimeout(200);
+    check('mientras carga dice "Cargando las campañas…"', /Cargando las campañas…/.test(await text(q, '#app')));
+    await q.clock.runFor(13000); await q.waitForTimeout(100);
+    check('si no carga en 12 segundos (mala señal): aviso y "Reintentar"', /No pudimos cargar las campañas\.[\s\S]*Reintentar/.test(await text(q, '#app')), await text(q, '#app'));
+    await cx.close();
+  }
   check('filtro por ciudad', await p.evaluate(() => [...document.querySelectorAll('#fCiudad option')].map(x => x.textContent).join() === 'Toda la provincia,Concordia,Paraná'));
   await p.selectOption('#fCiudad', 'Concordia'); await p.waitForTimeout(50);
   check('filtrando Concordia queda solo la Costanera', await p.evaluate(() => document.querySelectorAll('.camp').length === 1 && /Costanera/.test(document.querySelector('.camp').innerText)));

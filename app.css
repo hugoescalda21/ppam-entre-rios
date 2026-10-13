@@ -757,3 +757,4 @@ a.btn { display: flex; align-items: center; justify-content: center; gap: 8px; t
 .hrow .htx .ok { color: var(--ok); font-weight: 600; }
 .hrow .sbtn { padding: 6px 10px; font-size: 12.5px; gap: 4px; }
 .seg2.aj button { font-size: 13px; }
+.carga-err b { color: var(--ink); font-size: 15px; }

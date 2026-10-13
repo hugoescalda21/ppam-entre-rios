@@ -1,5 +1,13 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Carga con mala señal y accesibilidad — 13 oct 2026 (caché ppam-v31)
+
+- Si a los 12 segundos no cargaron las campañas (mala señal, link abierto en la calle), en lugar de "Cargando…" para siempre aparece un aviso con "Reintentar". También si Firebase devuelve error.
+- Los scripts cargan en diferido: la página se ve enseguida aunque la conexión sea lenta.
+- Accesibilidad: se quitó aria-live de toda la pantalla (los lectores de pantalla la releían entera); los avisos siguen en el aviso de estado.
+- Seguridad: la llave de Firebase quedó limitada a la página (hugoescalda21.github.io) y a los dominios de Firebase, desde Google Cloud.
+- Versión 29. 221 pruebas de la página.
+
 ## Historial de cambios (auditoría) — 13 oct 2026 (caché ppam-v30)
 
 - Nueva colección "auditoria": cada cambio importante deja una línea (quién, qué, cuándo, con la hora del servidor). Las reglas solo dejan agregar; nadie edita ni borra (el administrador limpia lo de más de 6 meses).
