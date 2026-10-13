@@ -1,5 +1,14 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Ajustes ordenados por punto y días de la campaña — 13 oct 2026 (caché ppam-v21)
+
+- Coordinación > Ajustes en dos pestañas: **Campaña** (portada, nombre, fechas, visibilidad) y **Puntos y turnos** (se abre primero).
+- Cada punto es una tarjeta con sus turnos adentro (como botones; los días se dicen una vez si son iguales), su estado en el mapa y sus avisos.
+- "+ Turno" en cada punto: viene con ese punto elegido y propone el horario siguiente al último, con los mismos días.
+- "Copiar los horarios de otro punto" en los puntos sin turnos.
+- Campañas de menos de una semana: al crear o editar un turno se ven solo los días que tiene la campaña, con su fecha ("Vie 6, Sáb 7"). Si un turno tiene días fuera (por ejemplo, porque se acortaron las fechas), se avisa en su punto y al guardarlo se quitan. Al copiar horarios no se copian esos días.
+- Versión 19. 166 pruebas de la página.
+
 ## Día de campaña más corto y aviso de turno repetido — 13 oct 2026 (caché ppam-v20)
 
 - Al elegir un día, arriba se ve el resumen ("4 carritos · 16 lugares libres") y un filtro **Todos | Con lugar** que oculta los horarios completos.

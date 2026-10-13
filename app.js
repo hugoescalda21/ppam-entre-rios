@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '18';
+  const VERSION = '19';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -221,6 +221,13 @@
   }
 
   /* ---------- Días y turnos de una campaña ---------- */
+  // Campaña de menos de una semana: los días que realmente tiene ([{ d: día de la semana, n: número de día }]); si dura 7 días o más, null
+  function diasCorta(c) {
+    if (!c.desde || !c.hasta || c.hasta < c.desde) return null;
+    const a = parseIso(c.desde), b = parseIso(c.hasta), r = [];
+    for (let x = new Date(a); x <= b && r.length < 8; x.setDate(x.getDate() + 1)) r.push({ d: x.getDay(), n: x.getDate() });
+    return r.length < 7 ? r : null;
+  }
   function diasDe(c, max) {
     const out = [], turnos = Object.values(c.turnos || {});
     if (!c.desde || !c.hasta || !turnos.length) return out;
@@ -764,8 +771,11 @@
   /* ---------- Configurar una campaña (coordinadores y administradores) ---------- */
   function coordConfig(c) {
     const puntos = Object.keys(c.puntos || {}).map(id => Object.assign({ id }, c.puntos[id]));
-    const turnos = Object.keys(c.turnos || {}).map(id => Object.assign({ id }, c.turnos[id])).sort((a, b) => (a.punto + a.desde).localeCompare(b.punto + b.desde));
-    let h = `<div class="sec">Datos de la campaña</div><div class="card" style="padding:12px 13px 4px;">
+    const turnos = Object.keys(c.turnos || {}).map(id => Object.assign({ id }, c.turnos[id])).sort((a, b) => (a.desde + a.hasta).localeCompare(b.desde + b.hasta));
+    const aj = S.coord.aj || 'puntos';
+    let h = `<div class="seg2 aj"><button type="button" data-aj="campana" class="${aj === 'campana' ? 'on' : ''}">Campaña</button><button type="button" data-aj="puntos" class="${aj === 'puntos' ? 'on' : ''}">Puntos y turnos</button></div>`;
+    if (aj === 'campana') {
+      h += `<div class="sec">Datos de la campaña</div><div class="card" style="padding:12px 13px 4px;">
       <div class="lbl">Foto de portada</div><div class="portada"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></div>
       <div class="pills"><label class="sbtn">${I('camera')}${c.portada ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" id="cfFoto" hidden></label>${c.portada ? '<button type="button" class="sbtn bad" id="cfFotoDel">Quitar foto</button>' : ''}</div>
       <p class="small-hint">Una foto apaisada del lugar, sin personas reconocibles. Se achica sola antes de subirse. Sin foto se usa el color de la campaña.</p>
@@ -774,14 +784,41 @@
       <div class="two"><div class="fld"><label for="cfDes">Desde</label><input id="cfDes" type="date" value="${esc(c.desde || '')}"></div><div class="fld"><label for="cfHas">Hasta</label><input id="cfHas" type="date" value="${esc(c.hasta || '')}"></div></div>
       <label class="ck"><input type="checkbox" id="cfAct"${c.activa !== false ? ' checked' : ''}> <span>Visible para todos (si la desmarcás, deja de aparecer en el inicio)</span></label>
       <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div>`;
+      return h;
+    }
     const vistosT = {}, repetidos = new Set();
     turnos.forEach(t => { (t.dias || []).forEach(d => { const k = t.punto + '|' + t.desde + '|' + t.hasta + '|' + d; if (vistosT[k] && vistosT[k] !== t.id) { repetidos.add(t.id); repetidos.add(vistosT[k]); } else vistosT[k] = t.id; }); });
-    const sinMarcar = puntos.filter(p => p.lat == null).length;
-    if (puntos.length && sinMarcar) h += `<div class="aviso-mapa">${I('pin', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>${sinMarcar === puntos.length ? 'Ningún punto está marcado en el mapa' : `${sinMarcar} de ${puntos.length} puntos sin marcar en el mapa`}</b>Para que aparezcan en el mapa del Inicio, entrá a cada punto con "Editar" y tocá el mapa donde está el carrito (o "Estoy acá" parado en el lugar).</span></div>`;
-    h += `<div class="sec">Puntos <button type="button" class="sbtn" data-punto="">+ Punto</button></div><div class="card">` + (puntos.map(p => `<div class="edit-row"><div><b class="er-t"><span class="er-ic">${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin', 'width:16px;height:16px')}</span>${esc(p.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc((TIPOS[p.tipo] || TIPOS.otro)[1])} · ${cupoDe(c, { punto: p.id })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small><small style="display:block;font-size:11.5px;color:${p.lat != null ? 'var(--ok)' : 'var(--warn)'};">${p.lat != null ? 'Marcado en el mapa' : tieneUbic(p) ? 'Con dirección, sin marcar en el mapa' : 'Sin marcar en el mapa'}${(p.fotos || []).length ? ' · ' + p.fotos.length + ((p.fotos.length === 1) ? ' foto' : ' fotos') : ''}</small></div><button type="button" class="sbtn" data-punto="${esc(p.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá el primer punto (un carrito, un stand…).</div>') + '</div>';
-    if (repetidos.size) h += `<div class="aviso-mapa" id="avRep">${I('alert', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>${repetidos.size === 2 ? 'Hay un turno repetido' : 'Hay turnos repetidos'}</b>El mismo punto tiene dos turnos con el mismo horario y día. Los hermanos lo ven dos veces. Revisá los marcados abajo y borrá el que sobra (o cambiale el horario).</span></div>`;
-    h += `<div class="sec">Turnos <button type="button" class="sbtn" data-turno="" ${puntos.length ? '' : 'disabled'}>+ Turno</button></div><div class="card">` + (turnos.map(t => `<div class="edit-row${repetidos.has(t.id) ? ' rep' : ''}"><div><b>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc((c.puntos[t.punto] || {}).nombre || '¿?')}</b>${repetidos.has(t.id) ? '<span class="tag rep">Repetido</span>' : ''}<small style="display:block;color:var(--soft);font-size:12px;">${(t.dias || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', ') || 'Ningún día'}</small></div><button type="button" class="sbtn" data-turno="${esc(t.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá los horarios de cada punto (por ejemplo, 8 a 10, de lunes a sábado).</div>') + '</div>';
+    const corta = diasCorta(c), validos = corta ? corta.map(x => x.d) : [0, 1, 2, 3, 4, 5, 6];
+    const diasTxt = (ds) => corta ? corta.filter(x => (ds || []).includes(x.d)).map(x => DOW[x.d] + ' ' + x.n).join(', ') || 'Ningún día de la campaña' : (ds || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', ') || 'Ningún día';
+    const fuera = (t) => (t.dias || []).filter(d => !validos.includes(d));
+    const conTurnos = puntos.filter(p => turnos.some(t => t.punto === p.id));
+    h += `<div class="sec">Puntos y turnos <button type="button" class="sbtn" data-punto="">+ Punto</button></div>`;
+    if (!puntos.length) h += '<div class="card"><div class="empty">Agregá el primer punto (un carrito, un stand…). Después le cargás sus horarios.</div></div>';
+    puntos.forEach(p => {
+      const ts = turnos.filter(t => t.punto === p.id), mismos = ts.length > 1 && ts.every(t => diasTxt(t.dias) === diasTxt(ts[0].dias));
+      const rep = ts.filter(t => repetidos.has(t.id)).length, nf = (p.fotos || []).length;
+      h += `<div class="pc aj"><div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}</div><div class="tx"><b>${esc(p.nombre)}</b><small>${esc((TIPOS[p.tipo] || TIPOS.otro)[1])} · ${cupoDe(c, { punto: p.id })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small><small class="est ${p.lat != null ? 'ok' : 'warn'}">${p.lat != null ? 'Marcado en el mapa' : 'Sin marcar en el mapa: tocá Editar'}${nf ? ' · ' + nf + (nf === 1 ? ' foto' : ' fotos') : ''}</small></div><button type="button" class="sbtn" data-punto="${esc(p.id)}">Editar</button></div>`;
+      const tf = ts.filter(t => fuera(t).length);
+      if (tf.length) h += `<div class="pav fue">${I('cal', 'width:14px;height:14px;flex-shrink:0;margin-top:1px')}<span><b>${tf.length === 1 ? 'Un turno tiene' : tf.length + ' turnos tienen'} días fuera de la campaña</b> (${esc([...new Set(tf.flatMap(fuera))].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', '))}). No se muestran a nadie. Tocá el turno y guardalo para corregirlo.</span></div>`;
+      if (rep) h += `<div class="pav" id="avRep">${I('alert', 'width:14px;height:14px;flex-shrink:0;margin-top:1px')}<span><b>${rep === 2 ? 'Hay un turno repetido' : 'Hay turnos repetidos'}</b> Los hermanos ven dos botones iguales. Borrá el que sobra, o dejá uno solo y subile el cupo al punto.</span></div>`;
+      h += `<div class="tlbl">${ts.length ? (ts.length === 1 ? '1 turno' : ts.length + ' turnos') + (mismos ? ' · ' + esc(diasTxt(ts[0].dias)) : '') : 'Sin turnos todavía'}</div>`;
+      h += `<div class="tch">${ts.map(t => `<button type="button" class="tchip${repetidos.has(t.id) || fuera(t).length ? ' rep' : ''}" data-turno="${esc(t.id)}"><b class="num">${esc(t.desde)}–${esc(t.hasta)}</b>${repetidos.has(t.id) ? '<small class="r">Repetido</small>' : fuera(t).length ? '<small class="r">Días fuera</small>' : mismos ? '' : `<small>${esc(diasTxt(t.dias))}</small>`}</button>`).join('')}<button type="button" class="tchip add" data-turno="" data-tpto="${esc(p.id)}">+ Turno</button></div>`;
+      if (!ts.length && conTurnos.length) h += `<button type="button" class="linkish cph" data-cph="${esc(p.id)}">Copiar los horarios de otro punto</button>`;
+      h += '</div>';
+    });
+    const huerf = turnos.filter(t => !(c.puntos || {})[t.punto]);
+    if (huerf.length) h += `<div class="pc aj"><div class="tlbl">Turnos de un punto que ya no existe</div><div class="tch">${huerf.map(t => `<button type="button" class="tchip rep" data-turno="${esc(t.id)}"><b class="num">${esc(t.desde)}–${esc(t.hasta)}</b><small>${esc(diasTxt(t.dias))}</small></button>`).join('')}</div></div>`;
     return h;
+  }
+  function copiarHorarios(c, pid) {
+    const otros = Object.keys(c.puntos || {}).filter(k => k !== pid && Object.values(c.turnos || {}).some(t => t.punto === k));
+    const ov = sheet(`<h3>Copiar horarios</h3><p class="hint">Se cargan en <b>${esc(c.puntos[pid].nombre)}</b> los mismos turnos (horario y días) del punto que elijas. Después los podés cambiar uno por uno.</p>${otros.map(k => { const ts = Object.values(c.turnos).filter(t => t.punto === k).sort((a, b) => a.desde.localeCompare(b.desde)); return `<button type="button" class="btn alt cphb" data-de="${esc(k)}" style="text-align:left;display:block;"><b>${esc(c.puntos[k].nombre)}</b><small style="display:block;font-weight:500;color:var(--ink3);">${ts.map(t => esc(t.desde)).join(' · ')}</small></button>`; }).join('')}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    ov.querySelectorAll('[data-de]').forEach(bt => bt.addEventListener('click', async () => {
+      const upd = {};
+      const corta = diasCorta(c); Object.values(c.turnos).filter(t => t.punto === bt.dataset.de).forEach(t => { const dias = (t.dias || []).filter(d => !corta || corta.some(x => x.d === d)); if (dias.length) upd['turnos.t' + uidGen()] = { punto: pid, desde: t.desde, hasta: t.hasta, dias }; });
+      if (!Object.keys(upd).length) { toast('Ese punto no tiene turnos en los días de esta campaña.'); return; }
+      try { await S.db.doc('campanas/' + c.id).update(upd); ov.remove(); toast(Object.keys(upd).length === 1 ? '1 turno copiado' : Object.keys(upd).length + ' turnos copiados'); } catch (e) { console.error(e); toast('No se pudo copiar.'); }
+    }));
   }
   const uidGen = () => Math.random().toString(36).slice(2, 9);
   async function guardarCampo(c, path, value, msg) {
@@ -789,6 +826,7 @@
     catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); return false; }
   }
   function bindConfig(c) {
+    if (!$('cfSave')) return;
     $('cfFoto').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; if (f) subirPortada(c, f); });
     if ($('cfFotoDel')) $('cfFotoDel').addEventListener('click', async () => {
       if (!confirm('¿Quitar la foto de portada?')) return;
@@ -1013,13 +1051,20 @@
       try { await b.commit(); ov.remove(); toast('Punto borrado'); } catch (e) { toast('No se pudo borrar.'); }
     });
   }
-  function editarTurno(c, tid) {
-    const t = tid ? c.turnos[tid] : { punto: Object.keys(c.puntos)[0], desde: '08:00', hasta: '10:00', dias: [1, 2, 3, 4, 5, 6] };
-    const orden = [1, 2, 3, 4, 5, 6, 0];
-    const ov = sheet(`<h3>${tid ? 'Editar turno' : 'Nuevo turno'}</h3><p class="hint">Se repite todos los días marcados, entre las fechas de la campaña.</p>
+  function editarTurno(c, tid, pto) {
+    let t = tid ? c.turnos[tid] : { punto: pto && c.puntos[pto] ? pto : Object.keys(c.puntos)[0], desde: '08:00', hasta: '10:00', dias: [1, 2, 3, 4, 5, 6] };
+    if (!tid) {   // un turno nuevo sigue al último del punto (mismo largo y días); si el punto no tiene, toma los días de la campaña
+      const todos = Object.values(c.turnos || {}), del = todos.filter(x => x.punto === t.punto).sort((a, b) => a.hasta.localeCompare(b.hasta)), u = del[del.length - 1];
+      const m = (x) => +x.slice(0, 2) * 60 + +x.slice(3), hh = (n) => pad(Math.floor(n / 60)) + ':' + pad(n % 60);
+      if (u && m(u.hasta) + m(u.hasta) - m(u.desde) <= 23 * 60 + 59) t = Object.assign({}, t, { desde: u.hasta, hasta: hh(m(u.hasta) + m(u.hasta) - m(u.desde)), dias: (u.dias || []).slice() });
+      else if (todos.length) t = Object.assign({}, t, { dias: (todos[0].dias || []).slice() });
+    }
+    const corta = diasCorta(c), orden = corta ? corta.map(x => x.d) : [1, 2, 3, 4, 5, 6, 0];
+    if (corta && !tid && !(t.dias || []).some(d => orden.includes(d))) t = Object.assign({}, t, { dias: orden.slice() });
+    const ov = sheet(`<h3>${tid ? 'Editar turno' : 'Nuevo turno'}</h3><p class="hint">${corta ? 'Elegí en qué días de la campaña va este horario.' : 'Se repite todos los días marcados, entre las fechas de la campaña.'}</p>
       <div class="fld"><label for="tuPto">Punto</label><select id="tuPto">${Object.keys(c.puntos).map(pid => `<option value="${esc(pid)}"${pid === t.punto ? ' selected' : ''}>${esc(c.puntos[pid].nombre)}</option>`).join('')}</select></div>
       <div class="two"><div class="fld"><label for="tuDes">Desde</label><input id="tuDes" type="time" value="${esc(t.desde)}"></div><div class="fld"><label for="tuHas">Hasta</label><input id="tuHas" type="time" value="${esc(t.hasta)}"></div></div>
-      <div class="fld"><label>Días</label><div class="wd">${orden.map(d => `<label><input type="checkbox" value="${d}"${(t.dias || []).includes(d) ? ' checked' : ''}><span>${DOW[d]}</span></label>`).join('')}</div></div>
+      <div class="fld"><label>${corta ? 'Días de la campaña' : 'Días'}</label><div class="wd">${(corta || orden.map(d => ({ d }))).map(x => `<label><input type="checkbox" value="${x.d}"${(t.dias || []).includes(x.d) ? ' checked' : ''}><span>${DOW[x.d]}${corta ? ' ' + x.n : ''}</span></label>`).join('')}</div>${corta && tid && (t.dias || []).some(d => !orden.includes(d)) ? '<p class="small-hint" style="color:var(--warn)">Tenía días fuera de la campaña; al guardar se quitan.</p>' : ''}</div>
       ${tid ? '' : '<label class="ck"><input type="checkbox" id="tuMas"> <span>Crear también los turnos siguientes, uno detrás del otro, hasta:</span></label><div class="fld hidden" id="tuMasF"><input id="tuFin" type="time" value="20:00"></div>'}
       <button type="button" class="btn" id="tuOk">Guardar</button>${tid ? '<button type="button" class="btn alt" id="tuDel" style="color:var(--bad)">Borrar este turno</button>' : ''}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
     const q = (s) => ov.querySelector(s);
@@ -1546,7 +1591,9 @@
     if (ds.voluntarios !== undefined) { const c = S.campanas[S.route.cid]; compartir(textoVoluntarios(c, diasDe(c))); return; }
     if (ds.listadia !== undefined) { const c = S.campanas[S.route.cid]; compartir(textoDia(c, Object.values(S.coord.pedidos))); return; }
     if (ds.punto !== undefined) { editarPunto(S.campanas[S.route.cid], ds.punto || null); return; }
-    if (ds.turno !== undefined) { editarTurno(S.campanas[S.route.cid], ds.turno || null); return; }
+    if (ds.turno !== undefined) { editarTurno(S.campanas[S.route.cid], ds.turno || null, ds.tpto); return; }
+    if (ds.cph) { copiarHorarios(S.campanas[S.route.cid], ds.cph); return; }
+    if (ds.aj) { S.coord.aj = ds.aj; renderCoord(); return; }
     if (ds.nueva !== undefined) { nuevaCampana(); return; }
     if (ds.coords) { editarCoordinadores(ds.coords); return; }
   });

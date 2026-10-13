@@ -220,11 +220,15 @@ const SEED = {
   check('sin turnos repetidos no hay aviso', !(await c.$('#avRep')));
   await c.click('[data-turno=""]'); await c.waitForTimeout(80);
   await c.selectOption('#tuPto', { label: 'Salida Av. Ramírez' }); await c.fill('#tuDes', '14:00'); await c.fill('#tuHas', '16:00'); await c.click('#tuOk'); await c.waitForTimeout(150);
-  check('turno repetido: aviso y los dos marcados', /Hay un turno repetido/.test(await text(c, '#avRep')) && await c.evaluate(() => document.querySelectorAll('.edit-row.rep').length === 2), await text(c, '#app'));
+  check('turno repetido: aviso y los dos marcados', /Hay un turno repetido/.test(await text(c, '#avRep')) && await c.evaluate(() => document.querySelectorAll('.tchip.rep').length === 2), await text(c, '#app'));
   const dupId = await c.evaluate(() => { const t = window.__store['campanas/parana-terminal'].turnos; return Object.keys(t).filter(id => t[id].desde === '14:00' && t[id].hasta === '16:00').pop(); });
   c.once('dialog', d => d.accept());
   await c.click(`[data-turno="${dupId}"]`); await c.waitForTimeout(80); await c.click('#tuDel'); await c.waitForTimeout(150);
   check('al borrar el repetido desaparece el aviso', !(await c.$('#avRep')), await text(c, '#app'));
+  const salida = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; return Object.keys(cp.puntos).find(k => cp.puntos[k].nombre === 'Salida Av. Ramírez'); });
+  await c.click(`[data-tpto="${salida}"]`); await c.waitForTimeout(80);
+  check('"+ Turno" de un punto: viene elegido y sigue al último (20 a 22, mismos días)', await c.evaluate((pid) => document.querySelector('#tuPto').value === pid && document.querySelector('#tuDes').value === '20:00' && document.querySelector('#tuHas').value === '22:00' && [...document.querySelectorAll('.wd input:checked')].map(x => x.value).join() === '1,2,3,4,5,6', salida));
+  await c.click('.ov [data-cerrar]'); await c.waitForTimeout(80);
   // Ubicación y fotos de un punto
   const ICON = path.resolve(__dirname, '..', 'icon-192.png');
   await c.click('[data-punto="p1"]'); await c.waitForTimeout(80);
@@ -265,7 +269,13 @@ const SEED = {
   await c.screenshot({ path: SHOTS + '/marcar-mapa.png' });
   await c.click('#ptOk'); await c.waitForTimeout(200);
   check('se guarda el punto con la ubicación del mapa', await c.evaluate(() => Object.values(window.__store['campanas/parana-terminal'].puntos).some(p => p.nombre === 'Plaza 1 de Mayo' && p.lat === -31.7442 && p.lng === -60.519 && p.direccion === 'Peatonal San Martín, Paraná')));
-  // Foto de portada
+  const plaza = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; return Object.keys(cp.puntos).find(k => cp.puntos[k].nombre === 'Plaza 1 de Mayo'); });
+  await c.click(`[data-cph="${plaza}"]`); await c.waitForTimeout(100);
+  await c.click('[data-de="p2"]'); await c.waitForTimeout(150);
+  check('"Copiar los horarios de otro punto" carga sus turnos', await c.evaluate((pid) => JSON.stringify(Object.values(window.__store['campanas/parana-terminal'].turnos).filter(t => t.punto === pid).map(t => t.desde + '-' + t.hasta + ':' + t.dias.join())) === '["16:00-18:00:6"]', plaza));
+  // Foto de portada (pestaña Campaña)
+  check('Ajustes abre en "Puntos y turnos", con cada punto y sus turnos', !(await c.$('#cfSave')) && /Andén 1[\s\S]*\d+ TURNOS?[\s\S]*08:00–10:00/i.test(await text(c, '#app')), await text(c, '#app'));
+  await c.click('[data-aj="campana"]'); await c.waitForTimeout(100);
   await c.setInputFiles('#cfFoto', ICON); await c.waitForTimeout(500);
   const port = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; return { id: cp.portada, f: !!window.__store['fotos/parana-terminal__' + cp.portada] }; });
   check('sube la foto de portada', /^portada-/.test(port.id || '') && port.f, port);
@@ -316,6 +326,7 @@ const SEED = {
   check('sin errores (el lugar)', v.errs.length === 0, v.errs);
 
   // Quitar la foto del punto
+  await c.click('[data-aj="puntos"]'); await c.waitForTimeout(80);
   await c.click('[data-punto="p1"]'); await c.waitForTimeout(80);
   const fotoId = await c.evaluate(() => window.__store['campanas/parana-terminal'].puntos.p1.fotos[0]);
   await c.click('[data-qf]'); await c.click('#ptOk'); await c.waitForTimeout(200);
@@ -628,6 +639,27 @@ const SEED = {
     check('con el mapa apagado: sin "Lista | Mapa" y se ve la lista', !(await m.$('.seg2')) && !(await m.$('#mapw')) && await m.evaluate(() => document.querySelectorAll('.cc.camp').length === 4));
     check('sin errores (mapa)', m.errs.length === 0, m.errs);
     await cx.close();
+  }
+  console.log('\nCampaña corta: solo sus días');
+  {
+    SEED['campanas/corta'] = { nombre: 'Fin de semana', ciudad: 'Crespo', desde: '2026-11-06', hasta: '2026-11-07', activa: true,
+      puntos: { p1: { nombre: 'Carrito 1', tipo: 'carrito', cupo: 2 }, p2: { nombre: 'Carrito 2', tipo: 'carrito', cupo: 2 } },
+      turnos: { t1: { punto: 'p1', desde: '09:00', hasta: '11:00', dias: [1, 5, 6] } } };
+    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/corta');
+    await k.click('#userBtn'); await k.waitForTimeout(300); await k.evaluate(() => { location.hash = '#/coord/corta'; }); await k.waitForTimeout(300);
+    await k.click('[data-tab="config"]'); await k.waitForTimeout(150);
+    const ajt = await text(k, '#app');
+    check('aviso: un turno con días fuera de la campaña (Lun)', /Un turno tiene días fuera de la campaña\s*\(Lun\)/.test(ajt) && /Días fuera/.test(ajt), ajt);
+    await k.click('[data-tpto="p2"]'); await k.waitForTimeout(100);
+    check('"+ Turno" muestra solo los días de la campaña (Vie 6, Sáb 7), marcados', await k.evaluate(() => [...document.querySelectorAll('.wd label')].map(l => l.textContent.trim() + (l.querySelector('input').checked ? '*' : '')).join() === 'Vie 6*,Sáb 7*'));
+    await k.click('.ov [data-cerrar]'); await k.waitForTimeout(80);
+    await k.click('[data-turno="t1"]'); await k.waitForTimeout(100); await k.click('#tuOk'); await k.waitForTimeout(150);
+    check('al guardar el turno se quitan los días fuera', await k.evaluate(() => window.__store['campanas/corta'].turnos.t1.dias.join() === '5,6') && !/días fuera/i.test(await text(k, '#app')));
+    await k.click('[data-cph="p2"]'); await k.waitForTimeout(100); await k.click('[data-de="p1"]'); await k.waitForTimeout(150);
+    check('copiar horarios en campaña corta', await k.evaluate(() => Object.values(window.__store['campanas/corta'].turnos).filter(t => t.punto === 'p2').map(t => t.desde + ':' + t.dias.join()).join() === '09:00:5,6'));
+    check('la tarjeta dice las fechas', /09:00–11:00\s*Vie 6, Sáb 7/.test(await text(k, '#app')), await text(k, '#app'));
+    check('sin errores (campaña corta)', k.errs.length === 0, k.errs);
+    delete SEED['campanas/corta'];
   }
   await b.close(); console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;
