@@ -3,6 +3,7 @@
 ## Logo del encabezado igual al ícono — 13 oct 2026 (caché ppam-v13)
 
 - El logo de arriba a la izquierda pasa del pin de ubicación a "PPAM" con la línea dorada, igual que el ícono de la app.
+- **Vista previa al compartir el enlace** (WhatsApp, Facebook, Telegram): imagen con el logo y "Sumate a un turno", título y descripción (`og-image.jpg`).
 
 ## Ícono nuevo e "Instalá la app" — 13 oct 2026 (caché ppam-v12)
 
