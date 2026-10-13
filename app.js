@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '31';
+  const VERSION = '32';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -1138,7 +1138,6 @@
   async function abrirHistorialGeneral(refrescar) {
     let ov = document.querySelector('.hgov');
     if (!ov) { ov = sheet('<div class="hg-body"><div class="empty">Cargando…</div></div>'); ov.classList.add('hgov'); ov.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.hf) { e.stopPropagation(); S.audF = b.dataset.hf; pinta(); } if (b.dataset.restaurar) { e.stopPropagation(); restaurar(b.dataset.restaurar); } }); }
-    const fp = window.__ppamMock ? 'id' : firebase.firestore.FieldPath.documentId();
     const pinta = () => {
       const body = ov.querySelector('.hg-body'), cid = (ov.querySelector('#hgCamp') || {}).value || '', q = (ov.querySelector('#hgQ') || {}).value || '';
       const cs = Object.values(S.campanas).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
@@ -1149,8 +1148,8 @@
       const qi = body.querySelector('#hgQ'); qi.addEventListener('input', () => { clearTimeout(pinta.t); pinta.t = setTimeout(() => { pinta(); const n = ov.querySelector('#hgQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); });
     };
     try {
-      // primero los 500 más nuevos; si esa consulta no está disponible, se trae todo y se ordena acá
-      let qs; try { qs = await S.db.collection('auditoria').orderBy(fp, 'desc').limit(500).get(); } catch (e1) { console.error(e1); registrarError('aviso', 'Historial (consulta ordenada): ' + (e1.code || e1.message || e1)); qs = await S.db.collection('auditoria').get(); }
+      // se trae todo y se ordena acá (ordenar en Firebase por id descendente pide un índice que no hace falta crear)
+      const qs = await S.db.collection('auditoria').get();
       const a = []; qs.forEach(d => a.push(Object.assign({ id: d.id }, d.data()))); a.sort((x, y) => String(y.id).localeCompare(String(x.id))); S.audAll = a;
       // limpieza: las líneas de más de 6 meses se borran (solo el administrador puede, y solo esas)
       const viejas = a.filter(x => { const d = audFecha(x); return d && Date.now() - d.getTime() > 183 * 864e5; });

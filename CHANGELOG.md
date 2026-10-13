@@ -1,5 +1,9 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Historial general sin consulta ordenada — 13 oct 2026 (caché ppam-v34)
+
+- La consulta ordenada por id pedía un índice en Firebase (failed-precondition): ahora se trae el historial y se ordena en la página, sin anotar errores. Versión 32.
+
 ## Historial general: carga más robusta — 13 oct 2026 (caché ppam-v33)
 
 - Administración › Historial: si la consulta ordenada no está disponible, trae todo y lo ordena en la página. Si igual falla, muestra el motivo y lo anota en los errores automáticos.
