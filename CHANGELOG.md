@@ -1,5 +1,9 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Logo del encabezado igual al ícono — 13 oct 2026 (caché ppam-v13)
+
+- El logo de arriba a la izquierda pasa del pin de ubicación a "PPAM" con la línea dorada, igual que el ícono de la app.
+
 ## Ícono nuevo e "Instalá la app" — 13 oct 2026 (caché ppam-v12)
 
 - **Ícono nuevo** con los colores de la página: "PPAM" en marfil, línea dorada y "ENTRE RÍOS" sobre verde petróleo. Versión adaptable para Android (no se recorta en círculo), ícono propio de iPhone (180 px) y uno simplificado para la pestaña del navegador.
