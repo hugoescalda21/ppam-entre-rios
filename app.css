@@ -687,3 +687,8 @@ label.sbtn { cursor: pointer; }
 .bsh .bt .tx b { display: block; font-size: 14px; }
 .bsh .bt .tx small { display: block; font-size: 12px; color: var(--ink3); }
 .bsh .bt.pas { opacity: .55; }
+.dp.v .who { flex: 1; }
+.dp .sbtn.anot { padding: 5px 10px; font-size: 12.5px; gap: 4px; color: var(--pri); border-color: var(--pri-bg); }
+.dp .who .man { color: var(--pri); font-weight: 600; }
+.fld .opc { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ink3); }
+a.btn { display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }

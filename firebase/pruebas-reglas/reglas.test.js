@@ -123,6 +123,27 @@ const section = (t) => console.log('\n' + t);
   await check('el coordinador NO cambia la nota', assertFails(db(CO).doc(ped('t2', uidOf(B))).update({ nota: 'hola' })));
   await check('NO se pide con una nota de más de 200 letras', assertFails(pedir(B, 't1', { nota: 'x'.repeat(201) })));
 
+  section('El coordinador anota a un hermano sin la app');
+  const MU = 'm-abc123xyz';
+  const manual = (email, uid, extra) => Object.fromEntries(Object.entries(Object.assign({ cid: CID, fecha: F, tid: 't2', punto: 'p2', desde: '10:00', hasta: '12:00', uid, nombre: 'Rosa', apellido: 'Díaz', congregacion: 'San Agustín (Paraná)', celular: '343 444-1234', estado: 'confirmado', creado: '2026-10-01T10:00:00Z', manual: true, por: email }, extra || {})).filter(([, v]) => v !== undefined));
+  async function anotar(email, uid, extra, marca) {
+    const f = db(email), b = f.batch();
+    b.set(f.doc(cupo('t2')), { cid: CID, fecha: F, tid: 't2', ocupados: { [uid]: marca || 'c' } }, { merge: true });
+    b.set(f.doc(ped('t2', uid)), manual(email, uid, extra));
+    return b.commit();
+  }
+  await check('un publicador NO anota a otro', assertFails(anotar(A, 'm-ana00001')));
+  await check('el coordinador de otra campaña NO anota acá', assertFails(anotar(CO2, 'm-otro0001')));
+  await check('NO sin "manual" ni con un uid cualquiera', assertFails(anotar(CO, 'uid-rosa')));
+  await check('NO a nombre de otro coordinador ("por")', assertFails(anotar(CO, 'm-por00001', { por: 'otro@x.com' })));
+  await check('NO como "pendiente"', assertFails(anotar(CO, 'm-pend0001', { estado: 'pendiente' })));
+  await check('NO si el cupo no lo marca confirmado', assertFails(anotar(CO, 'm-cupo0001', {}, 'p')));
+  await check('NO con campos de más', assertFails(anotar(CO, 'm-extra001', { email: 'rosa@x.com' })));
+  await check('el coordinador anota a Rosa (confirmada)', assertSucceeds(anotar(CO, MU)));
+  await check('también sin celular y con nota', assertSucceeds(anotar(CO, 'm-sincel01', { celular: undefined, nota: 'Avisarle por teléfono fijo.' })));
+  await check('el coordinador la ve y la puede quitar', assertSucceeds(db(CO).doc(ped('t2', MU)).update({ estado: 'rechazado', actualizado: '2026-10-02T10:00:00Z', por: CO })));
+  await check('un publicador NO ve ese pedido', assertFails(db(A).doc(ped('t2', MU)).get()));
+
   section('Reportes y errores (soporte)');
   const SOP = 'sop@x.com';
   await env.withSecurityRulesDisabled(async (ctx) => { await ctx.firestore().doc('config/soporte').set({ emails: [SOP] }); });

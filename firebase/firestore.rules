@@ -140,8 +140,22 @@ service cloud.firestore {
                d.celular is string && d.celular.size() >= 8 && d.celular.size() <= 30 &&
                getAfter(cupo).data.ocupados.get(request.auth.uid, '') == 'p';
       }
+      // El coordinador anota a un hermano que no usa la app: uid "m-…", queda confirmado y marcado como manual.
+      function pedidoManual(d) {
+        let cupo = /databases/$(database)/documents/cupos/$(d.cid + '__' + d.fecha + '__' + d.tid);
+        return d.keys().hasOnly(['cid', 'fecha', 'tid', 'punto', 'desde', 'hasta', 'uid', 'nombre', 'apellido', 'congregacion', 'celular', 'estado', 'creado', 'nota', 'manual', 'por']) &&
+               gestiona(d.cid) && notaOk(d) &&
+               d.manual == true && d.por == mail() && d.estado == 'confirmado' &&
+               d.uid is string && d.uid.matches('m-[a-z0-9]{6,24}') &&
+               id == d.cid + '__' + d.fecha + '__' + d.tid + '__' + d.uid &&
+               d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 60 &&
+               d.apellido is string && d.apellido.size() > 0 && d.apellido.size() <= 60 &&
+               d.congregacion is string && d.congregacion.size() > 0 && d.congregacion.size() <= 80 &&
+               (!('celular' in d) || (d.celular is string && d.celular.size() >= 8 && d.celular.size() <= 30)) &&
+               getAfter(cupo).data.ocupados.get(d.uid, '') == 'c';
+      }
       allow read: if conSesion() && (resource.data.uid == request.auth.uid || gestiona(resource.data.cid));
-      allow create: if conSesion() && pedidoValido(request.resource.data);
+      allow create: if conSesion() && (pedidoValido(request.resource.data) || pedidoManual(request.resource.data));
       // El coordinador confirma o no; el publicador puede volver a pedir si antes no se lo confirmaron.
       allow update: if conSesion() && (
                      (gestiona(resource.data.cid) &&

@@ -235,6 +235,20 @@ const SEED = {
   await c.click('#busBtn'); await c.waitForTimeout(150);
   check('búsquedas recientes', /Búsquedas recientes\s*paz/i.test(await text(c, '.bsov')));
   await c.click('[data-bscerrar]'); await c.waitForTimeout(50);
+  await c.click('#dt-t3 [data-anotar]'); await c.waitForTimeout(120);
+  check('"Anotar" en un lugar libre abre el formulario del coordinador', /Anotar a un hermano[\s\S]*Sábado 3 de octubre[\s\S]*16:00 – 18:00[\s\S]*Hall central/.test(await text(c, '.sheet')), await text(c, '.sheet'));
+  await c.fill('#aNom', 'Rosa'); await c.fill('#aApe', 'Díaz'); await c.click('#aGo');
+  check('valida la congregación', /Elegí la congregación/.test(await text(c, '#aErr')));
+  await c.selectOption('#aCong', 'Paraná Centro (Paraná)'); await c.fill('#aCel', '343 444-1234'); await c.fill('#aNota', 'Avisarle también por teléfono fijo.');
+  await c.click('#aGo'); await c.waitForTimeout(200);
+  const man = await c.evaluate(() => { const k = Object.keys(window.__store).find(x => x.startsWith('pedidos/parana-terminal__2026-10-03__t3__m-')); const d = k && window.__store[k]; const cu = window.__store['cupos/parana-terminal__2026-10-03__t3'].ocupados; return d && { estado: d.estado, manual: d.manual, por: d.por, uid: d.uid, nota: d.nota, cupo: cu[d.uid], email: 'email' in d }; });
+  check('queda confirmado, marcado como manual y ocupa el lugar', man && man.estado === 'confirmado' && man.manual === true && man.por === 'coord@x.com' && man.cupo === 'c' && /^m-[a-z0-9]{6,24}$/.test(man.uid) && !man.email && /fijo/.test(man.nota), man);
+  check('pantalla de listo con "Avisarle por WhatsApp"', /Rosa ya tiene su turno[\s\S]*Confirmado[\s\S]*Avisarle por WhatsApp/.test(await text(c, '.sheet')));
+  await c.click('#aWa'); await c.waitForTimeout(80);
+  const avis = await c.evaluate(() => decodeURIComponent(window.__opened.pop() || ''));
+  check('el aviso por WhatsApp va al celular con el turno', /wa\.me\/5493434441234\?text=Hola Rosa, ya tenés tu turno en la PPAM: Sábado 3 de octubre de 16:00 a 18:00 · Hall central — Terminal de ómnibus, Paraná/.test(avis), avis);
+  await c.click('.sheet [data-cerrar]'); await c.waitForTimeout(150);
+  check('en "Del día" aparece con la marca "cargado por coordinador"', /Rosa Díaz\s*Paraná Centro \(Paraná\) · cargado por coordinador/.test(await text(c, '#dt-t3')), await text(c, '#dt-t3'));
   // Configurar: un punto nuevo y turnos en serie
   await c.click('[data-tab="config"]'); await c.waitForTimeout(100);
   await c.click('[data-punto=""]'); await c.fill('#ptNom', 'Salida Av. Ramírez'); await c.click('#ptOk'); await c.waitForTimeout(150);

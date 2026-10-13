@@ -1,5 +1,12 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## El coordinador anota a un hermano — 13 oct 2026 (caché ppam-v25)
+
+- Coordinación › Del día: "+ Anotar" en cada lugar libre, para quien no puede usar la app. Nombre, apellido, congregación, celular (opcional) y nota; queda confirmado y marcado "cargado por coordinador".
+- Al guardar: "Avisarle por WhatsApp" con el día, horario, punto y cómo llegar (o "Copiar el mensaje" si no tiene celular).
+- Reglas: el coordinador de esa campaña puede crear un pedido de otra persona (uid "m-…", confirmado, manual, con su email en "por"). 11 pruebas de reglas nuevas.
+- Versión 23. 185 pruebas de la página.
+
 ## Lupa de coordinación — 13 oct 2026 (caché ppam-v24)
 
 - Lupa arriba, al lado del avatar, en todas las pantallas (solo coordinadores y administradores). Busca en las campañas que coordina: hermanos (nombre o celular, con sus turnos y WhatsApp), campañas, puntos y turnos por hora ("8:30") o día ("sábado", "mañana").
