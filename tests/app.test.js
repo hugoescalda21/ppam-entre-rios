@@ -249,6 +249,15 @@ const SEED = {
   check('el aviso por WhatsApp va al celular con el turno', /wa\.me\/5493434441234\?text=Hola Rosa, ya tenés tu turno en la PPAM: Sábado 3 de octubre de 16:00 a 18:00 · Hall central — Terminal de ómnibus, Paraná/.test(avis), avis);
   await c.click('.sheet [data-cerrar]'); await c.waitForTimeout(150);
   check('en "Del día" aparece con la marca "cargado por coordinador"', /Rosa Díaz\s*Paraná Centro \(Paraná\) · cargado por coordinador/.test(await text(c, '#dt-t3')), await text(c, '#dt-t3'));
+  check('al cerrar, queda en "Del día" con ese turno resaltado', await c.evaluate(() => document.querySelector('.tabs .on').dataset.tab === 'dia' && document.getElementById('dt-t3').classList.contains('flash')));
+  await c.click('[data-cdia="2026-10-10"]'); await c.waitForTimeout(100);
+  await c.click('#dt-t3 [data-anotar]'); await c.waitForTimeout(120);
+  await c.type('#aNom', 'ros'); await c.waitForTimeout(120);
+  check('autocompletar: sugiere a Rosa Díaz con sus datos', /Rosa Díaz\s*Paraná Centro \(Paraná\) · 343 444-1234/.test(await text(c, '#aSug')), await text(c, '#aSug'));
+  await c.click('#aSug [data-sug="0"]'); await c.waitForTimeout(50);
+  check('un toque completa nombre, apellido, congregación y celular', await c.evaluate(() => document.querySelector('#aNom').value === 'Rosa' && document.querySelector('#aApe').value === 'Díaz' && document.querySelector('#aCong').value === 'Paraná Centro (Paraná)' && document.querySelector('#aCel').value === '343 444-1234'));
+  await c.click('#aGo'); await c.waitForTimeout(200); await c.click('.sheet [data-cerrar]'); await c.waitForTimeout(200);
+  check('vuelve a "Del día" del sábado 10, con Rosa en ese turno', await c.evaluate(() => document.querySelector('.day.on').dataset.cdia === '2026-10-10' && /Rosa Díaz/.test(document.getElementById('dt-t3').innerText)));
   // Configurar: un punto nuevo y turnos en serie
   await c.click('[data-tab="config"]'); await c.waitForTimeout(100);
   await c.click('[data-punto=""]'); await c.fill('#ptNom', 'Salida Av. Ramírez'); await c.click('#ptOk'); await c.waitForTimeout(150);

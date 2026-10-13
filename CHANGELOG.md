@@ -1,5 +1,11 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Anotar más rápido: hermanos conocidos — 13 oct 2026 (caché ppam-v26)
+
+- Al anotar a un hermano, escribiendo 2 letras aparecen los que ya se anotaron en las campañas que coordina (con congregación y celular); un toque completa todo.
+- Después de anotar (y del aviso por WhatsApp), queda en "Del día" en ese turno, resaltado.
+- Versión 24. 189 pruebas de la página.
+
 ## El coordinador anota a un hermano — 13 oct 2026 (caché ppam-v25)
 
 - Coordinación › Del día: "+ Anotar" en cada lugar libre, para quien no puede usar la app. Nombre, apellido, congregación, celular (opcional) y nota; queda confirmado y marcado "cargado por coordinador".

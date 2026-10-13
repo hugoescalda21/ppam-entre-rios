@@ -692,3 +692,11 @@ label.sbtn { cursor: pointer; }
 .dp .who .man { color: var(--pri); font-weight: 600; }
 .fld .opc { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ink3); }
 a.btn { display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+
+/* ---------- Anotar: sugerencias de hermanos conocidos ---------- */
+.sug { background: var(--card); border: 1px solid var(--line); border-radius: 14px; margin: -4px 0 10px; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+.sug button { display: flex; align-items: center; gap: 10px; width: 100%; border: none; border-top: 1px solid var(--line2); background: none; font: inherit; color: inherit; text-align: left; padding: 9px 11px; cursor: pointer; }
+.sug button:first-child { border-top: none; }
+.sug .ini { width: 32px; height: 32px; border-radius: 50%; background: var(--pri-bg); color: var(--pri); display: grid; place-items: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.sug .tx b { display: block; font-size: 14px; }
+.sug .tx small { font-size: 12px; color: var(--ink3); }
