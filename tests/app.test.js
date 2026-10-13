@@ -557,12 +557,17 @@ const SEED = {
     await m.goto(FILE); await m.waitForTimeout(300);
     const labs = () => m.evaluate(() => [...document.querySelectorAll('.pp .lab')].map(x => x.textContent.replace(/\s+/g, ' ').trim()).sort());
     const pin = (re) => m.evaluateHandle((r) => [...document.querySelectorAll('.pp')].find(x => new RegExp(r).test(x.textContent)).querySelector('.pin'), re);
+    check('en modo Lista sigue la tarjeta "Sumate a un turno"', !!(await m.$('.welcome')));
     check('en el Inicio: "Lista | Mapa", con la lista elegida', /Lista\s*Mapa/.test(await text(m, '.seg2')) && await m.evaluate(() => document.querySelector('[data-vista="lista"]').classList.contains('on')) && await m.evaluate(() => document.querySelectorAll('.cc.camp').length === 4));
     await m.click('[data-vista="mapa"]'); await m.waitForTimeout(600);
     let l = await labs();
     check('de lejos: un pin por localidad con su nombre (Paraná · 2, Concordia)', JSON.stringify(l) === '["Concordia","Paraná· 2"]', l);
     check('la campaña sin ubicación sigue apareciendo debajo del mapa', /Sin ubicación en el mapa/i.test(await text(m, '#app')) && /Pueblo Inventado/.test(await text(m, '#app')) && await m.evaluate(() => document.querySelectorAll('.cc.camp').length === 1));
     check('recuerda que eligió Mapa', await m.evaluate(() => localStorage.getItem('ppam-vista') === 'mapa'));
+    await m.screenshot({ path: SHOTS + '/mapa-inicio.png' });
+    check('en modo Mapa no está la tarjeta "Sumate a un turno" (el mapa es el protagonista)', !(await m.$('.welcome')));
+    check('el mapa arranca encuadrado sobre las campañas, no en toda la provincia', await m.evaluate(() => { const c = window.__ppam.mapa.map.getCenter(); return Math.abs(c.lat - -31.56) < 0.35 && Math.abs(c.lng - -59.27) < 0.5; }));
+    check('los botones del mapa son chicos, abajo a la derecha, y la leyenda va debajo del mapa', await m.evaluate(() => { const c = document.querySelector('.mctl').getBoundingClientRect(), w = document.getElementById('mapw').getBoundingClientRect(); return c.bottom > w.bottom - 80 && c.width <= 40 && !document.querySelector('#mapw .mleg') && !!document.querySelector('.mleg'); }));
     await (await pin('Paraná')).click(); await m.waitForTimeout(1200);
     l = await labs();
     check('tocar "Paraná · 2" acerca hasta separar sus campañas, con su nombre', l.includes('Terminal de ómnibus') && l.includes('Costanera'), l);
@@ -584,7 +589,7 @@ const SEED = {
     l = await labs();
     check('muy de cerca: un pin por punto (Andén 1, Hall central)', l.some(x => /Andén 1/.test(x)) || l.some(x => /Hall central/.test(x)) || l.some(x => /2 puntos/.test(x)), l);
     await m.click('[data-mtodo]'); await m.waitForTimeout(900);
-    check('"Todo" vuelve a la provincia', JSON.stringify(await labs()) === '["Concordia","Paraná· 2"]');
+    check('"Ver todas" vuelve a encuadrar las campañas', JSON.stringify(await labs()) === '["Concordia","Paraná· 2"]', await labs());
     // al refrescar el Inicio el mapa no se pierde
     await m.evaluate(() => { const z = window.__ppam.mapa.map.getZoom(); window.__z = z; }); await m.evaluate(() => window.__ppam && document.dispatchEvent(new Event('x')));
     await m.click('[data-cerca]'); await m.waitForTimeout(2200);

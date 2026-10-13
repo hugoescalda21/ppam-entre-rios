@@ -488,17 +488,18 @@ label.sbtn { cursor: pointer; }
 .seg2 { display: flex; background: var(--line2); border-radius: 13px; padding: 3px; gap: 3px; margin: 0 0 12px; }
 .seg2 button { flex: 1; display: inline-flex; justify-content: center; align-items: center; gap: 6px; border: none; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink2); padding: 8px 12px; border-radius: 10px; cursor: pointer; }
 .seg2 button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
-.mapw { position: relative; height: min(64vh, 560px); min-height: 360px; border-radius: 22px; overflow: hidden; border: 1px solid var(--line2); margin-bottom: 12px; background: #E9EFEC; }
+.mapw { position: relative; height: min(68vh, 620px); min-height: 360px; border-radius: 22px; overflow: hidden; border: 1px solid var(--line2); margin-bottom: 12px; background: #E9EFEC; }
 .mapin { position: absolute; inset: 0; }
 #lmap { position: absolute; inset: 0; background: #E9EFEC; }
 .mapin .leaflet-tile-pane { filter: saturate(.45) sepia(.1) brightness(1.03); }
 .mapin .leaflet-container { font: inherit; }
 .mapin .leaflet-control-attribution { font-size: 9.5px; background: rgba(255,255,255,.75); }
-.mctl { position: absolute; right: 10px; top: 10px; z-index: 500; display: flex; flex-direction: column; gap: 6px; }
-.mctl button { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 12px; min-width: 40px; height: 38px; font: inherit; font-weight: 700; font-size: 18px; box-shadow: 0 2px 6px rgba(0,0,0,.1); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; }
-.mctl button.txt { font-size: 12.5px; font-weight: 600; }
-.mleg { position: absolute; left: 10px; top: 10px; z-index: 500; background: rgba(255,255,255,.92); border-radius: 10px; padding: 6px 9px; font-size: 11px; color: var(--ink2); display: flex; gap: 8px; flex-wrap: wrap; max-width: 60%; }
+.mctl { position: absolute; right: 10px; bottom: 26px; z-index: 500; display: flex; flex-direction: column; gap: 6px; transition: opacity .25s; }
+.mapin.dim .mctl { opacity: 0; pointer-events: none; }
+.mctl button { width: 38px; height: 38px; border: 1px solid var(--line); background: rgba(255,255,255,.94); color: var(--ink); border-radius: 50%; font: inherit; font-weight: 700; font-size: 19px; line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,.12); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.mleg { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 11.5px; color: var(--ink2); margin: -4px 4px 14px; }
 .mleg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.mleg .mhint { margin-left: auto; color: var(--ink3); }
 .ppi { background: none; border: none; }
 .pp { position: relative; width: 0; height: 0; transition: opacity .3s; }
 .pp .pin { position: absolute; left: -15px; top: -38px; width: 30px; height: 38px; transition: transform .35s cubic-bezier(.3,1.6,.5,1); transform-origin: 50% 100%; cursor: pointer; filter: drop-shadow(0 3px 4px rgba(0,0,0,.25)); }
@@ -534,7 +535,7 @@ label.sbtn { cursor: pointer; }
 .mcc .f.poco { color: var(--warn); } .mcc .f.full { color: var(--ink3); }
 .mcc .go { border: none; background: var(--pri); color: #fff; font: inherit; font-weight: 700; font-size: 13px; border-radius: 12px; padding: 9px 11px; white-space: nowrap; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .pp .pin, .pp .ph, .msheet, .mcc { transition: none !important; } .pp.ripgo .rip, .yo { animation: none; } }
-@media (prefers-color-scheme: dark) { .mapin .leaflet-tile-pane { filter: saturate(.4) brightness(.8) contrast(1.05); } .mleg { background: rgba(20,30,30,.9); } }
+@media (prefers-color-scheme: dark) { .mapin .leaflet-tile-pane { filter: saturate(.4) brightness(.8) contrast(1.05); } }
 
 .mnota { margin: 8px 0 0; font-size: 12px; color: var(--warn); background: var(--warn-bg); border-radius: 10px; padding: 7px 10px; line-height: 1.4; }
 .mapin.dim .pp.pso { opacity: 1; }

@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '15';
+  const VERSION = '16';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -311,7 +311,7 @@
         const otros = prox.slice(1, 3).map(p => { const d = parseIso(p.fecha); return `${DOW[d.getDay()].toLowerCase()} ${d.getDate()}`; });
         h += `<button type="button" class="more" data-go="#/mis"><span><b>Tenés ${prox.length - 1} ${prox.length === 2 ? 'turno' : 'turnos'} más</b><small>${esc(cap(otros.join(' y ')))}${prox.length > 3 ? '…' : ''}</small></span><span class="lk">Ver todos${I('chev', 'width:15px;height:15px')}</span></button>`;
       }
-    } else {
+    } else if (!(S.vista === 'mapa' && S.publico.mapa !== false && vis.length)) {   // en modo Mapa, el mapa es el protagonista
       const { n, mejor } = libresSemana(vis);
       const donde = S.ciudad !== 'todas' ? 'En ' + S.ciudad : 'En Entre Ríos';
       h += `<div class="lbl">${S.user ? 'Todavía no tenés turnos' : 'Predicación pública'}</div><div class="welcome">`;
@@ -1310,7 +1310,7 @@
     }).filter(Boolean);
   }
   const fueraDelMapa = (cs) => cs.filter(c => !Object.values(c.puntos || {}).some(p => p.lat != null && p.lng != null) && !CIUDADES_ER[sinTilde(c.ciudad)]);
-  function mapaHTML() { return '<div class="mapw" id="mapw"><div class="empty" style="padding:40px 0">Cargando el mapa…</div></div>'; }
+  function mapaHTML() { return `<div class="mapw" id="mapw"><div class="empty" style="padding:40px 0">Cargando el mapa…</div></div><div class="mleg"><span><i style="background:${COL_MAPA.ok}"></i>Hay lugar</span><span><i style="background:${COL_MAPA.poco}"></i>Quedan pocos</span><span><i style="background:${COL_MAPA.full}"></i>Completo</span><span class="mhint">Tocá un pin para ver la campaña</span></div>`; }
   let cargandoER = null;
   function cargarER() {
     if (window.PPAM_ER) return Promise.resolve();
@@ -1325,15 +1325,15 @@
     if (!S.mapa.el) crearMapaInicio();
     w.innerHTML = ''; w.appendChild(S.mapa.el);
     S.mapa.map.invalidateSize();
-    if (!S.mapa.visto) { S.mapa.visto = true; verTodo(false); }
+    const firma = S.mapa.cs.map(x => x.c.id).sort().join();
+    if (S.mapa.firma !== firma) { S.mapa.firma = firma; verTodo(false); }
     pinesMapa();
   }
   function crearMapaInicio() {
     const L = window.L, el = document.createElement('div');
     el.className = 'mapin';
     el.innerHTML = `<div id="lmap"></div>
-      <div class="mleg"><span><i style="background:${COL_MAPA.ok}"></i>Hay lugar</span><span><i style="background:${COL_MAPA.poco}"></i>Pocos</span><span><i style="background:${COL_MAPA.full}"></i>Completo</span></div>
-      <div class="mctl"><button type="button" data-mz="1" aria-label="Acercar">+</button><button type="button" data-mz="-1" aria-label="Alejar">−</button><button type="button" class="txt" data-cerca>${I('gps', 'width:14px;height:14px')}Cerca mío</button><button type="button" class="txt" data-mtodo>Todo</button></div>
+      <div class="mctl"><button type="button" data-mz="1" aria-label="Acercar" title="Acercar">+</button><button type="button" data-mz="-1" aria-label="Alejar" title="Alejar">−</button><button type="button" data-cerca aria-label="Cerca mío" title="Cerca mío">${I('gps', 'width:17px;height:17px')}</button><button type="button" data-mtodo aria-label="Ver todas las campañas" title="Ver todas las campañas">${I('fit', 'width:17px;height:17px')}</button></div>
       <div class="msheet" id="msheet"><div class="grab"></div><div id="msBody"></div></div>`;
     S.mapa.el = el;
     document.body.appendChild(el);   // Leaflet necesita el contenedor en la página para medirlo
@@ -1352,7 +1352,14 @@
     m.on('click', () => cerrarPin());
     if (S.mapa.yo) pintarYo();
   }
-  function verTodo(anim) { const m = S.mapa.map; if (!m) return; cerrarPin(); if (anim) m.flyToBounds(S.mapa.bounds, { padding: [14, 14], duration: .6 }); else m.fitBounds(S.mapa.bounds, { padding: [14, 14] }); }
+  // Encuadra todas las campañas (si no hay ninguna ubicada, la provincia entera).
+  function verTodo(anim) {
+    const m = S.mapa.map; if (!m) return; cerrarPin();
+    const ll = S.mapa.cs.flatMap(x => x.pts.length ? x.pts.map(p => [p.lat, p.lng]) : [[x.lat, x.lng]]);
+    const b = ll.length ? window.L.latLngBounds(ll) : S.mapa.bounds;
+    const opt = { paddingTopLeft: [50, 70], paddingBottomRight: [60, 40], maxZoom: ll.length ? 13 : 9 };
+    if (anim) m.flyToBounds(b, Object.assign({ duration: .6 }, opt)); else m.fitBounds(b, opt);
+  }
   // Lo que se muestra según el zoom: campañas o, muy de cerca, sus puntos.
   function itemsMapa() {
     const z = S.mapa.map.getZoom();

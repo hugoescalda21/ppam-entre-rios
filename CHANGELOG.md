@@ -1,5 +1,12 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Mapa: arranca sobre las campañas y más limpio — 13 oct 2026 (caché ppam-v17)
+
+- El mapa arranca encuadrado sobre las campañas (sus puntos), no sobre toda la provincia; si se filtra por ciudad, se vuelve a encuadrar. El botón de encuadrar vuelve a mostrar todas.
+- Botones chicos y redondos abajo a la derecha (+, −, Cerca mío, Ver todas), que se esconden cuando sube la tarjeta de una campaña. La leyenda de colores pasa debajo del mapa, con "Tocá un pin para ver la campaña".
+- En modo Mapa no se muestra la tarjeta "Sumate a un turno / ¿Te sumás esta semana?": el mapa queda arriba y más alto. "Tu próximo turno" y la franja de Coordinación siguen.
+- Versión 16. 150 pruebas de la página.
+
 ## Los carritos de la campaña en el mapa — 13 oct 2026 (caché ppam-v16)
 
 - Al tocar una campaña en el mapa se ven también sus puntos (carritos y stands) con su nombre, y el mapa se encuadra sobre ellos.
