@@ -642,20 +642,48 @@ label.sbtn { cursor: pointer; }
 .dp .nota { flex-basis: 100%; margin: 2px 0 0 29px; }
 .dp.v { color: var(--ink3); font-size: 13px; }
 
-/* ---------- Coordinación: buscar un hermano ---------- */
-.cbus { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line2); border-radius: 14px; padding: 0 6px 0 12px; margin: 12px 0 0; }
-.cbus .ic { width: 18px; height: 18px; color: var(--ink3); flex-shrink: 0; }
-.cbus input { flex: 1; min-width: 0; border: none; background: none; font: inherit; font-size: 15px; color: var(--ink); padding: 11px 0; outline: none; }
-.cbus input::-webkit-search-cancel-button { display: none; }
-.cbus button { border: none; background: var(--line2); color: var(--ink2); width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; }
-.busn { font-size: 12px; font-weight: 600; color: var(--ink3); text-transform: uppercase; letter-spacing: .03em; margin: 14px 4px 8px; }
-.rq.bus .bt-l { font-size: 12px; font-weight: 600; color: var(--ink3); margin: 12px 2px 4px; }
-.rq.bus .bt { display: flex; align-items: center; gap: 11px; width: 100%; border: none; border-top: 1px solid var(--line2); background: none; font: inherit; color: inherit; text-align: left; padding: 9px 2px; cursor: pointer; }
-.rq.bus .bt .f { width: 42px; flex-shrink: 0; text-align: center; background: var(--field); border-radius: 10px; padding: 3px 0; line-height: 1.1; }
-.rq.bus .bt .f small { display: block; font-size: 9.5px; font-weight: 600; text-transform: uppercase; color: var(--ink3); }
-.rq.bus .bt .f b { font-size: 16px; display: block; }
-.rq.bus .bt .tx { flex: 1; min-width: 0; }
-.rq.bus .bt .tx b { font-size: 14px; }
-.rq.bus .bt .tx small { display: block; }
-.rq.bus .bt > .ic { width: 15px; height: 15px; color: var(--ink3); }
-.rq.bus .bt.pas { opacity: .55; }
+/* ---------- Buscador de coordinación (lupa) ---------- */
+.pc.aj { transition: background .6s; }
+.pc.aj.flash { background: var(--gold-bg); }
+.bsov { position: fixed; inset: 0; z-index: 60; background: var(--bg); display: flex; justify-content: center; }
+.bsbox { width: 100%; max-width: 620px; display: flex; flex-direction: column; height: 100%; }
+.bsin { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; border-bottom: 1px solid var(--line2); }
+.bsin > .ic { width: 20px; height: 20px; color: var(--ink3); flex-shrink: 0; }
+.bsin input { flex: 1; min-width: 0; border: none; background: var(--card); border-radius: 12px; font: inherit; font-size: 16px; color: var(--ink); padding: 11px 12px; outline: none; box-shadow: inset 0 0 0 1px var(--line2); }
+.bsin input::-webkit-search-cancel-button { display: none; }
+.bsx { border: none; background: none; font: inherit; font-size: 14.5px; font-weight: 600; color: var(--pri); padding: 8px 2px; }
+.bsres { flex: 1; overflow-y: auto; padding: 4px 14px calc(30px + env(safe-area-inset-bottom)); }
+.bsch { display: flex; gap: 7px; flex-wrap: wrap; margin: 12px 0 4px; }
+.bsch button { border: 1.5px solid var(--line); background: var(--card); color: var(--ink2); font: inherit; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 7px 12px; }
+.bsch button b { background: var(--gold); color: #fff; border-radius: 99px; padding: 0 6px; font-size: 11.5px; margin-left: 2px; }
+.bsch button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.bsg { font-size: 11.5px; font-weight: 700; color: var(--ink3); text-transform: uppercase; letter-spacing: .04em; margin: 18px 4px 7px; }
+.bs0 { color: var(--ink3); font-size: 14px; line-height: 1.5; padding: 18px 6px; }
+.bscarga { color: var(--ink3); font-size: 13px; padding: 10px 4px 0; }
+.bsrec { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: none; font: inherit; font-size: 15px; color: var(--ink); padding: 10px 6px; border-bottom: 1px solid var(--line2); text-align: left; }
+.bsrec .ic { color: var(--ink3); }
+.bsr { display: flex; align-items: center; gap: 11px; width: 100%; background: var(--card); border: 1px solid var(--line2); border-radius: 14px; font: inherit; color: inherit; text-align: left; padding: 9px 10px; margin-bottom: 6px; cursor: pointer; }
+.bsr .th { width: 42px; height: 42px; border-radius: 11px; background: var(--pri-bg) center/cover; flex-shrink: 0; display: grid; place-items: center; color: var(--pri); }
+.bsr .th[style*="url("] .ic { display: none; }
+.bsr .tx { flex: 1; min-width: 0; }
+.bsr .tx b { display: block; font-size: 14.5px; }
+.bsr .tx small { display: block; font-size: 12px; color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bsr > .ic { width: 15px; height: 15px; color: var(--ink3); }
+.bsr .st { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.bsr .st.fa { color: var(--bad); } .bsr .st.ok { color: var(--ok); }
+.bsr .f, .bsh .bt .f { width: 42px; flex-shrink: 0; text-align: center; background: var(--field); border-radius: 10px; padding: 3px 0; line-height: 1.1; }
+.bsr .f small, .bsh .bt .f small { display: block; font-size: 9.5px; font-weight: 600; text-transform: uppercase; color: var(--ink3); }
+.bsr .f b, .bsh .bt .f b { font-size: 16px; display: block; }
+.bsh { background: var(--card); border: 1px solid var(--line2); border-radius: 16px; padding: 11px 11px 4px; margin-bottom: 8px; }
+.bsh .t { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.bsh .ini { width: 38px; height: 38px; border-radius: 50%; background: var(--pri-bg); color: var(--pri); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+.bsh .who { flex: 1; min-width: 0; }
+.bsh .who b { display: block; font-size: 15px; }
+.bsh .who small { font-size: 12px; color: var(--ink3); }
+.bsh .wa { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ok-bg); color: var(--ok); }
+.bsh .wa .ic { width: 18px; height: 18px; }
+.bsh .bt { display: flex; align-items: center; gap: 11px; width: 100%; border: none; border-top: 1px solid var(--line2); background: none; font: inherit; color: inherit; text-align: left; padding: 8px 0; cursor: pointer; }
+.bsh .bt .tx { flex: 1; min-width: 0; }
+.bsh .bt .tx b { display: block; font-size: 14px; }
+.bsh .bt .tx small { display: block; font-size: 12px; color: var(--ink3); }
+.bsh .bt.pas { opacity: .55; }

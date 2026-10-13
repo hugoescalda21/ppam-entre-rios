@@ -1,5 +1,13 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Lupa de coordinación — 13 oct 2026 (caché ppam-v24)
+
+- Lupa arriba, al lado del avatar, en todas las pantallas (solo coordinadores y administradores). Busca en las campañas que coordina: hermanos (nombre o celular, con sus turnos y WhatsApp), campañas, puntos y turnos por hora ("8:30") o día ("sábado", "mañana").
+- Atajos antes de escribir: Por confirmar, Faltan hoy, Faltan mañana; y las últimas búsquedas.
+- Tocar un turno abre "Del día" en ese turno, resaltado; tocar un punto lo abre en Ajustes.
+- Se saca el buscador de arriba de las pestañas (lo reemplaza la lupa). Sin cambios en las reglas.
+- Versión 22. 179 pruebas de la página.
+
 ## Coordinación: buscar un hermano — 13 oct 2026 (caché ppam-v23)
 
 - Buscador arriba de las pestañas ("nombre o celular", sin tildes): muestra cada hermano con su congregación, celular, WhatsApp y todos sus turnos de la campaña con su estado. Tocar un turno abre "Del día" en ese turno.

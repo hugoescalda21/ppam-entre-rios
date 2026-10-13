@@ -54,6 +54,7 @@ function mock(seed, users) {
   const col = (p, filters) => ({
     doc: (id) => doc(p + '/' + id),
     where: (f, op, v) => col(p, [...(filters || []), [f, v]]),
+    get: async () => { const docs = Object.keys(store).filter(k => k.startsWith(p + '/') && !k.slice(p.length + 1).includes('/') && (filters || []).every(([ff, v]) => store[k][ff] === v)).map(snap); return { docs, size: docs.length, forEach: (fn) => docs.forEach(fn) }; },
     onSnapshot: (cb, err) => {
       const f = () => { const docs = Object.keys(store).filter(k => k.startsWith(p + '/') && !k.slice(p.length + 1).includes('/') && (filters || []).every(([ff, v]) => store[k][ff] === v)).map(snap); cb({ docs, forEach: (fn) => docs.forEach(fn) }); };
       listeners.add(f); f(); return () => listeners.delete(f);
@@ -214,12 +215,26 @@ const SEED = {
   await c.click('[data-tab="cobertura"]'); await c.waitForTimeout(80);
   await c.click('[data-cir="2026-10-03|t3"]'); await c.waitForTimeout(120);
   check('tocar una casilla de Cobertura abre ese día y turno en "Del día"', await c.evaluate(() => document.querySelector('.tabs .on').dataset.tab === 'dia' && document.querySelector('.day.on').dataset.cdia === '2026-10-03' && document.getElementById('dt-t3').classList.contains('flash')));
-  await c.type('#cBus', 'ana paz'); await c.waitForTimeout(80);
-  check('buscar un hermano: sus turnos de la campaña (sin tildes ni mayúsculas)', /1 hermano\s*AP\s*Ana Paz\s*San Agustín \(Paraná\) · 343 555-0000[\s\S]*SÁB\s*3\s*OCT\s*16 a 18\s*Hall central\s*Confirmado/i.test(await text(c, '#cBusR')) && await c.evaluate(() => document.getElementById('cTab').classList.contains('hidden')), await text(c, '#cBusR'));
-  await c.fill('#cBus', 'zzz'); await c.waitForTimeout(50);
-  check('buscar: sin resultados lo dice', /Nadie con “zzz”/.test(await text(c, '#cBusR')));
-  await c.fill('#cBus', 'paz'); await c.waitForTimeout(50); await c.click('#cBusR [data-cir]'); await c.waitForTimeout(120);
-  check('tocar un turno encontrado abre "Del día" en ese turno y limpia la búsqueda', await c.evaluate(() => document.getElementById('cBus').value === '' && !document.getElementById('cTab').classList.contains('hidden') && document.querySelector('.tabs .on').dataset.tab === 'dia' && !!document.querySelector('.dt.flash')));
+  check('la lupa arriba, para el coordinador', await c.evaluate(() => !document.getElementById('busBtn').classList.contains('hidden')));
+  await c.click('#busBtn'); await c.waitForTimeout(200);
+  check('lupa: atajos antes de escribir', /Por confirmar\s*Faltan hoy\s*Faltan mañana/.test(await text(c, '.bsov')), await text(c, '.bsov'));
+  await c.click('[data-bsat="man"]'); await c.waitForTimeout(80);
+  check('atajo "Faltan mañana": turnos del jueves 1 con lugar', /Faltan mañana · Jueves 1 de octubre[\s\S]*10 a 12 · Andén 1/i.test(await text(c, '.bsov')) && !/8 a 10 · Andén 1/.test(await text(c, '.bsov')), await text(c, '.bsov'));
+  await c.fill('#bsQ', 'ANA paz'); await c.waitForTimeout(250);
+  check('lupa: busca hermanos (sin tildes ni mayúsculas) con sus turnos', /HERMANOS\s*AP\s*Ana Paz\s*San Agustín \(Paraná\) · 343 555-0000[\s\S]*SÁB\s*3\s*OCT\s*16 a 18\s*Hall central\s*Confirmado/i.test(await text(c, '#bsR')), await text(c, '#bsR'));
+  await c.fill('#bsQ', 'andén'); await c.waitForTimeout(250);
+  check('lupa: busca puntos', /PUNTOS\s*Andén 1\s*Frente a boleterías · Terminal de ómnibus · 2 turnos/i.test(await text(c, '#bsR')), await text(c, '#bsR'));
+  await c.fill('#bsQ', '10'); await c.waitForTimeout(250);
+  check('lupa: un horario trae esos turnos', /TURNOS[\s\S]*10 a 12 · Andén 1/i.test(await text(c, '#bsR')) && !/8 a 10/.test(await text(c, '#bsR')), await text(c, '#bsR'));
+  await c.fill('#bsQ', 'terminal'); await c.waitForTimeout(250);
+  check('lupa: busca campañas', /CAMPAÑAS\s*Terminal de ómnibus/i.test(await text(c, '#bsR')));
+  await c.fill('#bsQ', 'zzz'); await c.waitForTimeout(250);
+  check('lupa: sin resultados lo dice', /Nada con “zzz”/.test(await text(c, '#bsR')));
+  await c.fill('#bsQ', 'paz'); await c.waitForTimeout(250); await c.click('#bsR [data-bir]'); await c.waitForTimeout(200);
+  check('tocar un turno encontrado cierra la lupa y abre "Del día" en ese turno', await c.evaluate(() => !document.querySelector('.bsov') && document.querySelector('.tabs .on').dataset.tab === 'dia' && document.querySelector('.day.on').dataset.cdia === '2026-10-03' && !!document.querySelector('#dt-t3.flash')));
+  await c.click('#busBtn'); await c.waitForTimeout(150);
+  check('búsquedas recientes', /Búsquedas recientes\s*paz/i.test(await text(c, '.bsov')));
+  await c.click('[data-bscerrar]'); await c.waitForTimeout(50);
   // Configurar: un punto nuevo y turnos en serie
   await c.click('[data-tab="config"]'); await c.waitForTimeout(100);
   await c.click('[data-punto=""]'); await c.fill('#ptNom', 'Salida Av. Ramírez'); await c.click('#ptOk'); await c.waitForTimeout(150);
