@@ -466,3 +466,18 @@ label.sbtn { cursor: pointer; }
 .rp-seg button { flex: 1; border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 8px 4px; font: inherit; font-size: 13px; font-weight: 600; color: var(--ink2); cursor: pointer; }
 .rp-seg button.on { background: var(--ink); color: var(--card); border-color: var(--ink); }
 @media (prefers-color-scheme: dark) { .rp-auto { background: #2E2614; border-color: #4A3D1C; color: #F1DFAE; } .rp-tag.nuevo { background: #3A1B1B; color: #F5B5B5; } .rp-tag.visto { background: #2E2614; color: #F1DFAE; } }
+
+/* Instalar la app */
+.inst { display: flex; gap: 12px; align-items: center; background: var(--card); border: 1px solid var(--line2); border-radius: 20px; padding: 12px; box-shadow: var(--sh2); margin: 0 0 14px; }
+.inst img { width: 52px; height: 52px; border-radius: 14px; flex-shrink: 0; }
+.inst .tx { flex: 1; min-width: 0; font-size: 13px; color: var(--ink2); line-height: 1.35; }
+.inst .tx b { display: block; color: var(--ink); font-size: 14.5px; }
+.inst .go { border: none; background: var(--pri); color: #fff; font: inherit; font-weight: 700; font-size: 13.5px; border-radius: 12px; padding: 9px 13px; cursor: pointer; }
+.inst .x { border: none; background: none; color: var(--ink3); font-size: 20px; line-height: 1; padding: 0 2px; align-self: flex-start; cursor: pointer; }
+.inst-h { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; }
+.inst-h img { width: 56px; height: 56px; border-radius: 14px; }
+.inst-st { display: flex; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line2); font-size: 14px; line-height: 1.5; }
+.inst-h + .inst-st { border-top: none; }
+.inst-st .n { width: 28px; height: 28px; border-radius: 50%; background: var(--pri-bg); color: var(--pri); display: grid; place-items: center; font-weight: 800; flex-shrink: 0; }
+.inst-st .k { display: inline-flex; align-items: center; gap: 4px; background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 0 7px; font-weight: 600; white-space: nowrap; }
+.inst-st .k .ic { width: 15px; height: 15px; }

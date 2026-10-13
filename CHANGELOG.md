@@ -1,5 +1,12 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Ícono nuevo e "Instalá la app" — 13 oct 2026 (caché ppam-v12)
+
+- **Ícono nuevo** con los colores de la página: "PPAM" en marfil, línea dorada y "ENTRE RÍOS" sobre verde petróleo. Versión adaptable para Android (no se recorta en círculo), ícono propio de iPhone (180 px) y uno simplificado para la pestaña del navegador.
+- **"Instalá la app PPAM"** arriba del Inicio: en Android abre el aviso del celular y queda instalada con un toque; en iPhone muestra los dos pasos (Compartir → Agregar a inicio). No aparece si ya está instalada ni en computadoras. La ✕ lo cierra por 30 días; "No mostrar más" o instalarla, para siempre.
+- "Instalar la app" también en el menú de la cuenta.
+- Versión 12. 128 pruebas de la página.
+
 ## Reportar un problema y equipo de soporte — 13 oct 2026 (caché ppam-v11)
 
 - Al pie de todas las pantallas: **"Reportar un problema"** y la **versión** de la página (Versión 11).

@@ -426,13 +426,13 @@ const SEED = {
       return { cx, m };
     };
     let { cx, m } = await abrir(seed, [], '#/c/parana-terminal');
-    check('al pie: "Reportar un problema" y la versión', /Reportar un problema\s*·\s*Cómo se usan tus datos\s*Versión 11/.test(await text(m, '.foot')), await text(m, '.foot'));
+    check('al pie: "Reportar un problema" y la versión', /Reportar un problema\s*·\s*Cómo se usan tus datos\s*Versión 12/.test(await text(m, '.foot')), await text(m, '.foot'));
     await m.evaluate(() => { window.dispatchEvent(new ErrorEvent('error', { message: 'Prueba de error', filename: 'https://x/app.js', lineno: 12 })); }); await m.waitForTimeout(150);
     let err = await m.evaluate(() => Object.entries(window.__store).filter(([k]) => k.startsWith('errores/') && k !== 'errores/viejo').map(([, v]) => v));
-    check('un error de la página queda anotado solo, con pantalla, celular y versión (sin datos personales)', err.length === 1 && /Prueba de error/.test(err[0].msg) && err[0].pantalla === '#/c/parana-terminal' && err[0].ver === '11' && err[0].disp && err[0].tipo === 'js' && Object.keys(err[0]).sort().join() === 'creado,disp,msg,pantalla,tipo,ver', err);
+    check('un error de la página queda anotado solo, con pantalla, celular y versión (sin datos personales)', err.length === 1 && /Prueba de error/.test(err[0].msg) && err[0].pantalla === '#/c/parana-terminal' && err[0].ver === '12' && err[0].disp && err[0].tipo === 'js' && Object.keys(err[0]).sort().join() === 'creado,disp,msg,pantalla,tipo,ver', err);
     await m.click('#repBtn'); await m.waitForTimeout(100);
     const sh = await text(m, '.sheet');
-    check('la ventana muestra lo que se envía también (pantalla, celular, versión, último error)', /Reportar un problema/.test(sh) && /Pantalla:\s*Terminal de ómnibus \(Paraná\)/.test(sh) && /Versión:\s*11/.test(sh) && /Último error:\s*"Prueba de error/.test(sh) && !/Tu cuenta/.test(sh), sh);
+    check('la ventana muestra lo que se envía también (pantalla, celular, versión, último error)', /Reportar un problema/.test(sh) && /Pantalla:\s*Terminal de ómnibus \(Paraná\)/.test(sh) && /Versión:\s*12/.test(sh) && /Último error:\s*"Prueba de error/.test(sh) && !/Tu cuenta/.test(sh), sh);
     await m.fill('#rpTx', 'No me deja anotarme el sábado'); await m.click('#rpGo');
     check('pide elegir qué pasó', /Elegí qué pasó/.test(await text(m, '#rpErr')));
     await m.click('[data-rptipo="No me deja anotarme"]'); await m.fill('#rpCel', '343 555-9999');
@@ -493,6 +493,49 @@ const SEED = {
     await m.fill('#adSop', 'sop@x.com\nOTRO@x.com\nno-email'); await m.click('#adSopOk'); await m.waitForTimeout(200);
     check('guarda el equipo de soporte (minúscula, sin lo que no es email)', await m.evaluate(() => JSON.stringify(window.__store['config/soporte'].emails) === '["sop@x.com","otro@x.com"]'));
     check('sin errores (admin, soporte)', m.errs.length === 0, m.errs);
+    await cx.close();
+  }
+
+  console.log('\nInstalar la app');
+  {
+    const ab = async (ua) => {
+      const cx = await b.newContext(Object.assign({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' }, ua ? { userAgent: ua } : {}));
+      await cx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+      await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+      await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, ${JSON.stringify([{ uid: 'u-i', email: 'ios@x.com', displayName: 'Iván Ríos' }])})`);
+      const m = await cx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
+      await m.goto(FILE); await m.waitForTimeout(300);
+      return { cx, m };
+    };
+    // Computadora sin aviso del navegador: nada
+    let { cx, m } = await ab();
+    check('en la computadora no aparece "Instalá la app"', !(await m.$('#instBan')));
+    // Android: el navegador ofrece instalar
+    await m.evaluate(() => { const e = new Event('beforeinstallprompt'); e.prompt = () => { window.__prompted = true; }; e.userChoice = Promise.resolve({ outcome: 'accepted' }); window.dispatchEvent(e); }); await m.waitForTimeout(100);
+    check('Android: aparece "Instalá la app PPAM" arriba del Inicio', /Instalá la app PPAM\s*Abrila desde la pantalla de inicio/.test(await text(m, '#instBan')));
+    await m.screenshot({ path: SHOTS + '/instalar-android.png' });
+    await m.click('[data-instalar]'); await m.waitForTimeout(100);
+    check('"Instalar" abre el aviso del celular y, si acepta, no vuelve a aparecer', await m.evaluate(() => window.__prompted === true && localStorage.getItem('ppam-instalar') === 'never') && !(await m.$('#instBan')));
+    check('sin errores (instalar Android)', m.errs.length === 0, m.errs);
+    await cx.close();
+    // Android: cerrar con la X
+    ({ cx, m } = await ab());
+    await m.evaluate(() => { const e = new Event('beforeinstallprompt'); e.prompt = () => {}; e.userChoice = Promise.resolve({ outcome: 'dismissed' }); window.dispatchEvent(e); }); await m.waitForTimeout(100);
+    await m.click('[data-instcerrar]'); await m.waitForTimeout(80);
+    const hasta = await m.evaluate(() => localStorage.getItem('ppam-instalar'));
+    check('la X lo cierra por 30 días', !(await m.$('#instBan')) && hasta && hasta.slice(0, 10) === '2026-10-30', hasta);
+    await cx.close();
+    // iPhone
+    ({ cx, m } = await ab('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'));
+    check('iPhone: aparece el aviso aunque Safari no tenga botón', !!(await m.$('#instBan')));
+    await m.click('[data-instalar]'); await m.waitForTimeout(100);
+    check('iPhone: "Instalar" muestra los dos pasos (Compartir → Agregar a inicio)', /Instalá la app PPAM[\s\S]*1\s*Tocá\s*Compartir[\s\S]*2\s*Bajá y elegí\s*Agregar a inicio/.test(await text(m, '.sheet')), await text(m, '.sheet'));
+    await m.screenshot({ path: SHOTS + '/instalar-iphone.png' });
+    await m.click('#instNunca'); await m.waitForTimeout(80);
+    check('"No mostrar más": no vuelve a aparecer', !(await m.$('#instBan')) && await m.evaluate(() => localStorage.getItem('ppam-instalar') === 'never'));
+    await m.click('#userBtn'); await m.waitForTimeout(300); await m.click('#userBtn'); await m.waitForTimeout(100);
+    check('en el menú de la cuenta queda "Instalar la app"', /Instalar la app/.test(await text(m, '.sheet')));
+    check('sin errores (instalar iPhone)', m.errs.length === 0, m.errs);
     await cx.close();
   }
 

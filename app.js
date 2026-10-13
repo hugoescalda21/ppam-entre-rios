@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '11';
+  const VERSION = '12';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -304,7 +304,7 @@
     if (S.ciudad !== 'todas' && !ciudades.includes(S.ciudad)) S.ciudad = 'todas';
     const vis = list.filter(c => S.ciudad === 'todas' || c.ciudad === S.ciudad);
     const prox = S.user ? misProximos() : [];
-    let h = '';
+    let h = instalarHTML();
     if (prox.length) {
       h += `<div class="lbl">${prox[0].fecha === hoy() ? 'Hoy' : 'Tu próximo turno'}</div>` + ticket(prox[0]);
       if (prox.length > 1) {
@@ -1226,6 +1226,42 @@
     catch (e) { console.error(e); toast('No se pudo guardar.'); }
   }
 
+
+  /* ---------- Instalar la app (PWA) ----------
+     Android/Chrome: se guarda el aviso del navegador (beforeinstallprompt) y "Instalar" lo abre.
+     iPhone/iPad (Safari): no hay botón posible; se muestran los dos pasos (Compartir → Agregar a inicio).
+     No se ofrece si ya está instalada (abre sola) ni en computadoras. Cerrar = vuelve en 30 días; "No mostrar más" = nunca. */
+  let promptInstalar = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); promptInstalar = e; if (S.route.name === 'home' && S.loaded) renderHome(); });
+  window.addEventListener('appinstalled', () => { promptInstalar = null; instGuardar('never'); if (S.route.name === 'home' && S.loaded) renderHome(); });
+  const esIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const yaInstalada = () => (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const puedeInstalar = () => !yaInstalada() && (!!promptInstalar || esIOS());
+  function instEstado() { try { return localStorage.getItem('ppam-instalar') || ''; } catch (e) { return ''; } }
+  function instGuardar(v) { try { localStorage.setItem('ppam-instalar', v); } catch (e) { /* nada */ } }
+  function instalarHTML() {
+    if (!puedeInstalar()) return '';
+    const st = instEstado();
+    if (st === 'never' || (st && st > new Date().toISOString())) return '';
+    return `<div class="inst" id="instBan"><img src="./icon-192.png" alt=""><span class="tx"><b>Instalá la app PPAM</b>Abrila desde la pantalla de inicio, como cualquier app.</span><button type="button" class="go" data-instalar>Instalar</button><button type="button" class="x" data-instcerrar aria-label="Cerrar">×</button></div>`;
+  }
+  async function instalar() {
+    if (promptInstalar) {
+      const e = promptInstalar; promptInstalar = null;
+      try { e.prompt(); const r = await e.userChoice; if (r && r.outcome === 'accepted') instGuardar('never'); } catch (er) { /* nada */ }
+      if (S.route.name === 'home') renderHome();
+      return;
+    }
+    const SH = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+    const PL = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+    const ov = sheet(`<div class="inst-h"><img src="./icon-192.png" alt=""><div><h3>Instalá la app PPAM</h3><p class="hint" style="margin:2px 0 0">En iPhone son dos pasos, en Safari:</p></div></div>
+      <div class="inst-st"><span class="n">1</span><span>Tocá <span class="k">${SH} Compartir</span> en la barra de abajo de Safari.</span></div>
+      <div class="inst-st"><span class="n">2</span><span>Bajá y elegí <span class="k">${PL} Agregar a inicio</span>, después <b>Agregar</b>.</span></div>
+      <p class="hint" style="margin:10px 0 14px">Listo: vas a ver el ícono de la PPAM en tu pantalla de inicio.</p>
+      <button type="button" class="btn" data-cerrar>Entendido</button><button type="button" class="btn alt" id="instNunca">No mostrar más</button>`);
+    ov.querySelector('#instNunca').addEventListener('click', () => { instGuardar('never'); ov.remove(); if (S.route.name === 'home') renderHome(); });
+  }
+
   /* ---------- Clics ---------- */
   document.addEventListener('click', (e) => {
     const t = e.target.closest('button, a[data-go]'); if (!t) return;
@@ -1234,13 +1270,16 @@
     if (t.id === 'shareBtn') { const c = S.campanas[S.route.cid]; if (!c) return; const txt = `PPAM · ${c.nombre} (${c.ciudad || ''}). Anotate en un turno: ${linkCampana(c)}`; if (navigator.share && !window.__ppamMock) navigator.share({ title: c.nombre, text: txt }).catch(() => {}); else compartir(txt); return; }
     if (t.id === 'userBtn') {
       if (!S.user) { login(); return; }
-      const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(S.user.displayName || S.user.email))}</span><div><h3>${esc(S.user.displayName || 'Mi cuenta')}</h3><p class="hint">${esc(S.user.email)}</p></div></div><button type="button" class="btn" id="uMis">Mis turnos</button><button type="button" class="btn alt" id="uOut">Cerrar sesión</button>`);
+      const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(S.user.displayName || S.user.email))}</span><div><h3>${esc(S.user.displayName || 'Mi cuenta')}</h3><p class="hint">${esc(S.user.email)}</p></div></div><button type="button" class="btn" id="uMis">Mis turnos</button>${puedeInstalar() ? '<button type="button" class="btn alt" id="uInst">Instalar la app</button>' : ''}<button type="button" class="btn alt" id="uOut">Cerrar sesión</button>`);
+      if (ov.querySelector('#uInst')) ov.querySelector('#uInst').addEventListener('click', () => { ov.remove(); instalar(); });
       ov.querySelector('#uMis').addEventListener('click', () => { ov.remove(); go('#/mis'); });
       ov.querySelector('#uOut').addEventListener('click', async () => { ov.remove(); await S.auth.signOut(); go('#/'); });
       return;
     }
     if (t.id === 'coordBtn') { go('#/coord'); return; }
     if (t.id === 'privBtn') { privacidad(); return; }
+    if (ds.instalar !== undefined) { instalar(); return; }
+    if (ds.instcerrar !== undefined) { instGuardar(new Date(Date.now() + 30 * 864e5).toISOString()); renderHome(); return; }
     if (t.id === 'repBtn' || t.closest('#repBtn')) { reportar(); return; }
     if (ds.rpfiltro) { S.sop.filtro = ds.rpfiltro; render(); return; }
     if (ds.rpdet !== undefined) { S.sop.detalle = !S.sop.detalle; render(); return; }
