@@ -410,6 +410,24 @@ const SEED = {
   await v.click('[data-comp]'); await v.waitForTimeout(100);
   const comp = await v.evaluate(() => decodeURIComponent((window.__opened.pop() || '').split('text=')[1] || ''));
   check('"Compartir" arma el mensaje del turno', /Tengo turno en la PPAM: Sábado 3 de octubre de 16:00 a 18:00 · Hall central \(Terminal de ómnibus, Paraná\)/.test(comp), comp);
+  await v.click('[data-invitar]'); await v.waitForTimeout(80);
+  const inv = await v.evaluate(() => decodeURIComponent((window.__opened.pop() || '').split('text=')[1] || ''));
+  check('"Invitar a alguien": WhatsApp con el link directo a ese turno', /Me anoté en la PPAM: Sábado 3 de octubre de 16:00 a 18:00 · Hall central \(Terminal de ómnibus, Paraná\)\. ¿Venís conmigo\? Anotate acá: .*#\/c\/parana-terminal\/2026-10-03\/t3$/.test(inv), inv);
+  check('la lupa también para los hermanos', await v.evaluate(() => !document.getElementById('busBtn').classList.contains('hidden')));
+  await v.click('#busBtn'); await v.waitForTimeout(150);
+  check('lupa de hermanos: atajos de lugares (no de personas)', /Con lugar hoy\s*Con lugar mañana/.test(await text(v, '.bsov')) && !/Por confirmar/.test(await text(v, '.bsov')));
+  await v.fill('#bsQ', 'anden'); await v.waitForTimeout(250);
+  const lu = await text(v, '#bsR');
+  check('busca un lugar: sus próximos horarios con lugar', /ANDÉN 1 · TERMINAL DE ÓMNIBUS[\s\S]*8 a 10 · Andén 1[\s\S]*Quedan? \d/i.test(lu), lu.slice(0, 300));
+  await v.fill('#bsQ', 'paz'); await v.waitForTimeout(250);
+  check('NO busca personas (privacidad)', /No encontramos lugares con “paz”/.test(await text(v, '#bsR')) && !/Ana Paz/.test(await text(v, '#bsR')));
+  await v.fill('#bsQ', 'anden'); await v.waitForTimeout(250);
+  await v.click('#bsR [data-bpedir="parana-terminal|2026-10-02|t1"]'); await v.waitForTimeout(300);
+  check('tocar un lugar abre "Confirmá tu turno" de ese día y horario', /Confirmá tu turno[\s\S]*Viernes 2 de octubre[\s\S]*08:00 – 10:00[\s\S]*Andén 1/.test(await text(v, '.sheet')) && await v.evaluate(() => location.hash === '#/c/parana-terminal'), await text(v, '.sheet'));
+  await v.click('.sheet [data-cerrar]'); await v.waitForTimeout(80);
+  await v.evaluate(() => { location.hash = '#/c/parana-terminal/2026-10-03/t2'; }); await v.waitForTimeout(400);
+  check('el link de invitación abre ese turno listo para anotarse', /Confirmá tu turno[\s\S]*Sábado 3 de octubre[\s\S]*10:00 – 12:00/.test(await text(v, '.sheet')) && await v.evaluate(() => document.querySelector('.day.on').dataset.dia === '2026-10-03'), await text(v, '.sheet'));
+  await v.click('.sheet [data-cerrar]'); await v.waitForTimeout(80);
   check('sin errores (el lugar)', v.errs.length === 0, v.errs);
 
   // Quitar la foto del punto

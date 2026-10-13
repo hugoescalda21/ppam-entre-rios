@@ -1,5 +1,11 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Lupa para los hermanos e "Invitar a alguien" — 13 oct 2026 (caché ppam-v29)
+
+- Todos los hermanos con sesión tienen la lupa: buscan lugares, ciudades, días y horarios con lugar ("Con lugar hoy / mañana"); tocar uno abre "Confirmá tu turno". Nunca muestra personas.
+- Detalle del turno: "Invitar a alguien a este turno" manda por WhatsApp un link directo (#/c/campaña/fecha/turno) que abre ese turno listo para anotarse (si ya se completó, avisa).
+- Versión 27. 211 pruebas de la página.
+
 ## Lupa: anotar a alguien que no está — 13 oct 2026 (caché ppam-v28)
 
 - Si la búsqueda parece un nombre y no hay nadie, ofrece "Anotar a …" (formulario con nombre y apellido ya completos, después la lista de lugares libres).

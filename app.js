@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '26';
+  const VERSION = '27';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -98,7 +98,7 @@
   /* ---------- Rutas: #/ · #/c/{cid} · #/t/{pedido} · #/mis · #/coord/{cid} · #/admin ---------- */
   function readRoute() {
     const h = (location.hash || '#/').slice(1).split('/').filter(Boolean);
-    if (h[0] === 'c' && h[1]) S.route = { name: 'camp', cid: h[1] };
+    if (h[0] === 'c' && h[1]) S.route = h[2] && h[3] ? { name: 'camp', cid: h[1], fecha: h[2], tid: decodeURIComponent(h[3]) } : { name: 'camp', cid: h[1] };
     else if (h[0] === 't' && h[1]) S.route = { name: 'turno', pid: decodeURIComponent(h[1]) };
     else if (h[0] === 'mis') S.route = { name: 'mis' };
     else if (h[0] === 'coord') S.route = { name: 'coord', cid: h[1] || null };
@@ -122,7 +122,7 @@
     ub.textContent = S.user ? iniciales(S.user.displayName || S.user.email) : 'Ingresar';
     ub.setAttribute('aria-label', S.user ? 'Mi cuenta' : 'Ingresar');
     $('coordBtn').classList.toggle('hidden', !esCoord);
-    $('busBtn').classList.toggle('hidden', !(S.user && (S.isAdmin || S.coordDe.length)));
+    $('busBtn').classList.toggle('hidden', !S.user);
     [['tabHome', ['home', 'camp']], ['tabMis', ['mis', 'turno']], ['coordBtn', ['coord', 'admin', 'soporte']]].forEach(([id, rs]) => $(id).classList.toggle('on', rs.includes(r.name)));
     let k = '', t = '', s = '';
     if (r.name === 'camp' && c) { k = c.ciudad || ''; t = c.nombre; s = campRango(c); }
@@ -374,6 +374,8 @@
     if (!c) { $('app').innerHTML = '<div class="card"><div class="empty">Esa campaña no existe o ya terminó.</div></div>'; return; }
     listenCC(c.id);
     const dias = diasDe(c);
+    const enlace = S.route.fecha && S.route.tid && !S.route.hecho && dias.includes(S.route.fecha) && c.turnos && c.turnos[S.route.tid] ? S.route : null;
+    if (enlace) { S.dia = enlace.fecha; S.diaCid = c.id; }
     if (S.diaCid !== c.id || !dias.includes(S.dia)) { S.dia = dias[0]; S.diaCid = c.id; }
     if (!dias.length) { $('app').innerHTML = '<div class="card"><div class="empty">No hay días con turnos por delante.</div></div>'; return; }
     const md = parseIso(S.dia);
@@ -417,6 +419,7 @@
     });
     if (filas.length && !vistos) h += '<div class="card"><div class="empty">Ese día ya no quedan lugares. Probá con otro día.</div></div>';
     $('app').innerHTML = h;
+    if (enlace) { enlace.hecho = true; setTimeout(() => { const oc = ocupDe(c.id, S.dia, enlace.tid); if (S.user && oc[S.user.uid]) return; if (Object.keys(oc).length >= cupoDe(c, Object.assign({ id: enlace.tid }, c.turnos[enlace.tid]))) { toast('Ese turno ya se completó. Elegí otro horario.'); return; } pedir(enlace.tid); }, 0); }
   }
   function verLugar(cid, pid) {
     const c = S.campanas[cid], p = c && c.puntos && c.puntos[pid];
@@ -617,6 +620,7 @@
     h += `<button type="button" data-ics="${esc(p.id)}">${I('cal')}Agendar</button><button type="button" data-comp="${esc(p.id)}">${I('share')}Compartir</button>`;
     h += !rech && !pasado ? `<button type="button" data-cancelar="${esc(p.id)}">${I('x')}Cancelar</button>` : `<button type="button" disabled>${I('x')}Cancelar</button>`;
     h += '</div>';
+    if (!rech && !pasado) h += `<button type="button" class="btn alt inv" data-invitar="${esc(p.id)}">${I('chat')}Invitar a alguien a este turno</button>`;
     if (!rech && !pasado) h += `<div class="info nota-info"><b>Nota para el coordinador</b><p>${p.nota ? esc(p.nota) : '<span class="faint">Sin nota.</span>'}</p><button type="button" class="sbtn" data-nota="${esc(p.id)}">${I('edit', 'width:15px;height:15px')}${p.nota ? 'Cambiar' : 'Agregar una nota'}</button></div>`;
     else if (p.nota) h += `<div class="info"><b>Nota para el coordinador</b><p>${esc(p.nota)}</p></div>`;
     if (pt.indicaciones) h += `<div class="info"><b>Cómo encontrarlo</b><p>${esc(pt.indicaciones)}</p></div>`;
@@ -624,6 +628,14 @@
     if (tieneLugar(pt)) h += `<button type="button" class="btn alt" data-lugar="${esc(p.cid)}|${esc(p.punto)}">${I('pin')}Ver fotos y datos del lugar</button>`;
     h += '</div>';
     $('app').innerHTML = h;
+  }
+  // "Anotate conmigo": link directo a ese turno (se abre listo para anotarse); no muestra datos de nadie
+  function invitarTurno(pid) {
+    const p = S.mis[pid]; if (!p) return;
+    const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {};
+    const link = location.origin + location.pathname + '#/c/' + p.cid + '/' + p.fecha + '/' + encodeURIComponent(p.tid);
+    const txt = `Me anoté en la PPAM: ${cap(fmtDia(p.fecha))} de ${p.desde} a ${p.hasta} · ${pt.nombre || ''} (${c.nombre || ''}${c.ciudad ? ', ' + c.ciudad : ''}). ¿Venís conmigo? Anotate acá: ${link}`;
+    compartir(txt);
   }
   function textoTurno(p) {
     const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, url = comoLlegarUrl(pt, c);
@@ -688,6 +700,72 @@
     if (S.coord.tab === 'config') bindConfig(c);
     if (S.coord.flash) { const e = document.getElementById(S.coord.flash); if (e) { e.scrollIntoView({ block: 'center' }); e.classList.add('flash'); S.coord.flashV = [S.coord.flash, Date.now() + 2500]; S.coord.flash = null; } }
     else if (S.coord.flashV && Date.now() < S.coord.flashV[1]) { const e = document.getElementById(S.coord.flashV[0]); if (e) e.classList.add('flash'); }
+  }
+  /* ---------- Lupa para hermanos: lugares, días y horarios con lugar (nunca personas) ---------- */
+  function campsPub() { return Object.values(S.campanas).filter(c => c.activa !== false && (!c.hasta || c.hasta >= hoy())); }
+  function pubFila(c, d, t) {
+    const p = (c.puntos || {})[t.punto] || {}, oc = ocupDe(c.id, d, t.id), n = cupoDe(c, t), falta = Math.max(0, n - Object.keys(oc).length), mio = S.user && oc[S.user.uid], x = parseIso(d);
+    return `<button type="button" class="bsr" data-bpedir="${esc(c.id)}|${d}|${esc(t.id)}"${!mio && !falta ? ' disabled' : ''}><span class="f"><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><small>${MES[x.getMonth()].slice(0, 3)}</small></span><span class="tx"><b class="num">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc(p.nombre || '')}</b><small>${esc(c.nombre)}${c.ciudad ? ' · ' + esc(c.ciudad) : ''}</small></span><span class="st ${mio ? 'ok' : falta ? 'lib' : ''}">${mio ? 'Tu turno' : falta ? (falta === 1 ? 'Queda 1' : 'Quedan ' + falta) : 'Completo'}</span></button>`;
+  }
+  const libre = (c, d, t) => { const oc = ocupDe(c.id, d, t.id); return Object.keys(oc).length < cupoDe(c, t) && !(S.user && oc[S.user.uid]); };
+  function pubAtajo(k) {
+    const d = k === 'hoy' ? hoy() : addDays(hoy(), 1), filas = [];
+    campsPub().forEach(c => { listenCC(c.id); if (diasDe(c).includes(d)) turnosDelDia(c, d).filter(t => libre(c, d, t)).forEach(t => filas.push([c, t])); });
+    filas.sort((a, b) => a[1].desde.localeCompare(b[1].desde));
+    return `<div class="bsg">Con lugar ${k === 'hoy' ? 'hoy' : 'mañana'} · ${esc(cap(fmtDia(d)))}</div>` + (filas.length ? filas.slice(0, 30).map(([c, t]) => pubFila(c, d, t)).join('') : '<div class="bs0">No quedan lugares ese día.</div>');
+  }
+  function pubResultados(q0) {
+    const q = sinTilde(q0), cs = campsPub(); if (q.length < 2) return '';
+    cs.forEach(c => listenCC(c.id));
+    let h = '';
+    const camps = cs.filter(c => sinTilde(c.nombre + ' ' + (c.ciudad || '') + ' ' + (c.lugar || '')).includes(q));
+    if (camps.length) h += `<div class="bsg">Campañas</div>` + camps.slice(0, 8).map(c => `<button type="button" class="bsr" data-go="#/c/${esc(c.id)}"><span class="th"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc(c.ciudad || '')} · ${esc(campRango(c))}</small></span>${I('chev')}</button>`).join('');
+    const pts = []; cs.forEach(c => Object.keys(c.puntos || {}).forEach(pid => { const p = c.puntos[pid]; if (sinTilde([p.nombre, p.detalle, p.direccion].join(' ')).includes(q)) pts.push([c, pid, p]); }));
+    pts.slice(0, 6).forEach(([c, pid, p]) => {
+      const filas = []; diasDe(c).forEach(d => turnosDelDia(c, d).filter(t => t.punto === pid && libre(c, d, t)).forEach(t => filas.push([d, t])));
+      h += `<div class="bsg">${esc(p.nombre)} · ${esc(c.nombre)}</div>` + (filas.length ? filas.slice(0, 6).map(([d, t]) => pubFila(c, d, t)).join('') + (filas.length > 6 ? `<button type="button" class="linkish bsnl" data-go="#/c/${esc(c.id)}">Ver todos sus horarios</button>` : '') : '<div class="bs0">Sin lugares libres en este punto.</div>');
+    });
+    let filas = [];
+    const mh = q.match(/^(\d{1,2})(?::(\d{2}))?(?:\s*hs?)?$/), dias = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'], dw = dias.findIndex(x => x.startsWith(q) && q.length >= 3);
+    if (mh) { const hh = String(mh[1]).padStart(2, '0') + (mh[2] ? ':' + mh[2] : ''); cs.forEach(c => diasDe(c).slice(0, 7).forEach(d => turnosDelDia(c, d).filter(t => t.desde.startsWith(hh) && libre(c, d, t)).forEach(t => filas.push([c, d, t])))); }
+    else if (dw >= 0 || q === 'hoy' || q === 'manana') cs.forEach(c => { const d = q === 'hoy' ? hoy() : q === 'manana' ? addDays(hoy(), 1) : diasDe(c).find(x => dowOf(x) === dw); if (d && diasDe(c).includes(d)) turnosDelDia(c, d).filter(t => libre(c, d, t)).forEach(t => filas.push([c, d, t])); });
+    filas.sort((a, b) => (a[1] + a[2].desde).localeCompare(b[1] + b[2].desde));
+    if (filas.length) h += `<div class="bsg">Con lugar</div>` + filas.slice(0, 20).map(([c, d, t]) => pubFila(c, d, t)).join('');
+    return h || `<div class="bs0">No encontramos lugares con “${esc(q0.trim())}”. Probá con un carrito, una ciudad, un día (sábado) o un horario (8:30).</div>`;
+  }
+  function irAPedir(cid, d, tid) {
+    S.dia = d; S.diaCid = cid;
+    const h = '#/c/' + cid;
+    if (location.hash === h) { readRoute(); render(); pedir(tid); return; }
+    window.addEventListener('hashchange', () => setTimeout(() => pedir(tid), 0), { once: true });
+    location.hash = h;
+  }
+  function abrirBuscadorPub() {
+    const ov = document.createElement('div'); ov.className = 'bsov';
+    ov.innerHTML = `<div class="bsbox"><div class="bsin">${I('search')}<input id="bsQ" type="search" placeholder="Buscar lugar, día u horario" autocomplete="off" enterkeyhint="search"><button type="button" class="bsx" data-bscerrar aria-label="Cerrar">Cerrar</button></div><div class="bsres" id="bsR"></div></div>`;
+    document.body.appendChild(ov);
+    const inp = ov.querySelector('#bsQ'), res = ov.querySelector('#bsR');
+    let atajo = null, timer = null;
+    const pinta = () => {
+      const q = inp.value;
+      if (q.trim().length >= 2) { atajo = null; res.innerHTML = pubResultados(q); return; }
+      const rec = busRecientes();
+      res.innerHTML = `<div class="bsch"><button type="button" data-bsat="hoy" class="${atajo === 'hoy' ? 'on' : ''}">Con lugar hoy</button><button type="button" data-bsat="man" class="${atajo === 'man' ? 'on' : ''}">Con lugar mañana</button></div>` +
+        (atajo ? pubAtajo(atajo) : (rec.length ? `<div class="bsg">Búsquedas recientes</div>${rec.map(r => `<button type="button" class="bsrec" data-bsrec="${esc(r)}">${I('clock', 'width:15px;height:15px')}${esc(r)}</button>`).join('')}` : '<div class="bs0">Escribí un carrito o lugar, una ciudad, un día (sábado) o un horario (8:30).</div>'));
+    };
+    pinta(); setTimeout(() => inp.focus(), 50);
+    inp.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(pinta, 120); });
+    const cerrar = () => ov.remove();
+    ov.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) { if (e.target === ov) cerrar(); return; }
+      const d = b.dataset;
+      if (d.bscerrar !== undefined) { cerrar(); return; }
+      if (d.bsat) { atajo = atajo === d.bsat ? null : d.bsat; pinta(); return; }
+      if (d.bsrec) { inp.value = d.bsrec; pinta(); return; }
+      if (d.bpedir) { e.stopPropagation(); busGuardar(inp.value); const [cid, f, tid] = d.bpedir.split('|'); cerrar(); const c = S.campanas[cid]; if (c && S.user && ocupDe(cid, f, tid)[S.user.uid]) { go('#/mis'); return; } irAPedir(cid, f, tid); return; }
+      if (d.go) { busGuardar(inp.value); cerrar(); }
+    });
+    ov.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrar(); });
   }
   /* ---------- Buscador de coordinación (lupa arriba): hermanos, campañas, puntos y turnos de las campañas que coordina ---------- */
   S.bus = { t: 0, peds: {}, cupos: {}, cargando: null };
@@ -769,6 +847,7 @@
     return h || `<div class="bs0">Nada con “${esc(q0.trim())}”. Probá con un nombre, un celular, un punto, una ciudad, un horario (8:30) o un día (sábado).</div>`;
   }
   function abrirBuscador() {
+    if (!(S.isAdmin || S.coordDe.length)) { abrirBuscadorPub(); return; }
     const ov = document.createElement('div'); ov.className = 'bsov';
     ov.innerHTML = `<div class="bsbox"><div class="bsin">${I('search')}<input id="bsQ" type="search" placeholder="Buscar hermano, punto o turno" autocomplete="off" enterkeyhint="search"><button type="button" class="bsx" data-bscerrar aria-label="Cerrar">Cerrar</button></div><div class="bsres" id="bsR"></div></div>`;
     document.body.appendChild(ov);
@@ -1894,6 +1973,7 @@
     if (ds.copiar) { copiar(ds.copiar); return; }
     if (ds.ics) { agendar(ds.ics); return; }
     if (ds.comp) { compartirTurno(ds.comp); return; }
+    if (ds.invitar) { invitarTurno(ds.invitar); return; }
     if (ds.nota) { editarNota(ds.nota); return; }
     if (ds.cancelar) { cancelarPedido(ds.cancelar); return; }
     if (ds.tab) { S.coord.tab = ds.tab; renderCoord(); return; }
