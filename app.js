@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '30';
+  const VERSION = '31';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -1149,11 +1149,13 @@
       const qi = body.querySelector('#hgQ'); qi.addEventListener('input', () => { clearTimeout(pinta.t); pinta.t = setTimeout(() => { pinta(); const n = ov.querySelector('#hgQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); });
     };
     try {
-      const qs = await S.db.collection('auditoria').orderBy(fp, 'desc').limit(500).get(); const a = []; qs.forEach(d => a.push(Object.assign({ id: d.id }, d.data()))); S.audAll = a;
+      // primero los 500 más nuevos; si esa consulta no está disponible, se trae todo y se ordena acá
+      let qs; try { qs = await S.db.collection('auditoria').orderBy(fp, 'desc').limit(500).get(); } catch (e1) { console.error(e1); registrarError('aviso', 'Historial (consulta ordenada): ' + (e1.code || e1.message || e1)); qs = await S.db.collection('auditoria').get(); }
+      const a = []; qs.forEach(d => a.push(Object.assign({ id: d.id }, d.data()))); a.sort((x, y) => String(y.id).localeCompare(String(x.id))); S.audAll = a;
       // limpieza: las líneas de más de 6 meses se borran (solo el administrador puede, y solo esas)
       const viejas = a.filter(x => { const d = audFecha(x); return d && Date.now() - d.getTime() > 183 * 864e5; });
       if (viejas.length) { const b = S.db.batch(); viejas.slice(0, 200).forEach(x => b.delete(S.db.doc('auditoria/' + x.id))); b.commit().catch(() => {}); }
-    } catch (e) { console.error(e); ov.querySelector('.hg-body').innerHTML = '<div class="empty">No se pudo cargar el historial.</div><button type="button" class="btn alt" data-cerrar>Cerrar</button>'; return; }
+    } catch (e) { console.error(e); registrarError('aviso', 'Historial: ' + String(e.code || e.message || e)); ov.querySelector('.hg-body').innerHTML = `<div class="empty">No se pudo cargar el historial.<br><small style="color:var(--ink3)">(${esc(String(e.code || e.message || e).slice(0, 80))})</small></div><button type="button" class="btn alt" data-cerrar>Cerrar</button>`; return; }
     pinta();
   }
   function pedidoCoordRow(c, p, acciones) {

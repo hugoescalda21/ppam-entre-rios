@@ -1,5 +1,10 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Historial general: carga más robusta — 13 oct 2026 (caché ppam-v33)
+
+- Administración › Historial: si la consulta ordenada no está disponible, trae todo y lo ordena en la página. Si igual falla, muestra el motivo y lo anota en los errores automáticos.
+- Versión 31.
+
 ## Celular siempre igual, Agendar al anotarse y título mientras carga — 13 oct 2026 (caché ppam-v32)
 
 - El celular se limpia solo (+54, 9, 0 y 15) y se guarda siempre igual (ej. 343 555-0000); aviso debajo del campo si faltan o sobran números. También en los formularios del coordinador. Los ya guardados no cambian.
