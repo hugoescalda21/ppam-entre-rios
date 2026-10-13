@@ -1,5 +1,16 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Mapa de Entre Ríos en el Inicio — 13 oct 2026 (caché ppam-v14)
+
+- Debajo de "Campañas", **Lista | Mapa**. La lista sigue siendo lo primero; la página recuerda lo que eligió cada uno. El filtro por ciudad funciona en los dos.
+- El mapa lo dibuja la página (contorno de Entre Ríos y sus departamentos en `mapa-er.js`, que se carga recién al abrir el mapa): no usa mapas de internet ni gasta lecturas.
+- Un pin por ciudad con campañas: verde si hay lugar esta semana, dorado si quedan pocos, gris si está completo; con el número si hay más de una. La ubicación sale de los puntos marcados; si no hay, del centro de la ciudad.
+- Al tocar un pin: onda dorada, el pin se vuelve las fotos de portada de sus campañas, el mapa se acerca y sube una tarjeta con cada campaña, cuántos lugares faltan y "Ver turnos". Tocando fuera vuelve. Sin animaciones si el celular tiene "reducir movimiento".
+- **"Cerca mío"**: con permiso del GPS, marca dónde está y abre la ciudad más cercana.
+- Las campañas que no se pueden ubicar aparecen debajo del mapa ("Sin ubicación en el mapa").
+- Administración → Inicio: **"Mostrar el mapa en el Inicio"** (prendido). Si se apaga, todos ven solo la lista.
+- Versión 13. 140 pruebas de la página.
+
 ## Logo del encabezado igual al ícono — 13 oct 2026 (caché ppam-v13)
 
 - El logo de arriba a la izquierda pasa del pin de ubicación a "PPAM" con la línea dorada, igual que el ícono de la app.

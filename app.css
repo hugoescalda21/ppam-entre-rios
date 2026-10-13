@@ -483,3 +483,48 @@ label.sbtn { cursor: pointer; }
 .inst-st .n { width: 28px; height: 28px; border-radius: 50%; background: var(--pri-bg); color: var(--pri); display: grid; place-items: center; font-weight: 800; flex-shrink: 0; }
 .inst-st .k { display: inline-flex; align-items: center; gap: 4px; background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 0 7px; font-weight: 600; white-space: nowrap; }
 .inst-st .k .ic { width: 15px; height: 15px; }
+
+/* Mapa de Entre Ríos en el Inicio */
+.seg2 { display: flex; background: var(--line2); border-radius: 13px; padding: 3px; gap: 3px; margin: 0 0 12px; }
+.seg2 button { flex: 1; display: inline-flex; justify-content: center; align-items: center; gap: 6px; border: none; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink2); padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+.seg2 button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.mapw { position: relative; border-radius: 22px; overflow: hidden; background: linear-gradient(180deg, #EEF3F1, #E3EBE8); border: 1px solid var(--line2); margin-bottom: 12px; aspect-ratio: 360 / 470; max-height: 74vh; touch-action: manipulation; }
+#mapa { width: 100%; height: 100%; display: block; }
+#mapa .prov { fill: #FBFAF7; stroke: #12433F; }
+#mapa .dep { stroke: #12433F; stroke-opacity: .12; }
+#mapa .rio { fill: #5E8FA0; }
+#mapa .city circle { fill: #8A939C; } #mapa .city text { fill: #6B7680; }
+#world { transition: transform .55s cubic-bezier(.2,.8,.2,1); transform-box: view-box; transform-origin: 0 0; }
+.mapw .city, .mapw .mpin { transition: opacity .35s; }
+.mapw.dim .city, .mapw.dim .mpin:not(.sel) { opacity: .35; }
+.mpin { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mpin .body { transition: transform .35s cubic-bezier(.3,1.6,.5,1); transform-box: fill-box; transform-origin: 50% 100%; }
+.mpin.sel .body { transform: scale(0); transition: transform .25s ease-in; }
+.mpin .ph { transform: scale(0); transform-box: fill-box; transform-origin: center; transition: transform .45s cubic-bezier(.3,1.6,.5,1); }
+.mpin.sel .ph { transform: scale(1); }
+.mpin:active .body { transform: scale(1.12); }
+.ripple { fill: none; stroke: #D7B774; stroke-width: 3; opacity: 0; }
+.ripple.go { animation: ppam-rip .9s ease-out; }
+@keyframes ppam-rip { 0% { opacity: .9; r: 4; } 100% { opacity: 0; r: 46; } }
+.yo-p { animation: ppam-yo 1.8s ease-in-out infinite; }
+@keyframes ppam-yo { 0%, 100% { r: 8; } 50% { r: 16; } }
+.mapw .near { position: absolute; right: 10px; top: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 12px; padding: 7px 10px; font: inherit; font-size: 12.5px; font-weight: 600; display: inline-flex; gap: 5px; align-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.08); cursor: pointer; }
+.mapw .leg { position: absolute; left: 10px; bottom: 10px; background: rgba(255,255,255,.9); border-radius: 10px; padding: 6px 9px; font-size: 11px; color: var(--ink2); display: flex; gap: 9px; flex-wrap: wrap; }
+.mapw .leg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.msheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--card); border-radius: 24px 24px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.18); transform: translateY(105%); transition: transform .45s cubic-bezier(.2,.8,.2,1); padding: 8px 14px 14px; max-height: 64%; overflow-y: auto; }
+.msheet.on { transform: none; }
+.msheet .grab { width: 40px; height: 4px; border-radius: 9px; background: var(--line); margin: 0 auto 10px; }
+.msheet h4 { margin: 0 0 6px; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); }
+.mcc { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line2); opacity: 0; transform: translateY(12px); transition: opacity .35s, transform .35s; }
+.msheet.on .mcc { opacity: 1; transform: none; }
+.mcc:first-of-type { border-top: none; }
+.mcc .im { width: 66px; height: 66px; border-radius: 15px; flex-shrink: 0; background: center/cover; box-shadow: 0 6px 14px rgba(0,0,0,.15); }
+.mcc .tx { flex: 1; min-width: 0; }
+.mcc b { display: block; font-size: 15px; }
+.mcc small { display: block; color: var(--ink3); font-size: 12.5px; }
+.mcc .f { display: block; font-size: 12.5px; font-weight: 600; margin-top: 2px; color: var(--ok); }
+.mcc .f.poco { color: var(--warn); } .mcc .f.full { color: var(--ink3); }
+.mcc .go { border: none; background: var(--pri); color: #fff; font: inherit; font-weight: 700; font-size: 13px; border-radius: 12px; padding: 9px 11px; white-space: nowrap; cursor: pointer; }
+.mapw.quieto #world, .mapw.quieto .mpin .body, .mapw.quieto .mpin .ph, .mapw.quieto .msheet, .mapw.quieto .mcc { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { #world, .mpin .body, .mpin .ph, .msheet, .mcc { transition: none !important; } .ripple.go, .yo-p { animation: none; } }
+@media (prefers-color-scheme: dark) { .mapw { background: linear-gradient(180deg, #13201F, #0F1A19); border-color: #23302F; } #mapa .prov { fill: #1A2A28; stroke: #5FB3A6; } #mapa .dep { stroke: #5FB3A6; } #mapa .city text { fill: #9AA7A3; } .mapw .leg { background: rgba(20,30,30,.9); } }

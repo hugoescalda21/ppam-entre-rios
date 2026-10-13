@@ -426,13 +426,13 @@ const SEED = {
       return { cx, m };
     };
     let { cx, m } = await abrir(seed, [], '#/c/parana-terminal');
-    check('al pie: "Reportar un problema" y la versión', /Reportar un problema\s*·\s*Cómo se usan tus datos\s*Versión 12/.test(await text(m, '.foot')), await text(m, '.foot'));
+    check('al pie: "Reportar un problema" y la versión', /Reportar un problema\s*·\s*Cómo se usan tus datos\s*Versión \d+/.test(await text(m, '.foot')), await text(m, '.foot'));
     await m.evaluate(() => { window.dispatchEvent(new ErrorEvent('error', { message: 'Prueba de error', filename: 'https://x/app.js', lineno: 12 })); }); await m.waitForTimeout(150);
     let err = await m.evaluate(() => Object.entries(window.__store).filter(([k]) => k.startsWith('errores/') && k !== 'errores/viejo').map(([, v]) => v));
-    check('un error de la página queda anotado solo, con pantalla, celular y versión (sin datos personales)', err.length === 1 && /Prueba de error/.test(err[0].msg) && err[0].pantalla === '#/c/parana-terminal' && err[0].ver === '12' && err[0].disp && err[0].tipo === 'js' && Object.keys(err[0]).sort().join() === 'creado,disp,msg,pantalla,tipo,ver', err);
+    check('un error de la página queda anotado solo, con pantalla, celular y versión (sin datos personales)', err.length === 1 && /Prueba de error/.test(err[0].msg) && err[0].pantalla === '#/c/parana-terminal' && /^\d+$/.test(err[0].ver) && err[0].disp && err[0].tipo === 'js' && Object.keys(err[0]).sort().join() === 'creado,disp,msg,pantalla,tipo,ver', err);
     await m.click('#repBtn'); await m.waitForTimeout(100);
     const sh = await text(m, '.sheet');
-    check('la ventana muestra lo que se envía también (pantalla, celular, versión, último error)', /Reportar un problema/.test(sh) && /Pantalla:\s*Terminal de ómnibus \(Paraná\)/.test(sh) && /Versión:\s*12/.test(sh) && /Último error:\s*"Prueba de error/.test(sh) && !/Tu cuenta/.test(sh), sh);
+    check('la ventana muestra lo que se envía también (pantalla, celular, versión, último error)', /Reportar un problema/.test(sh) && /Pantalla:\s*Terminal de ómnibus \(Paraná\)/.test(sh) && /Versión:\s*\d+/.test(sh) && /Último error:\s*"Prueba de error/.test(sh) && !/Tu cuenta/.test(sh), sh);
     await m.fill('#rpTx', 'No me deja anotarme el sábado'); await m.click('#rpGo');
     check('pide elegir qué pasó', /Elegí qué pasó/.test(await text(m, '#rpErr')));
     await m.click('[data-rptipo="No me deja anotarme"]'); await m.fill('#rpCel', '343 555-9999');
@@ -536,6 +536,46 @@ const SEED = {
     await m.click('#userBtn'); await m.waitForTimeout(300); await m.click('#userBtn'); await m.waitForTimeout(100);
     check('en el menú de la cuenta queda "Instalar la app"', /Instalar la app/.test(await text(m, '.sheet')));
     check('sin errores (instalar iPhone)', m.errs.length === 0, m.errs);
+    await cx.close();
+  }
+
+  console.log('\nMapa de Entre Ríos en el Inicio');
+  {
+    const seed = JSON.parse(JSON.stringify(SEED)); delete seed['campanas/vieja'];
+    seed['campanas/parana-terminal'].puntos.p1.lat = -31.7486; seed['campanas/parana-terminal'].puntos.p1.lng = -60.515;
+    seed['campanas/parana-costanera'] = { nombre: 'Costanera', ciudad: 'Paraná', desde: '2026-10-01', hasta: '2026-11-30', activa: true, puntos: { p1: { nombre: 'Rambla', tipo: 'stand', cupo: 2, lat: -31.718, lng: -60.526 } }, turnos: { t1: { punto: 'p1', desde: '09:00', hasta: '11:00', dias: [1, 3, 5, 6] } } };
+    seed['campanas/feliciano-x'] = { nombre: 'Plaza', ciudad: 'Pueblo Inventado', desde: '2026-10-01', hasta: '2026-11-30', activa: true, puntos: { p1: { nombre: 'Plaza', tipo: 'stand', cupo: 2 } }, turnos: {} };
+    const cx = await b.newContext({ viewport: { width: 390, height: 900 }, timezoneId: 'America/Argentina/Buenos_Aires', geolocation: { latitude: -32.618, longitude: -60.155 }, permissions: ['geolocation'] });
+    await cx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+    await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(seed)}, ${JSON.stringify([{ uid: 'u-ad', email: 'admin@x.com', displayName: 'Admin' }])})`);
+    const m = await cx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
+    await m.goto(FILE); await m.waitForTimeout(300);
+    check('en el Inicio: "Lista | Mapa", con la lista elegida', /Lista\s*Mapa/.test(await text(m, '.seg2')) && await m.evaluate(() => document.querySelector('[data-vista="lista"]').classList.contains('on')) && await m.evaluate(() => document.querySelectorAll('.cc.camp').length === 4));
+    await m.click('[data-vista="mapa"]'); await m.waitForTimeout(400);
+    const mp = await m.evaluate(() => ({ pins: [...document.querySelectorAll('.mpin')].map(p => p.dataset.mpin + ':' + p.querySelectorAll('.ph').length).sort(), prov: !!document.querySelector('#mapa .prov'), cards: document.querySelectorAll('.cc.camp').length, lbl: (document.querySelector('#app .lbl:last-of-type') || {}).textContent }));
+    check('Mapa: la provincia y un pin por ciudad (Paraná con 2 campañas, Concordia por su ciudad)', mp.prov && JSON.stringify(mp.pins) === '["concordia:1","parana:2"]', mp);
+    check('la campaña sin ubicación sigue apareciendo debajo del mapa', mp.cards === 1 && /Sin ubicación en el mapa/i.test(await text(m, '#app')) && /Pueblo Inventado/.test(await text(m, '#app')), mp);
+    check('recuerda que eligió Mapa', await m.evaluate(() => localStorage.getItem('ppam-vista') === 'mapa'));
+    await m.click('.mpin[data-mpin="parana"]', { force: true }); await m.waitForTimeout(700);
+    const ab = await m.evaluate(() => ({ sel: document.querySelector('.mpin.sel') && document.querySelector('.mpin.sel').dataset.mpin, dim: document.getElementById('mapw').classList.contains('dim'), zoom: document.getElementById('world').style.transform, on: document.getElementById('msheet').classList.contains('on'), t: document.getElementById('msBody').innerText.replace(/\s+/g, ' ') }));
+    check('tocar Paraná: se marca, se acerca y sube la tarjeta con sus 2 campañas y cuántos lugares faltan', ab.sel === 'parana' && ab.dim && /scale\(1\.9\)/.test(ab.zoom) && ab.on && /Paraná · 2 campañas/i.test(ab.t) && /Terminal de ómnibus/.test(ab.t) && /Costanera/.test(ab.t) && /Faltan \d+ lugares/.test(ab.t), ab);
+    await m.screenshot({ path: SHOTS + '/mapa-parana.png' });
+    await m.click('#mapa', { position: { x: 20, y: 30 }, force: true }); await m.waitForTimeout(500);
+    check('tocar fuera del pin vuelve el mapa', await m.evaluate(() => !document.querySelector('.mpin.sel') && !document.getElementById('msheet').classList.contains('on') && !document.getElementById('world').style.transform));
+    await m.click('[data-cerca]'); await m.waitForTimeout(1200);
+    check('"Cerca mío": marca dónde está y abre la ciudad más cercana', await m.evaluate(() => !!document.querySelector('#yo circle') && document.querySelector('.mpin.sel').dataset.mpin === 'parana') && /La más cercana: Paraná/.test(await text(m, '#toast')));
+    await m.click('.mcc .go >> nth=0'); await m.waitForTimeout(300);
+    check('"Ver turnos" entra a la campaña', /^#\/c\//.test(await m.evaluate(() => location.hash)));
+    // Interruptor en Administración
+    await m.click('#userBtn'); await m.waitForTimeout(300);
+    await m.evaluate(() => { location.hash = '#/admin'; }); await m.waitForTimeout(300);
+    check('Administración: "Mostrar el mapa en el Inicio", prendido', await m.evaluate(() => document.getElementById('adMapa').checked));
+    await m.click('#adMapa'); await m.waitForTimeout(200);
+    check('apagarlo lo guarda para todos', await m.evaluate(() => window.__store['config/publico'].mapa === false));
+    await m.evaluate(() => { location.hash = '#/'; }); await m.waitForTimeout(300);
+    check('con el mapa apagado: sin "Lista | Mapa" y se ve la lista, aunque había elegido Mapa', !(await m.$('.seg2')) && !(await m.$('#mapa')) && await m.evaluate(() => document.querySelectorAll('.cc.camp').length === 4));
+    check('sin errores (mapa)', m.errs.length === 0, m.errs);
     await cx.close();
   }
 

@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '12';
+  const VERSION = '13';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -67,7 +67,7 @@
     S.db.collection('campanas').onSnapshot((qs) => {
       const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; S.loaded = true; render();
     }, (e) => { console.error(e); $('app').innerHTML = '<div class="empty">No se pudieron cargar las campañas. Revisá la conexión.</div>'; });
-    S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin') render(); }, () => {});
+    S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin' || (S.route.name === 'home' && S.loaded)) render(); }, () => {});
     S.auth.onAuthStateChanged(onUser);
     setInterval(() => { if (S.route.name === 'home') renderHome(); }, 60000);
     window.addEventListener('hashchange', () => { readRoute(); render(); });
@@ -160,6 +160,7 @@
   function aplicarFoto(k) {
     const u = S.fotos[k];
     document.querySelectorAll('[data-foto]').forEach((el) => { if (el.dataset.foto === k) { el.style.backgroundImage = `url("${u}")`; if (el.id === 'tb') el.classList.add('foto'); } });
+    document.querySelectorAll('[data-fotoimg]').forEach((el) => { if (el.dataset.fotoimg === k) { el.setAttribute('href', u); el.removeAttribute('visibility'); } });
   }
   // Atributos para un elemento que muestra una foto de fondo (se completa sola cuando llega).
   function fotoAttr(cid, fid, base) {
@@ -329,8 +330,18 @@
       h += `<button type="button" class="coordbar" data-go="${esc(dest)}"><span class="n num${n ? '' : ' cero'}">${n}</span><span class="tx">${n === 1 ? 'Pedido por confirmar' : n ? 'Pedidos por confirmar' : 'Coordinación · todo al día'}<small>${esc(mias.length === 1 ? mias[0].nombre : mias.length + ' campañas')}</small></span>${I('chev')}</button>`;
     }
     h += `<div class="sh"><b>Campañas</b>${ciudades.length > 1 ? `<label class="flt">${esc(S.ciudad === 'todas' ? 'Toda la provincia' : S.ciudad)}${I('down', 'width:14px;height:14px')}<select id="fCiudad" aria-label="Filtrar por ciudad">${['todas', ...ciudades].map(x => `<option value="${esc(x)}"${x === S.ciudad ? ' selected' : ''}>${x === 'todas' ? 'Toda la provincia' : esc(x)}</option>`).join('')}</select></label>` : ''}</div>`;
-    h += vis.length ? vis.map(campCard).join('') : '<div class="card"><div class="empty">Todavía no hay campañas publicadas.</div></div>';
+    const conMapa = S.publico.mapa !== false;   // Administración → "Mostrar el mapa en el Inicio"
+    if (!conMapa && S.vista === 'mapa') S.vista = 'lista';
+    if (vis.length && conMapa) h += `<div class="seg2" role="tablist"><button type="button" data-vista="lista" class="${S.vista !== 'mapa' ? 'on' : ''}">${I('list', 'width:15px;height:15px')}Lista</button><button type="button" data-vista="mapa" class="${S.vista === 'mapa' ? 'on' : ''}">${I('pin', 'width:15px;height:15px')}Mapa</button></div>`;
+    if (vis.length && S.vista === 'mapa') {
+      h += mapaHTML();
+      // Las que no se pueden ubicar (sin puntos marcados y ciudad desconocida) siguen apareciendo, debajo del mapa.
+      const fuera = vis.filter(c => !Object.values(c.puntos || {}).some(p => p.lat != null && p.lng != null) && !CIUDADES_ER[sinTilde(c.ciudad)]);
+      if (fuera.length) h += `<div class="lbl" style="margin-top:4px">${fuera.length === 1 ? 'Sin ubicación en el mapa' : fuera.length + ' campañas sin ubicación en el mapa'}</div>` + fuera.map(campCard).join('');
+    }
+    else h += vis.length ? vis.map(campCard).join('') : '<div class="card"><div class="empty">Todavía no hay campañas publicadas.</div></div>';
     $('app').innerHTML = h;
+    if (vis.length && S.vista === 'mapa') dibujarMapa(vis);
   }
   function campCard(c) {
     listenCC(c.id);
@@ -1023,8 +1034,13 @@
     h += cs.map(c => `<div class="edit-row adm"><div><b>${esc(c.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc(c.ciudad || '')} · ${esc(campRango(c))}${c.activa === false ? ' · oculta' : ''}</small><small style="display:block;color:var(--soft);font-size:12px;">Coordinan: ${esc((S.coordEmails[c.id] || []).join(', ') || '—')}</small></div><div style="display:flex;gap:6px;"><button type="button" class="sbtn" data-coords="${esc(c.id)}">Coordinadores</button><button type="button" class="sbtn" data-go="#/coord/${esc(c.id)}">Abrir</button></div></div>`).join('') || '<div class="empty">Creá la primera campaña.</div>';
     h += `</div><div class="sec">Congregaciones</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Una por renglón, con la ciudad: "San Agustín (Paraná)". Es la lista que eligen los publicadores al pedir un turno.</p><div class="fld"><textarea id="adCongs" rows="8">${esc((S.publico.congregaciones || []).join('\n'))}</textarea></div><button type="button" class="btn" id="adCongsOk">Guardar lista</button></div>`;
     h += `<div class="sec">Administradores</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Pueden crear campañas y elegir sus coordinadores. Un email por renglón.</p><div class="fld"><textarea id="adAdm" rows="3">${esc(S.admins.join('\n'))}</textarea></div><button type="button" class="btn" id="adAdmOk">Guardar</button></div>`;
+    h += `<div class="sec">Inicio</div><div class="card" style="padding:12px 13px;"><label class="ck" style="margin:0 2px"><input type="checkbox" id="adMapa"${S.publico.mapa !== false ? ' checked' : ''}> <span><b>Mostrar el mapa en el Inicio</b><br>Debajo de "Campañas" se puede elegir Lista o Mapa. Si lo apagás, todos ven solo la lista.</span></label></div>`;
     h += `<div class="sec">Equipo de soporte</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Ven los reportes de problemas y los errores de la página. No cambian campañas ni ven los pedidos. Un email por renglón.</p><div class="fld"><textarea id="adSop" rows="3">${esc(S.soporteEmails.join('\n'))}</textarea></div><button type="button" class="btn" id="adSopOk">Guardar</button></div>`;
     $('app').innerHTML = h;
+    $('adMapa').addEventListener('change', async (e) => {
+      const on = e.target.checked;
+      try { await S.db.doc('config/publico').set({ mapa: on }, { merge: true }); toast(on ? 'El mapa se muestra en el Inicio' : 'El mapa quedó apagado'); } catch (er) { e.target.checked = !on; toast('No se pudo guardar.'); }
+    });
     $('adSopOk').addEventListener('click', async () => {
       const lista = [...new Set($('adSop').value.split('\n').map(x => x.trim().toLowerCase()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))];
       try { await S.db.doc('config/soporte').set({ emails: lista }); S.soporteEmails = lista; toast('Equipo de soporte guardado'); renderAdmin(); } catch (e) { toast('No se pudo guardar.'); }
@@ -1262,8 +1278,130 @@
     ov.querySelector('#instNunca').addEventListener('click', () => { instGuardar('never'); ov.remove(); if (S.route.name === 'home') renderHome(); });
   }
 
+
+  /* ---------- Mapa de Entre Ríos en el Inicio ----------
+     El mapa lo dibuja la página (contorno de la provincia en mapa-er.js, que se carga recién al abrir el mapa):
+     no usa mapas de internet ni gasta lecturas. Un pin por ciudad, con el color de cuánto lugar queda esta semana.
+     Al tocarlo: onda dorada, el pin se vuelve las fotos de portada de sus campañas, el mapa se acerca y sube la tarjeta. */
+  S.vista = (() => { try { return localStorage.getItem('ppam-vista') || 'lista'; } catch (e) { return 'lista'; } })();
+  S.mapa = { sel: null, yo: null };
+  // Centro aproximado de las ciudades (para campañas sin puntos marcados en el mapa).
+  const CIUDADES_ER = { 'parana': [-31.744, -60.517], 'concordia': [-31.392, -58.021], 'gualeguaychu': [-33.009, -58.517], 'concepcion del uruguay': [-32.483, -58.237], 'gualeguay': [-33.142, -59.31], 'victoria': [-32.618, -60.155], 'villaguay': [-31.865, -59.027], 'la paz': [-30.744, -59.645], 'chajari': [-30.75, -57.98], 'colon': [-32.224, -58.144], 'nogoya': [-32.394, -59.787], 'federal': [-30.955, -58.783], 'federacion': [-30.979, -57.923], 'diamante': [-32.066, -60.639], 'crespo': [-32.028, -60.307], 'rosario del tala': [-32.303, -59.145], 'san jose de feliciano': [-30.386, -58.752], 'feliciano': [-30.386, -58.752], 'san salvador': [-31.625, -58.505], 'villa elisa': [-32.163, -58.4], 'san jose': [-32.2, -58.212], 'basavilbaso': [-32.373, -58.879], 'urdinarrain': [-32.686, -58.894], 'larroque': [-33.036, -59.001], 'islas del ibicuy': [-33.744, -59.172], 'ibicuy': [-33.744, -59.172], 'viale': [-31.869, -60.007], 'hasenkamp': [-31.513, -59.836], 'maria grande': [-31.666, -59.904], 'san benito': [-31.783, -60.441], 'oro verde': [-31.825, -60.517], 'colonia avellaneda': [-31.767, -60.405], 'cerrito': [-31.582, -60.074], 'santa elena': [-30.946, -59.787], 'bovril': [-31.343, -59.445], 'ramirez': [-32.172, -60.2], 'general ramirez': [-32.172, -60.2], 'lucas gonzalez': [-32.384, -59.529], 'villa paranacito': [-33.72, -58.658], 'gilbert': [-32.53, -58.934], 'ubajay': [-31.795, -58.312], 'los conquistadores': [-30.594, -58.465], 'san jaime de la frontera': [-30.338, -58.31] };
+  const sinTilde = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  const svgEsc = (x) => esc(x);
+  const MAPA = { W: 360, H: 470, x0: -60.85, y0: -34.12, x1: -57.7, y1: -30.08 };
+  function proy(lng, lat) {
+    const k = Math.cos(32 * Math.PI / 180), s = Math.min((MAPA.W - 40) / ((MAPA.x1 - MAPA.x0) * k), (MAPA.H - 30) / (MAPA.y1 - MAPA.y0));
+    const ox = (MAPA.W - (MAPA.x1 - MAPA.x0) * k * s) / 2;
+    return [ox + (lng - MAPA.x0) * k * s, 15 + (MAPA.y1 - lat) * s];
+  }
+  function estadoCamp(c) {
+    const dias = diasDe(c); if (!dias.length) return { est: 'full', faltan: 0, txt: 'Sin turnos por delante' };
+    const k = cobertura(c, dias.filter(d => d <= addDays(dias[0], 6)));
+    const est = k.faltan <= 0 ? 'full' : (k.faltan <= 3 || k.ocup / Math.max(1, k.total) >= .75) ? 'poco' : 'ok';
+    const cuando = dias[0] <= addDays(hoy(), 6) ? 'esta semana' : 'la primera semana';
+    return { est, faltan: k.faltan, txt: k.faltan > 0 ? `${k.faltan === 1 ? 'Falta 1 lugar' : 'Faltan ' + k.faltan + ' lugares'} ${cuando}` : `Completo ${cuando}` };
+  }
+  function gruposMapa(cs) {
+    const g = {};
+    cs.forEach(c => {
+      const pts = Object.values(c.puntos || {}).filter(p => p.lat != null && p.lng != null);
+      let lat, lng;
+      if (pts.length) { lat = pts.reduce((a, p) => a + p.lat, 0) / pts.length; lng = pts.reduce((a, p) => a + p.lng, 0) / pts.length; }
+      else { const cc = CIUDADES_ER[sinTilde(c.ciudad)]; if (!cc) return; [lat, lng] = cc; }
+      const key = sinTilde(c.ciudad) || c.id;
+      const x = g[key] = g[key] || { key, ciudad: c.ciudad || c.nombre, lat: 0, lng: 0, cs: [] };
+      x.cs.push(Object.assign({ e: estadoCamp(c) }, c)); x.lat += lat; x.lng += lng;
+    });
+    return Object.values(g).map(x => Object.assign(x, { lat: x.lat / x.cs.length, lng: x.lng / x.cs.length, est: x.cs.some(c => c.e.est === 'ok') ? 'ok' : x.cs.some(c => c.e.est === 'poco') ? 'poco' : 'full' }));
+  }
+  function mapaHTML() {
+    return `<div class="mapw" id="mapw"><svg id="mapa" viewBox="0 0 ${MAPA.W} ${MAPA.H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mapa de Entre Ríos con las campañas"><text x="${MAPA.W / 2}" y="${MAPA.H / 2}" text-anchor="middle" font-size="12" fill="#8A939C">Cargando el mapa…</text></svg>
+      <button type="button" class="near" data-cerca>${I('gps', 'width:14px;height:14px')}Cerca mío</button>
+      <div class="leg"><span><i style="background:#1F7A55"></i>Hay lugar</span><span><i style="background:#B8924A"></i>Quedan pocos</span><span><i style="background:#8A939C"></i>Completo</span></div>
+      <div class="msheet" id="msheet"><div class="grab"></div><div id="msBody"></div></div></div>`;
+  }
+  let cargandoER = null;
+  function cargarER() {
+    if (window.PPAM_ER) return Promise.resolve();
+    if (!cargandoER) cargandoER = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = './mapa-er.js?v=' + VERSION; sc.onload = res; sc.onerror = () => { cargandoER = null; rej(new Error('mapa')); }; document.head.appendChild(sc); });
+    return cargandoER;
+  }
+  async function dibujarMapa(cs) {
+    try { await cargarER(); } catch (e) { const m = $('mapa'); if (m) m.innerHTML = '<text x="180" y="235" text-anchor="middle" font-size="12" fill="#8A939C">No se pudo cargar el mapa. Revisá la conexión.</text>'; return; }
+    const svg = $('mapa'); if (!svg) return;
+    const ER = window.PPAM_ER, P = proy, W = MAPA.W, H = MAPA.H;
+    const path = (rings) => rings.map(r => 'M' + r.map(([x, y]) => P(x, y).map(v => v.toFixed(1)).join(',')).join('L') + 'Z').join('');
+    const COL = { ok: '#1F7A55', poco: '#B8924A', full: '#8A939C' };
+    const grupos = gruposMapa(cs); S.mapa.grupos = grupos;
+    const ciudades = [['Paraná', -31.74, -60.51], ['Concordia', -31.39, -58.02], ['Gualeguaychú', -33.01, -58.52], ['C. del Uruguay', -32.48, -58.24], ['Gualeguay', -33.14, -59.31], ['Victoria', -32.62, -60.15], ['Villaguay', -31.87, -59.03], ['La Paz', -30.74, -59.65], ['Chajarí', -30.75, -57.98], ['Colón', -32.22, -58.14], ['Nogoyá', -32.39, -59.79], ['Federal', -30.95, -58.78]];
+    const color1 = (c) => (String(colorDe(c)).match(/#[0-9A-Fa-f]{6}/) || ['#1C5C56'])[0];
+    let g = `<g id="world">
+      <text x="18" y="70" font-size="11" fill="#9AA7A3" letter-spacing="2">SANTA FE</text><text x="${W - 70}" y="${H - 160}" font-size="11" fill="#9AA7A3" letter-spacing="2">URUGUAY</text><text x="150" y="26" font-size="11" fill="#9AA7A3" letter-spacing="2">CORRIENTES</text><text x="40" y="${H - 40}" font-size="11" fill="#9AA7A3" letter-spacing="2">BUENOS AIRES</text>
+      <path d="${path(ER.prov)}" fill="#12433F" opacity=".08" transform="translate(3 5)"/><path d="${path(ER.prov)}" class="prov" stroke-width="1.6" stroke-linejoin="round"/>
+      ${ER.deps.map(d => `<path d="${path(d.r)}" fill="none" class="dep" stroke-width=".8"/>`).join('')}
+      <text x="22" y="${H / 2 + 20}" font-size="10.5" class="rio" font-style="italic" transform="rotate(-70 22 ${H / 2 + 20})">Río Paraná</text><text x="${W - 14}" y="150" font-size="10.5" class="rio" font-style="italic" transform="rotate(80 ${W - 14} 150)">Río Uruguay</text>
+      ${ciudades.map(([n, la, ln]) => { const [x, y] = P(ln, la); return `<g class="city"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.2"/><text x="${(x + 5).toFixed(1)}" y="${(y + 3.5).toFixed(1)}" font-size="9.5">${n}</text></g>`; }).join('')}
+      <g id="yo"></g>`;
+    grupos.forEach((x, i) => {
+      const [px, py] = P(x.lng, x.lat), n = x.cs.length, m = Math.min(n, 3);
+      const fan = Array.from({ length: m }, (_, j) => m === 1 ? [0, -30] : [(j - (m - 1) / 2) * 36, -34]);
+      g += `<g class="mpin" data-mpin="${esc(x.key)}" transform="translate(${px.toFixed(1)} ${py.toFixed(1)})" role="button" aria-label="${esc(x.ciudad)}: ${n} ${n === 1 ? 'campaña' : 'campañas'}">
+        <circle class="ripple" r="4"/>
+        <g class="body"><path d="M0 0c-9-12-14-18-14-25a14 14 0 0 1 28 0c0 7-5 13-14 25z" fill="${COL[x.est]}" stroke="#fff" stroke-width="2"/>${n > 1 ? `<text y="-20" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">${n}</text>` : '<circle cy="-25" r="5" fill="#fff"/>'}</g>
+        ${fan.map(([fx, fy], j) => { const c = x.cs[j], k = c.portada ? fotoKey(c.id, c.portada) : ''; if (k) pedirFoto(k); const u = k ? S.fotos[k] : '';
+          return `<g class="ph" style="transition-delay:${(.12 + j * .08).toFixed(2)}s"><clipPath id="cp-${i}-${j}"><circle cx="${fx}" cy="${fy}" r="18"/></clipPath><path d="M${fx - 5} ${fy + 16}l5 8 5-8z" fill="#D7B774"/><circle cx="${fx}" cy="${fy}" r="18" fill="${color1(c)}"/>${k ? `<image data-fotoimg="${esc(k)}" href="${u || ''}" x="${fx - 18}" y="${fy - 18}" width="36" height="36" preserveAspectRatio="xMidYMid slice" clip-path="url(#cp-${i}-${j})"${u ? '' : ' visibility="hidden"'}/>` : `<text x="${fx}" y="${fy + 4}" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">${esc(iniciales(c.nombre))}</text>`}<circle cx="${fx}" cy="${fy}" r="18" fill="none" stroke="#D7B774" stroke-width="3"/></g>`; }).join('')}
+        <circle r="22" fill="transparent"/></g>`;
+    });
+    g += '</g>';
+    svg.innerHTML = g;
+    pintarYo();
+    if (S.mapa.sel && grupos.some(x => x.key === S.mapa.sel)) abrirPin(S.mapa.sel, true); else S.mapa.sel = null;
+    if (!grupos.length) svg.insertAdjacentHTML('beforeend', `<text x="${W / 2}" y="${H - 70}" text-anchor="middle" font-size="11.5" fill="#8A939C">Las campañas todavía no tienen sus puntos marcados.</text>`);
+  }
+  function pintarYo() {
+    const el = $('yo'); if (!el || !S.mapa.yo) return;
+    const [x, y] = proy(S.mapa.yo.lng, S.mapa.yo.lat);
+    el.innerHTML = `<circle class="yo-p" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="12" fill="#4A8FE7" opacity=".18"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="#4A8FE7" stroke="#fff" stroke-width="2"/>`;
+  }
+  function abrirPin(key, sinAnim) {
+    const x = (S.mapa.grupos || []).find(g => g.key === key), mw = $('mapw'), world = $('world'); if (!x || !mw || !world) return;
+    if (sinAnim) mw.classList.add('quieto');
+    S.mapa.sel = key;
+    document.querySelectorAll('.mpin').forEach(p => p.classList.toggle('sel', p.dataset.mpin === key));
+    const pin = document.querySelector(`.mpin[data-mpin="${CSS.escape(key)}"]`); pin.parentNode.appendChild(pin);
+    if (!sinAnim) { const r = pin.querySelector('.ripple'); r.classList.remove('go'); void r.getBBox(); r.classList.add('go'); }
+    mw.classList.add('dim');
+    const [px, py] = proy(x.lng, x.lat), z = 1.9;
+    world.style.transform = `translate(${(MAPA.W / 2 - px * z).toFixed(1)}px, ${(MAPA.H * .34 - py * z).toFixed(1)}px) scale(${z})`;
+    $('msBody').innerHTML = `<h4>${esc(x.ciudad)}${x.cs.length > 1 ? ` · ${x.cs.length} campañas` : ''}</h4>` + x.cs.map((c, j) => `<div class="mcc" style="transition-delay:${(.18 + j * .08).toFixed(2)}s"><span class="im"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c)].filter(Boolean).join(' · '))}</small><span class="f ${c.e.est}">${esc(c.e.txt)}</span></span><button type="button" class="go" data-go="#/c/${esc(c.id)}">Ver turnos</button></div>`).join('');
+    const sh = $('msheet'); sh.classList.remove('on'); void sh.offsetWidth; sh.classList.add('on');
+    if (sinAnim) requestAnimationFrame(() => requestAnimationFrame(() => mw.classList.remove('quieto')));
+  }
+  function cerrarPin() {
+    const mw = $('mapw'); if (!mw) return;
+    S.mapa.sel = null;
+    document.querySelectorAll('.mpin').forEach(p => p.classList.remove('sel'));
+    mw.classList.remove('dim'); if ($('world')) $('world').style.transform = ''; $('msheet').classList.remove('on');
+  }
+  function cercaMio() {
+    if (!navigator.geolocation) { toast('Este celular no comparte la ubicación.'); return; }
+    toast('Buscando dónde estás…');
+    navigator.geolocation.getCurrentPosition((pos) => {
+      S.mapa.yo = { lat: pos.coords.latitude, lng: pos.coords.longitude }; pintarYo();
+      const gs = S.mapa.grupos || []; if (!gs.length) return;
+      const dist = (a, b) => { const R = 6371, r = Math.PI / 180, dl = (b.lat - a.lat) * r, dg = (b.lng - a.lng) * r; const h = Math.sin(dl / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dg / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
+      const g = gs.map(x => ({ x, d: dist(S.mapa.yo, x) })).sort((a, b) => a.d - b.d)[0];
+      toast(`La más cercana: ${g.x.ciudad} (${g.d < 1 ? 'acá cerca' : Math.round(g.d) + ' km'})`);
+      setTimeout(() => abrirPin(g.x.key), 500);
+    }, () => toast('No se pudo saber dónde estás. Revisá el permiso de ubicación.'), { timeout: 10000, maximumAge: 300000 });
+  }
+
   /* ---------- Clics ---------- */
   document.addEventListener('click', (e) => {
+    const mp = e.target.closest && e.target.closest('.mpin');
+    if (mp) { if (S.mapa.sel === mp.dataset.mpin) cerrarPin(); else abrirPin(mp.dataset.mpin); return; }
+    if (e.target.closest && e.target.closest('#mapa') && !e.target.closest('.mpin')) { cerrarPin(); return; }
     const t = e.target.closest('button, a[data-go]'); if (!t) return;
     const ds = t.dataset;
     if (t.id === 'backBtn') { const r = S.route; go((r.name === 'coord' && r.cid) || r.name === 'admin' || r.name === 'soporte' ? '#/coord' : r.name === 'turno' ? '#/mis' : '#/'); return; }
@@ -1279,6 +1417,8 @@
     if (t.id === 'coordBtn') { go('#/coord'); return; }
     if (t.id === 'privBtn') { privacidad(); return; }
     if (ds.instalar !== undefined) { instalar(); return; }
+    if (ds.vista) { S.vista = ds.vista; S.mapa.sel = null; try { localStorage.setItem('ppam-vista', ds.vista); } catch (er) { /* nada */ } renderHome(); return; }
+    if (ds.cerca !== undefined) { cercaMio(); return; }
     if (ds.instcerrar !== undefined) { instGuardar(new Date(Date.now() + 30 * 864e5).toISOString()); renderHome(); return; }
     if (t.id === 'repBtn' || t.closest('#repBtn')) { reportar(); return; }
     if (ds.rpfiltro) { S.sop.filtro = ds.rpfiltro; render(); return; }
