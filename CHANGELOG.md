@@ -1,5 +1,16 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Mapa con zoom real y calles — 13 oct 2026 (caché ppam-v15)
+
+- El mapa del Inicio pasa a ser un mapa real (Leaflet + OpenStreetMap, el mismo de "Ver lugar"), con Entre Ríos resaltada y lo de afuera velado.
+- **Zoom de verdad**: pellizcar, doble toque o los botones + / −; se arrastra. "Todo" vuelve a la provincia.
+- **Nombres en los pines**: de lejos, la localidad ("Paraná · 3"); al acercarse, el nombre de cada campaña; muy de cerca, un pin por punto (carrito o stand) con su nombre.
+- Tocar un grupo acerca hasta separarlo. Tocar una campaña o un punto: onda dorada, el pin se vuelve su foto de portada y sube la tarjeta con "Ver turnos" (la página se acomoda para que se vea).
+- El mapa se arma una sola vez: al volver al Inicio o cuando se actualizan los datos no se pierde el zoom.
+- "Cerca mío", el interruptor de Administración y "Sin ubicación en el mapa" siguen igual.
+- La demo sigue en `demo-mapa.html` (página aparte, no la usa la app).
+- Versión 14. 144 pruebas de la página.
+
 ## Mapa de Entre Ríos en el Inicio — 13 oct 2026 (caché ppam-v14)
 
 - Debajo de "Campañas", **Lista | Mapa**. La lista sigue siendo lo primero; la página recuerda lo que eligió cada uno. El filtro por ciudad funciona en los dos.

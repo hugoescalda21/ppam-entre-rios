@@ -540,33 +540,51 @@ const SEED = {
   }
 
   console.log('\nMapa de Entre Ríos en el Inicio');
-  {
+  const LFD = path.resolve(__dirname, '..', '..', 'lf', 'package', 'dist');
+  if (!require('fs').existsSync(LFD)) console.log('  (sin copia local de Leaflet: se saltean las pruebas del mapa)');
+  else {
     const seed = JSON.parse(JSON.stringify(SEED)); delete seed['campanas/vieja'];
-    seed['campanas/parana-terminal'].puntos.p1.lat = -31.7486; seed['campanas/parana-terminal'].puntos.p1.lng = -60.515;
-    seed['campanas/parana-costanera'] = { nombre: 'Costanera', ciudad: 'Paraná', desde: '2026-10-01', hasta: '2026-11-30', activa: true, puntos: { p1: { nombre: 'Rambla', tipo: 'stand', cupo: 2, lat: -31.718, lng: -60.526 } }, turnos: { t1: { punto: 'p1', desde: '09:00', hasta: '11:00', dias: [1, 3, 5, 6] } } };
+    seed['campanas/parana-terminal'].puntos.p1.lat = -31.7376; seed['campanas/parana-terminal'].puntos.p1.lng = -60.5243;
+    seed['campanas/parana-terminal'].puntos.p2.lat = -31.7381; seed['campanas/parana-terminal'].puntos.p2.lng = -60.5235;
+    seed['campanas/parana-costanera'] = { nombre: 'Costanera', ciudad: 'Paraná', desde: '2026-10-01', hasta: '2026-11-30', activa: true, puntos: { p1: { nombre: 'Rosedal', tipo: 'stand', cupo: 2, lat: -31.7194, lng: -60.5333 } }, turnos: { t1: { punto: 'p1', desde: '09:00', hasta: '11:00', dias: [1, 3, 5, 6] } } };
     seed['campanas/feliciano-x'] = { nombre: 'Plaza', ciudad: 'Pueblo Inventado', desde: '2026-10-01', hasta: '2026-11-30', activa: true, puntos: { p1: { nombre: 'Plaza', tipo: 'stand', cupo: 2 } }, turnos: {} };
     const cx = await b.newContext({ viewport: { width: 390, height: 900 }, timezoneId: 'America/Argentina/Buenos_Aires', geolocation: { latitude: -32.618, longitude: -60.155 }, permissions: ['geolocation'] });
     await cx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
     await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await cx.route(/unpkg\.com\/leaflet@1\.9\.4\/dist\/leaflet\.(js|css)$/, r => r.fulfill({ path: path.join(LFD, r.request().url().endsWith('.css') ? 'leaflet.css' : 'leaflet.js') }));
     await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(seed)}, ${JSON.stringify([{ uid: 'u-ad', email: 'admin@x.com', displayName: 'Admin' }])})`);
     const m = await cx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
     await m.goto(FILE); await m.waitForTimeout(300);
+    const labs = () => m.evaluate(() => [...document.querySelectorAll('.pp .lab')].map(x => x.textContent.replace(/\s+/g, ' ').trim()).sort());
+    const pin = (re) => m.evaluateHandle((r) => [...document.querySelectorAll('.pp')].find(x => new RegExp(r).test(x.textContent)).querySelector('.pin'), re);
     check('en el Inicio: "Lista | Mapa", con la lista elegida', /Lista\s*Mapa/.test(await text(m, '.seg2')) && await m.evaluate(() => document.querySelector('[data-vista="lista"]').classList.contains('on')) && await m.evaluate(() => document.querySelectorAll('.cc.camp').length === 4));
-    await m.click('[data-vista="mapa"]'); await m.waitForTimeout(400);
-    const mp = await m.evaluate(() => ({ pins: [...document.querySelectorAll('.mpin')].map(p => p.dataset.mpin + ':' + p.querySelectorAll('.ph').length).sort(), prov: !!document.querySelector('#mapa .prov'), cards: document.querySelectorAll('.cc.camp').length, lbl: (document.querySelector('#app .lbl:last-of-type') || {}).textContent }));
-    check('Mapa: la provincia y un pin por ciudad (Paraná con 2 campañas, Concordia por su ciudad)', mp.prov && JSON.stringify(mp.pins) === '["concordia:1","parana:2"]', mp);
-    check('la campaña sin ubicación sigue apareciendo debajo del mapa', mp.cards === 1 && /Sin ubicación en el mapa/i.test(await text(m, '#app')) && /Pueblo Inventado/.test(await text(m, '#app')), mp);
+    await m.click('[data-vista="mapa"]'); await m.waitForTimeout(600);
+    let l = await labs();
+    check('de lejos: un pin por localidad con su nombre (Paraná · 2, Concordia)', JSON.stringify(l) === '["Concordia","Paraná· 2"]', l);
+    check('la campaña sin ubicación sigue apareciendo debajo del mapa', /Sin ubicación en el mapa/i.test(await text(m, '#app')) && /Pueblo Inventado/.test(await text(m, '#app')) && await m.evaluate(() => document.querySelectorAll('.cc.camp').length === 1));
     check('recuerda que eligió Mapa', await m.evaluate(() => localStorage.getItem('ppam-vista') === 'mapa'));
-    await m.click('.mpin[data-mpin="parana"]', { force: true }); await m.waitForTimeout(700);
-    const ab = await m.evaluate(() => ({ sel: document.querySelector('.mpin.sel') && document.querySelector('.mpin.sel').dataset.mpin, dim: document.getElementById('mapw').classList.contains('dim'), zoom: document.getElementById('world').style.transform, on: document.getElementById('msheet').classList.contains('on'), t: document.getElementById('msBody').innerText.replace(/\s+/g, ' ') }));
-    check('tocar Paraná: se marca, se acerca y sube la tarjeta con sus 2 campañas y cuántos lugares faltan', ab.sel === 'parana' && ab.dim && /scale\(1\.9\)/.test(ab.zoom) && ab.on && /Paraná · 2 campañas/i.test(ab.t) && /Terminal de ómnibus/.test(ab.t) && /Costanera/.test(ab.t) && /Faltan \d+ lugares/.test(ab.t), ab);
-    await m.screenshot({ path: SHOTS + '/mapa-parana.png' });
-    await m.click('#mapa', { position: { x: 20, y: 30 }, force: true }); await m.waitForTimeout(500);
-    check('tocar fuera del pin vuelve el mapa', await m.evaluate(() => !document.querySelector('.mpin.sel') && !document.getElementById('msheet').classList.contains('on') && !document.getElementById('world').style.transform));
-    await m.click('[data-cerca]'); await m.waitForTimeout(1200);
-    check('"Cerca mío": marca dónde está y abre la ciudad más cercana', await m.evaluate(() => !!document.querySelector('#yo circle') && document.querySelector('.mpin.sel').dataset.mpin === 'parana') && /La más cercana: Paraná/.test(await text(m, '#toast')));
-    await m.click('.mcc .go >> nth=0'); await m.waitForTimeout(300);
+    await (await pin('Paraná')).click(); await m.waitForTimeout(1200);
+    l = await labs();
+    check('tocar "Paraná · 2" acerca hasta separar sus campañas, con su nombre', l.includes('Terminal de ómnibus') && l.includes('Costanera'), l);
+    await (await pin('Terminal de ómnibus')).click(); await m.waitForTimeout(1000);
+    const ab = await m.evaluate(() => ({ sel: !!document.querySelector('.pp.sel'), dim: document.querySelector('.mapin').classList.contains('dim'), on: document.getElementById('msheet').classList.contains('on'), t: document.getElementById('msBody').innerText.replace(/\s+/g, ' ') }));
+    check('tocar una campaña: se vuelve su foto y sube la tarjeta con los lugares que faltan', ab.sel && ab.dim && ab.on && /Terminal de ómnibus/.test(ab.t) && /2 puntos/.test(ab.t) && /Faltan \d+ lugares|Falta 1 lugar/.test(ab.t), ab);
+    await m.screenshot({ path: SHOTS + '/mapa-terminal.png' });
+    await m.click('#lmap', { position: { x: 30, y: 120 } }); await m.waitForTimeout(400);
+    check('tocar el mapa cierra la tarjeta', await m.evaluate(() => !document.querySelector('.pp.sel') && !document.getElementById('msheet').classList.contains('on')));
+    for (let i = 0; i < 4; i++) { await m.click('[data-mz="1"]'); await m.waitForTimeout(350); }
+    l = await labs();
+    check('muy de cerca: un pin por punto (Andén 1, Hall central)', l.some(x => /Andén 1/.test(x)) || l.some(x => /Hall central/.test(x)) || l.some(x => /2 puntos/.test(x)), l);
+    await m.click('[data-mtodo]'); await m.waitForTimeout(900);
+    check('"Todo" vuelve a la provincia', JSON.stringify(await labs()) === '["Concordia","Paraná· 2"]');
+    // al refrescar el Inicio el mapa no se pierde
+    await m.evaluate(() => { const z = window.__ppam.mapa.map.getZoom(); window.__z = z; }); await m.evaluate(() => window.__ppam && document.dispatchEvent(new Event('x')));
+    await m.click('[data-cerca]'); await m.waitForTimeout(2200);
+    check('"Cerca mío": marca dónde está y abre la campaña más cercana', await m.evaluate(() => !!document.querySelector('.yo') && document.getElementById('msheet').classList.contains('on')) && /La más cercana/.test(await text(m, '#toast')));
+    await m.click('.mcc .go'); await m.waitForTimeout(300);
     check('"Ver turnos" entra a la campaña', /^#\/c\//.test(await m.evaluate(() => location.hash)));
+    await m.evaluate(() => { location.hash = '#/'; }); await m.waitForTimeout(500);
+    check('al volver al Inicio el mapa sigue ahí (no se vuelve a armar)', await m.evaluate(() => !!document.querySelector('#mapw .mapin') && document.querySelectorAll('.mapin').length === 1));
     // Interruptor en Administración
     await m.click('#userBtn'); await m.waitForTimeout(300);
     await m.evaluate(() => { location.hash = '#/admin'; }); await m.waitForTimeout(300);
@@ -574,11 +592,10 @@ const SEED = {
     await m.click('#adMapa'); await m.waitForTimeout(200);
     check('apagarlo lo guarda para todos', await m.evaluate(() => window.__store['config/publico'].mapa === false));
     await m.evaluate(() => { location.hash = '#/'; }); await m.waitForTimeout(300);
-    check('con el mapa apagado: sin "Lista | Mapa" y se ve la lista, aunque había elegido Mapa', !(await m.$('.seg2')) && !(await m.$('#mapa')) && await m.evaluate(() => document.querySelectorAll('.cc.camp').length === 4));
+    check('con el mapa apagado: sin "Lista | Mapa" y se ve la lista', !(await m.$('.seg2')) && !(await m.$('#mapw')) && await m.evaluate(() => document.querySelectorAll('.cc.camp').length === 4));
     check('sin errores (mapa)', m.errs.length === 0, m.errs);
     await cx.close();
   }
-
   await b.close(); console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;
 })();

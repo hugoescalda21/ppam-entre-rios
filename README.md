@@ -11,6 +11,7 @@ confirman los pedidos, ven qué turnos faltan cubrir y comparten las listas por 
 |---|---|
 | `index.html`, `app.js`, `app.css` | La página (una sola app: publicadores, coordinadores y administración). |
 | `mapa-er.js` | Contorno de Entre Ríos y sus departamentos para el mapa del Inicio (se carga solo al abrirlo). |
+| `demo-mapa.html` | Demo del mapa con datos de ejemplo (página aparte, no la usa la app). |
 | `firebase-config.js` | Los datos del proyecto de Firebase (no son secretos). |
 | `service-worker.js`, `manifest.json`, `icon-*.png` | Para instalarla en el celular. |
 | `firebase/firestore.rules` | Reglas de seguridad: quién ve y cambia qué. |
