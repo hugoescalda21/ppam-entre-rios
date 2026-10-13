@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '25';
+  const VERSION = '26';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -726,16 +726,28 @@
     const q = sinTilde(q0), dig = q.replace(/\D/g, ''), cs = misCampanas(), hoyS = hoy();
     if (q.length < 2) return '';
     let h = '';
-    // Hermanos
-    const per = {};
-    cs.forEach(c => busPeds(c.id).filter(p => (p.estado === 'confirmado' || p.estado === 'pendiente') && (sinTilde(p.nombre + ' ' + p.apellido).includes(q) || sinTilde(p.apellido + ' ' + p.nombre).includes(q) || (dig.length >= 3 && !/[a-z]/.test(q) && String(p.celular || '').replace(/\D/g, '').includes(dig)))).forEach(p => { const k = p.uid || p.nombre + p.apellido; (per[k] = per[k] || []).push([c, p]); }));
-    const ks = Object.keys(per).sort((a, b) => (per[a][0][1].nombre + per[a][0][1].apellido).localeCompare(per[b][0][1].nombre + per[b][0][1].apellido));
+    // Hermanos (exactos; si no hay y parece un nombre, parecidos y "anotar a alguien nuevo")
+    const per = {}, todos = {};
+    const okE = (p) => p.estado === 'confirmado' || p.estado === 'pendiente';
+    const coincide = (p) => sinTilde(p.nombre + ' ' + p.apellido).includes(q) || sinTilde(p.apellido + ' ' + p.nombre).includes(q) || (dig.length >= 3 && !/[a-z]/.test(q) && String(p.celular || '').replace(/\D/g, '').includes(dig));
+    cs.forEach(c => busPeds(c.id).filter(okE).forEach(p => { const k = p.uid || p.nombre + p.apellido; (todos[k] = todos[k] || []).push([c, p]); if (coincide(p)) (per[k] = per[k] || []).push([c, p]); }));
+    const diasPal = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'hoy', 'manana'];
+    const pareceNombre = /^[a-zñ' .-]{3,}$/.test(q) && !diasPal.some(x => x.startsWith(q)) && !cs.some(c => sinTilde(c.nombre + ' ' + (c.ciudad || '')).includes(q) || Object.values(c.puntos || {}).some(pt => sinTilde([pt.nombre, pt.detalle, pt.direccion].join(' ')).includes(q)));
+    let ks = Object.keys(per), parecidos = false;
+    if (!ks.length && pareceNombre) {
+      const ws = q.split(/\s+/).filter(w => w.length >= 3);
+      ks = Object.keys(todos).filter(k => { const p0 = todos[k][0][1], ts = sinTilde(p0.nombre + ' ' + p0.apellido).split(/\s+/); return ws.length && ws.every(w => ts.some(t => lev(w, t) <= (w.length >= 6 ? 2 : 1) || (t.length > 3 && w.startsWith(t.slice(0, Math.max(4, t.length - 1)))))); });
+      ks.forEach(k => { per[k] = todos[k]; }); parecidos = ks.length > 0;
+    }
+    ks.sort((a, b) => (per[a][0][1].nombre + per[a][0][1].apellido).localeCompare(per[b][0][1].nombre + per[b][0][1].apellido));
     S.bus.per = per;
-    if (ks.length) h += `<div class="bsg">Hermanos</div>` + ks.slice(0, 15).map(k => {
+    if (!Object.keys(per).length && pareceNombre || parecidos) h += `<div class="bsnew"><b>No hay nadie con “${esc(q0.trim())}”${parecidos ? '. ¿Es alguno de estos?' : '.'}</b>${parecidos ? '' : '<span>Si no se anotó nunca, lo podés anotar vos.</span>'}<button type="button" class="btn${parecidos ? ' alt' : ''}" data-bnuevo="${esc(q0.trim())}">${I('plus')}${parecidos ? 'No, anotar a alguien nuevo' : 'Anotar a ' + esc(capNombre(q0.trim()))}</button></div>`;
+    if (ks.length) h += `<div class="bsg">${parecidos ? 'Parecidos' : 'Hermanos'}</div>` + ks.slice(0, 15).map(k => {
       const l = per[k].sort((a, b) => (a[1].fecha + a[1].desde).localeCompare(b[1].fecha + b[1].desde)), p0 = l[0][1], wa = String(p0.celular || '').replace(/\D/g, ''), varias = new Set(l.map(x => x[0].id)).size > 1;
       return `<div class="bsh"><div class="t"><span class="ini">${esc(iniciales(p0.nombre + ' ' + p0.apellido))}</span><div class="who"><b>${esc(p0.nombre)} ${esc(p0.apellido)}</b><small>${esc(p0.congregacion)} · <span class="num">${esc(p0.celular || '')}</span></small></div>${wa ? `<a class="wa" href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}" target="_blank" rel="noopener" aria-label="WhatsApp">${I('chat')}</a>` : ''}<button type="button" class="sbtn anot" data-bturno="${esc(k)}">${I('plus', 'width:14px;height:14px')}Turno</button></div>${l.map(([c, p]) => { const x = parseIso(p.fecha), pt = (c.puntos || {})[p.punto] || {}, pas = p.fecha < hoyS;
         return `<button type="button" class="bt${pas ? ' pas' : ''}" data-bir="${esc(c.id)}|${esc(p.fecha)}|${esc(p.tid)}"><span class="f"><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><small>${MES[x.getMonth()].slice(0, 3)}</small></span><span class="tx"><b class="num">${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))}</b><small>${esc(pt.nombre || '')}${varias || cs.length > 1 ? ' · ' + esc(c.nombre) : ''}</small></span><span class="tag ${p.estado}">${pas ? 'Ya pasó' : p.estado === 'confirmado' ? 'Confirmado' : 'Por confirmar'}</span></button>`; }).join('')}</div>`;
     }).join('');
+    if (ks.length && !parecidos && pareceNombre) h += `<button type="button" class="linkish bsnl" data-bnuevo="${esc(q0.trim())}">¿No es ninguno? Anotar a alguien nuevo</button>`;
     // Campañas
     const camps = cs.filter(c => sinTilde(c.nombre + ' ' + (c.ciudad || '') + ' ' + (c.lugar || '')).includes(q));
     if (camps.length) h += `<div class="bsg">Campañas</div>` + camps.slice(0, 8).map(c => `<button type="button" class="bsr" data-go="#/coord/${esc(c.id)}"><span class="th"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc(c.ciudad || '')} · ${esc(campRango(c))}</small></span>${I('chev')}</button>`).join('');
@@ -781,6 +793,7 @@
       if (d.bsat) { atajo = atajo === d.bsat ? null : d.bsat; pinta(); return; }
       if (d.bsrec) { inp.value = d.bsrec; pinta(); return; }
       if (d.bir) { e.stopPropagation(); busGuardar(inp.value); const [cid, f, tid] = d.bir.split('|'); cerrar(); S.coord.dia = f; S.coord.tab = 'dia'; S.coord.diaF = 'todos'; S.coord.flash = 'dt-' + tid; if (S.route.name === 'coord' && S.route.cid === cid) renderCoord(); else go('#/coord/' + cid); return; }
+      if (d.bnuevo !== undefined) { e.stopPropagation(); busGuardar(inp.value); const qq = d.bnuevo; cerrar(); nuevoHermano(qq); return; }
       if (d.bturno) { e.stopPropagation(); busGuardar(inp.value); const l = (S.bus.per || {})[d.bturno]; if (!l) return; const ult = l.slice().sort((a, b) => String(b[1].creado || '').localeCompare(String(a[1].creado || '')))[0]; const p0 = ult[1]; cerrar(); elegirLugares(ult[0], { nombre: p0.nombre, apellido: p0.apellido, congregacion: p0.congregacion, celular: p0.celular || '', uid: /^m-/.test(p0.uid || '') ? p0.uid : '' }, null); return; }
       if (d.banot) { e.stopPropagation(); const [cid, f, tid] = d.banot.split('|'); cerrar(); anotarHermano(S.campanas[cid], tid, f, () => { S.coord.tab = 'dia'; S.coord.dia = f; S.coord.diaF = 'todos'; S.coord.flash = 'dt-' + tid; if (S.route.name === 'coord' && S.route.cid === cid) renderCoord(); else go('#/coord/' + cid); }); return; }
       if (d.bpt) { e.stopPropagation(); busGuardar(inp.value); const [cid, pid] = d.bpt.split('|'); cerrar(); S.coord.tab = 'config'; S.coord.aj = 'puntos'; S.coord.flash = 'pc-' + pid; if (S.route.name === 'coord' && S.route.cid === cid) renderCoord(); else go('#/coord/' + cid); return; }
@@ -852,6 +865,33 @@
       try { hechos = await guardarManual(c, per, [{ fecha, tid }]); } catch (e) { console.error(e); b.disabled = false; b.textContent = 'Anotar y confirmar'; return err('No se pudo guardar. Revisá la conexión y probá de nuevo.'); }
       ov.remove();
       listoManual(c, per, hechos, volver);
+    });
+  }
+  /* Alguien que no está en ninguna campaña: sus datos y después los lugares libres */
+  function nuevoHermano(q) {
+    const cs = misCampanas().filter(x => diasDe(x).length);
+    if (!cs.length) { toast('No hay campañas con turnos por delante.'); return; }
+    const ws = capNombre(q).split(' '), nom = ws.length > 1 ? ws.slice(0, -1).join(' ') : ws[0], ape = ws.length > 1 ? ws[ws.length - 1] : '';
+    const congs = (S.publico.congregaciones || []).slice().sort((a, b) => a.localeCompare(b, 'es'));
+    const c0 = (S.route.name === 'coord' && S.campanas[S.route.cid] && cs.find(x => x.id === S.route.cid)) || cs[0];
+    const ov = sheet(`<h3>Anotar a alguien nuevo</h3><p class="hint">Sus datos, y después elegís uno o varios lugares libres. Queda <b>confirmado</b>.</p>
+      <div class="two"><div class="fld"><label for="nNom">Nombre</label><input id="nNom" value="${esc(nom)}" autocomplete="off"></div><div class="fld"><label for="nApe">Apellido</label><input id="nApe" value="${esc(ape)}" autocomplete="off"></div></div>
+      <div class="fld"><label for="nCong">Congregación</label><select id="nCong">${congs.length ? '<option value="">Elegí la congregación</option>' : ''}${congs.map(x => `<option>${esc(x)}</option>`).join('')}<option value="__otra">Otra…</option></select></div>
+      <div class="fld hidden" id="nOtraF"><label for="nOtra">¿Cuál?</label><input id="nOtra" placeholder="Nombre de la congregación y ciudad"></div>
+      <div class="fld"><label for="nCel">Celular (WhatsApp) <span class="opc">(opcional)</span></label><input id="nCel" type="tel" autocomplete="off" placeholder="343 555-0000"></div>
+      <div class="fld"><label for="nNota">Nota <span class="opc">(opcional)</span></label><textarea id="nNota" rows="2" maxlength="${NOTA_MAX}" placeholder="Por ejemplo: avisarle por teléfono fijo, viene con su esposa…"></textarea></div>
+      <p class="err hidden" id="nErr"></p>
+      <button type="button" class="btn" id="nGo">Elegir sus turnos</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    const qs = (x) => ov.querySelector(x);
+    qs('#nCong').addEventListener('change', () => qs('#nOtraF').classList.toggle('hidden', qs('#nCong').value !== '__otra'));
+    setTimeout(() => (ape ? qs('#nCong') : qs('#nApe')).focus(), 60);
+    qs('#nGo').addEventListener('click', () => {
+      const per = { nombre: capNombre(qs('#nNom').value), apellido: capNombre(qs('#nApe').value), congregacion: qs('#nCong').value === '__otra' ? qs('#nOtra').value.trim() : qs('#nCong').value, celular: qs('#nCel').value.trim(), nota: qs('#nNota').value.trim().slice(0, NOTA_MAX), uid: '' };
+      const err = (m) => { qs('#nErr').textContent = m; qs('#nErr').classList.remove('hidden'); };
+      if (!per.nombre || !per.apellido) return err('Completá nombre y apellido.');
+      if (!per.congregacion) return err('Elegí la congregación.');
+      if (per.celular && (per.celular.match(/\d/g) || []).length < 8) return err('El celular va con característica (por ejemplo 343 555-0000), o dejalo vacío.');
+      ov.remove(); elegirLugares(c0, per, null);
     });
   }
   // Quiénes ya van en un turno (confirmados o por confirmar), para no juntar a quien no corresponde
@@ -1625,6 +1665,8 @@
   S.mapa = { sel: null, yo: null, el: null, map: null, capa: null, cs: [] };
   // Centro aproximado de las localidades (para campañas sin puntos marcados en el mapa).
   const CIUDADES_ER = { 'parana': [-31.744, -60.517], 'concordia': [-31.392, -58.021], 'gualeguaychu': [-33.009, -58.517], 'concepcion del uruguay': [-32.483, -58.237], 'gualeguay': [-33.142, -59.31], 'victoria': [-32.618, -60.155], 'villaguay': [-31.865, -59.027], 'la paz': [-30.744, -59.645], 'chajari': [-30.75, -57.98], 'colon': [-32.224, -58.144], 'nogoya': [-32.394, -59.787], 'federal': [-30.955, -58.783], 'federacion': [-30.979, -57.923], 'diamante': [-32.066, -60.639], 'crespo': [-32.028, -60.307], 'rosario del tala': [-32.303, -59.145], 'san jose de feliciano': [-30.386, -58.752], 'feliciano': [-30.386, -58.752], 'san salvador': [-31.625, -58.505], 'villa elisa': [-32.163, -58.4], 'san jose': [-32.2, -58.212], 'basavilbaso': [-32.373, -58.879], 'urdinarrain': [-32.686, -58.894], 'larroque': [-33.036, -59.001], 'islas del ibicuy': [-33.744, -59.172], 'ibicuy': [-33.744, -59.172], 'viale': [-31.869, -60.007], 'hasenkamp': [-31.513, -59.836], 'maria grande': [-31.666, -59.904], 'san benito': [-31.783, -60.441], 'oro verde': [-31.825, -60.517], 'colonia avellaneda': [-31.767, -60.405], 'cerrito': [-31.582, -60.074], 'santa elena': [-30.946, -59.787], 'bovril': [-31.343, -59.445], 'ramirez': [-32.172, -60.2], 'general ramirez': [-32.172, -60.2], 'lucas gonzalez': [-32.384, -59.529], 'villa paranacito': [-33.72, -58.658], 'gilbert': [-32.53, -58.934], 'ubajay': [-31.795, -58.312], 'los conquistadores': [-30.594, -58.465], 'san jaime de la frontera': [-30.338, -58.31] };
+  const lev = (a, b) => { if (Math.abs(a.length - b.length) > 2) return 9; const d = Array.from({ length: a.length + 1 }, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j; for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
+  const capNombre = (x) => String(x || '').trim().replace(/\s+/g, ' ').split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w).join(' ');
   const sinTilde = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
   const COL_MAPA = { ok: '#1F7A55', poco: '#B8924A', full: '#8A939C' };
   function estadoCamp(c) {

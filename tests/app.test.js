@@ -229,7 +229,9 @@ const SEED = {
   await c.fill('#bsQ', 'terminal'); await c.waitForTimeout(250);
   check('lupa: busca campañas', /CAMPAÑAS\s*Terminal de ómnibus/i.test(await text(c, '#bsR')));
   await c.fill('#bsQ', 'zzz'); await c.waitForTimeout(250);
-  check('lupa: sin resultados lo dice', /Nada con “zzz”/.test(await text(c, '#bsR')));
+  check('lupa: un nombre que no está ofrece anotarlo', /No hay nadie con “zzz”\.[\s\S]*Anotar a Zzz/.test(await text(c, '#bsR')), await text(c, '#bsR'));
+  await c.fill('#bsQ', '99999'); await c.waitForTimeout(250);
+  check('lupa: sin resultados (no es un nombre) lo dice', /Nada con “99999”/.test(await text(c, '#bsR')) && !/Anotar a/.test(await text(c, '#bsR')));
   await c.fill('#bsQ', 'paz'); await c.waitForTimeout(250); await c.click('#bsR [data-bir]'); await c.waitForTimeout(200);
   check('tocar un turno encontrado cierra la lupa y abre "Del día" en ese turno', await c.evaluate(() => !document.querySelector('.bsov') && document.querySelector('.tabs .on').dataset.tab === 'dia' && document.querySelector('.day.on').dataset.cdia === '2026-10-03' && !!document.querySelector('#dt-t3.flash')));
   await c.click('#busBtn'); await c.waitForTimeout(150);
@@ -278,6 +280,19 @@ const SEED = {
   await c.click('#aWa'); await c.waitForTimeout(80);
   const av2 = await c.evaluate(() => decodeURIComponent(window.__opened.pop() || ''));
   check('un solo WhatsApp con la lista de turnos', /ya tenés tus turnos en la PPAM \(Terminal de ómnibus, Paraná\):\n• Jueves 1 de octubre, 10:00 a 12:00 · Andén 1 \(Frente a boleterías\)\n• Sábado 3 de octubre, 10:00 a 12:00 · Andén 1 \(Frente a boleterías\)/.test(av2), av2);
+  await c.click('.sheet [data-cerrar]'); await c.waitForTimeout(100);
+  await c.click('#busBtn'); await c.waitForTimeout(150); await c.fill('#bsQ', 'rosa dias'); await c.waitForTimeout(250);
+  check('lupa: con un error de tipeo muestra parecidos ("¿Es alguno de estos?")', /No hay nadie con “rosa dias”\. ¿Es alguno de estos\?[\s\S]*No, anotar a alguien nuevo[\s\S]*PARECIDOS\s*RD\s*Rosa Díaz/i.test(await text(c, '#bsR')), await text(c, '#bsR'));
+  await c.fill('#bsQ', 'juan pérez'); await c.waitForTimeout(250);
+  await c.click('#bsR [data-bnuevo]'); await c.waitForTimeout(150);
+  check('"Anotar a Juan Pérez": el formulario viene con nombre y apellido', await c.evaluate(() => document.querySelector('#nNom').value === 'Juan' && document.querySelector('#nApe').value === 'Pérez'));
+  await c.click('#nGo'); await c.waitForTimeout(50);
+  check('pide la congregación', /Elegí la congregación/.test(await text(c, '#nErr')));
+  await c.selectOption('#nCong', 'San Agustín (Paraná)'); await c.click('#nGo'); await c.waitForTimeout(200);
+  check('después, la lista de lugares libres para Juan', /Anotar a Juan Pérez\s*San Agustín \(Paraná\)\. Marcá uno o varios/.test(await text(c, '.lgov')), (await text(c, '.lgov')).slice(0, 200));
+  await c.check('.lgr input[value="2026-10-02|t1"]'); await c.click('#lgGo'); await c.waitForTimeout(250);
+  const juan = await c.evaluate(() => Object.values(window.__store).filter(d => d && d.nombre === 'Juan' && d.apellido === 'Pérez' && d.manual).map(d => d.fecha + '|' + d.tid + '|' + d.estado));
+  check('Juan queda anotado y confirmado', JSON.stringify(juan) === '["2026-10-02|t1|confirmado"]' && /Juan ya tiene su turno/.test(await text(c, '.sheet')) && /Copiar el mensaje/.test(await text(c, '.sheet')), juan);
   await c.click('.sheet [data-cerrar]'); await c.waitForTimeout(100);
   // Configurar: un punto nuevo y turnos en serie
   await c.click('[data-tab="config"]'); await c.waitForTimeout(100);

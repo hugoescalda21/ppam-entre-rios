@@ -728,3 +728,11 @@ a.btn { display: flex; align-items: center; justify-content: center; gap: 8px; t
 .sum .cqs.ya { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; margin: 0; min-width: 0; }
 .sum .cqs.ya > span { min-width: 0; }
 .sum .cqs.ya > .ic { flex-shrink: 0; }
+
+/* ---------- Lupa: no está → anotar a alguien nuevo ---------- */
+.bsnew { background: var(--card); border: 1.5px dashed var(--line); border-radius: 16px; padding: 14px; margin: 14px 0 4px; }
+.bsnew b { display: block; font-size: 15px; }
+.bsnew span { display: block; font-size: 13px; color: var(--ink3); margin: 3px 0 10px; }
+.bsnew .btn { margin-top: 10px; padding: 12px; }
+.bsnew span + .btn { margin-top: 0; }
+.linkish.bsnl { display: block; margin: 12px auto 4px; font-size: 13.5px; color: var(--pri); font-weight: 600; }

@@ -1,5 +1,11 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Lupa: anotar a alguien que no está — 13 oct 2026 (caché ppam-v28)
+
+- Si la búsqueda parece un nombre y no hay nadie, ofrece "Anotar a …" (formulario con nombre y apellido ya completos, después la lista de lugares libres).
+- Con un error de tipeo muestra parecidos ("¿Es alguno de estos?"); con resultados, "¿No es ninguno? Anotar a alguien nuevo".
+- Versión 26. 204 pruebas de la página.
+
 ## "+ Turno" desde el hermano, varios turnos y con quién va — 13 oct 2026 (caché ppam-v27)
 
 - Lupa: cada hermano tiene "+ Turno": lista de lugares libres por día y carrito; se pueden marcar varios. Reusa sus datos (mismo id si ya fue cargado por coordinador).
