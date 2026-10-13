@@ -111,14 +111,20 @@ const SEED = {
   await p.click('[data-go="#/c/parana-terminal"]'); await p.waitForTimeout(150);
   check('encabezado con la campaña', /Terminal de ómnibus/.test(await text(p, '#tbTitle')) && /Del 1 de octubre al 31 de octubre/.test(await text(p, '#tbSub')));
   let camp = await text(p, '#app');
-  check('turnos agrupados por punto, con tipo y cupo (el stand no tiene turnos el jueves)', /Andén 1\s*Carrito · 2 por turno · Frente a boleterías\s*08:00/.test(camp) && !/Hall central/.test(camp), camp);
+  check('turnos agrupados por punto, con detalle y lugares libres (el stand no tiene turnos el jueves)', /Andén 1\s*Frente a boleterías\s*1 libre\s*08:00/.test(camp) && !/Hall central/.test(camp), camp);
+  check('resumen del día: puntos y lugares libres', /Jueves 1 de octubre\s*1 carrito · 1 lugar libre\s*Todos\s*Con lugar/.test(camp), camp);
   check('los días marcan cuánto lugar queda (jueves 1: quedan pocos; viernes 2: hay lugar)', await p.evaluate(() => document.querySelector('[data-dia="2026-10-01"]').classList.contains('poco') && document.querySelector('[data-dia="2026-10-02"]').classList.contains('libre')));
   check('días desde el 1 de octubre (no antes), sin domingos', await p.evaluate(() => { const d = [...document.querySelectorAll('.day')].map(x => x.dataset.dia); return d[0] === '2026-10-01' && !d.includes('2026-10-04'); }));
-  check('turnos del jueves 1: completo, falta 1 (uno pedido)', /08:00\s*hasta 10:00\s*sin lugar\s*Completo\s*10:00\s*hasta 12:00\s*falta 1\s*Anotarme/.test(camp), camp);
+  check('turnos del jueves 1 como botones: completo, falta 1 (uno pedido)', /08:00\s*a 10:00\s*Completo\s*10:00\s*a 12:00\s*Falta 1/.test(camp) && await p.evaluate(() => document.querySelector('[data-pedir="t1"]').disabled && !document.querySelector('[data-pedir="t2"]').disabled && document.querySelectorAll('[data-pedir="t2"] .cs i.p').length === 1), camp);
+  await p.click('[data-cf="libres"]'); await p.waitForTimeout(50);
+  check('filtro "Con lugar": oculta el horario completo', !(await p.$('[data-pedir="t1"]')) && !!(await p.$('[data-pedir="t2"]')));
+  await p.click('[data-cf="todos"]'); await p.click('[data-plegar="p1"]'); await p.waitForTimeout(50);
+  check('tocar el carrito lo pliega (queda el encabezado)', !(await p.$('[data-pedir="t2"]')) && /Andén 1[\s\S]*1 libre/.test(await text(p, '#app')));
+  await p.click('[data-plegar="p1"]'); await p.waitForTimeout(50);
   check('sin ubicación cargada no aparece "Ver lugar"', !(await p.$('[data-lugar]')));
   await p.click('[data-dia="2026-10-03"]'); await p.waitForTimeout(80);
   camp = await text(p, '#app');
-  check('el sábado aparece también el stand (3 lugares)', /Hall central\s*Stand · 3 por turno\s*16:00\s*hasta 18:00\s*faltan 3/.test(camp), camp);
+  check('el sábado aparece también el stand (3 lugares)', /Hall central\s*3 libres\s*16:00\s*a 18:00\s*Faltan 3/.test(camp), camp);
   await p.screenshot({ path: SHOTS + '/campana.png' });
   await p.click('[data-pedir="t3"]'); await p.waitForTimeout(80);
   check('sin sesión: pide iniciar sesión primero', /Ingresá para anotarte/.test(await text(p, '.sheet')));
@@ -139,7 +145,7 @@ const SEED = {
   check('el pedido guarda nombre, apellido, congregación y celular', st.ped && st.ped.nombre === 'Ana' && st.ped.apellido === 'Paz' && st.ped.congregacion === 'San Agustín (Paraná)' && st.ped.celular === '343 555-0000' && st.ped.estado === 'pendiente' && st.ped.email === 'ana@x.com', st.ped);
   check('confirmación en pantalla', /Te anotaste/.test(await text(p, '.sheet')));
   await p.click('.sheet .btn.alt[data-cerrar]'); await p.waitForTimeout(80);
-  check('el turno ahora dice "Pedido" y faltan 2', /Hall central[\s\S]*16:00\s*hasta 18:00\s*faltan 2\s*Pedido/.test(await text(p, '#app')), await text(p, '#app'));
+  check('el turno ahora dice "Pedido" y faltan 2', /Hall central\s*2 libres\s*16:00\s*a 18:00\s*Pedido/.test(await text(p, '#app')), await text(p, '#app'));
   await p.click('#backBtn'); await p.waitForTimeout(100);
   check('en el inicio: el pase del próximo turno, esperando confirmación', /Tu próximo turno\s*Sáb 3 de octubre\s*Esperando confirmación\s*16:00 – 18:00\s*Faltan 3 días\s*Terminal de ómnibus · Hall central/i.test(await text(p, '#app')), await text(p, '#app'));
   await p.screenshot({ path: SHOTS + '/inicio-turno.png' });
@@ -211,6 +217,14 @@ const SEED = {
   await c.check('#tuMas'); await c.fill('#tuFin', '20:00'); await c.click('#tuOk'); await c.waitForTimeout(150);
   const ts = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; const pid = Object.keys(cp.puntos).find(k => cp.puntos[k].nombre === 'Salida Av. Ramírez'); return Object.values(cp.turnos).filter(t => t.punto === pid).map(t => t.desde + '-' + t.hasta).sort(); });
   check('"crear los siguientes": 14–16, 16–18 y 18–20 de una vez', JSON.stringify(ts) === '["14:00-16:00","16:00-18:00","18:00-20:00"]', ts);
+  check('sin turnos repetidos no hay aviso', !(await c.$('#avRep')));
+  await c.click('[data-turno=""]'); await c.waitForTimeout(80);
+  await c.selectOption('#tuPto', { label: 'Salida Av. Ramírez' }); await c.fill('#tuDes', '14:00'); await c.fill('#tuHas', '16:00'); await c.click('#tuOk'); await c.waitForTimeout(150);
+  check('turno repetido: aviso y los dos marcados', /Hay un turno repetido/.test(await text(c, '#avRep')) && await c.evaluate(() => document.querySelectorAll('.edit-row.rep').length === 2), await text(c, '#app'));
+  const dupId = await c.evaluate(() => { const t = window.__store['campanas/parana-terminal'].turnos; return Object.keys(t).filter(id => t[id].desde === '14:00' && t[id].hasta === '16:00').pop(); });
+  c.once('dialog', d => d.accept());
+  await c.click(`[data-turno="${dupId}"]`); await c.waitForTimeout(80); await c.click('#tuDel'); await c.waitForTimeout(150);
+  check('al borrar el repetido desaparece el aviso', !(await c.$('#avRep')), await text(c, '#app'));
   // Ubicación y fotos de un punto
   const ICON = path.resolve(__dirname, '..', 'icon-192.png');
   await c.click('[data-punto="p1"]'); await c.waitForTimeout(80);

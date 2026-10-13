@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '17';
+  const VERSION = '18';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -377,22 +377,37 @@
       return `<button type="button" class="day ${nivel}${d === S.dia ? ' on' : ''}" data-dia="${d}"><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><span class="cap3">${[0, 1, 2].map(i => `<i class="${i < llenos ? 'f' : ''}"></i>`).join('')}</span></button>`;
     }).join('')}</div>`;
     const ts = turnosDelDia(c, S.dia);
-    h += `<div class="sec">${esc(cap(fmtDia(S.dia)))}</div>`;
     const orden = Object.keys(c.puntos || {}).filter(pid => ts.some(t => t.punto === pid));
-    if (!orden.length) h += '<div class="card"><div class="empty">No hay turnos ese día.</div></div>';
-    orden.forEach(pid => {
-      const p = c.puntos[pid], tp = TIPOS[p.tipo] || TIPOS.otro;
-      h += `<div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}</div><div class="tx"><b>${esc(p.nombre)}</b><small>${esc(tp[1])} · ${cupoDe(c, { punto: pid })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small></div>${tieneLugar(p) ? `<button type="button" class="loc" data-lugar="${esc(c.id)}|${esc(pid)}">${I('pin', 'width:15px;height:15px')}Ver lugar</button>` : ''}</div><div class="slots">`;
-      h += ts.filter(t => t.punto === pid).map(t => {
-        const oc = ocupDe(c.id, S.dia, t.id), n = cupoDe(c, t), vals = Object.values(oc), conf = vals.filter(v => v === 'c').length, pend = vals.length - conf;
-        const mio = S.user && oc[S.user.uid];
-        const falta = n - vals.length, full = falta <= 0;
-        const seats = Array.from({ length: Math.max(n, vals.length) }, (_, k) => `<i class="${k < conf ? 'c' : k < conf + pend ? 'p' : ''}"></i>`).join('');
-        const btn = mio ? `<button type="button" class="sbtn mine" data-mio="${esc(t.id)}">${oc[S.user.uid] === 'c' ? 'Tu turno' : 'Pedido'}</button>`
-          : `<button type="button" class="sbtn pri" data-pedir="${esc(t.id)}" ${full ? 'disabled' : ''}>${full ? 'Completo' : 'Anotarme'}</button>`;
-        return `<div class="row slot"><div class="hr"><b class="num">${esc(t.desde)}</b><small>hasta ${esc(t.hasta)}</small></div><div class="tx"><div class="seats">${seats}</div><small>${full ? 'sin lugar' : falta === 1 ? 'falta 1' : 'faltan ' + falta}</small></div>${btn}</div>`;
-      }).join('') + '</div>';
+    const filas = orden.map(pid => {
+      const p = c.puntos[pid], items = ts.filter(t => t.punto === pid).map(t => {
+        const oc = ocupDe(c.id, S.dia, t.id), n = cupoDe(c, t), vals = Object.values(oc), conf = vals.filter(v => v === 'c').length;
+        const mio = S.user && oc[S.user.uid], falta = Math.max(0, n - vals.length);
+        return { t, n, conf, pend: vals.length - conf, mio, falta };
+      });
+      return { pid, p, items, libres: items.reduce((a, x) => a + x.falta, 0) };
     });
+    const libresDia = filas.reduce((a, f) => a + f.libres, 0), conLugar = S.campFiltro === 'libres';
+    const tipoN = filas.every(f => f.p.tipo === 'carrito') ? ['carrito', 'carritos'] : ['punto', 'puntos'];
+    h += `<div class="sec">${esc(cap(fmtDia(S.dia)))}</div>`;
+    if (!filas.length) h += '<div class="card"><div class="empty">No hay turnos ese día.</div></div>';
+    else h += `<div class="dres"><span>${filas.length} ${tipoN[filas.length === 1 ? 0 : 1]} · <b>${libresDia ? (libresDia === 1 ? '1 lugar libre' : libresDia + ' lugares libres') : 'sin lugares libres'}</b></span><div class="seg2 cf"><button type="button" data-cf="todos" class="${conLugar ? '' : 'on'}">Todos</button><button type="button" data-cf="libres" class="${conLugar ? 'on' : ''}">Con lugar</button></div></div>`;
+    S.plegados = S.plegados || {};
+    let vistos = 0;
+    filas.forEach(({ pid, p, items, libres }) => {
+      const vis = conLugar ? items.filter(x => x.falta > 0 || x.mio) : items;
+      if (!vis.length) return;
+      vistos++;
+      const tp = TIPOS[p.tipo] || TIPOS.otro, pleg = !!S.plegados[c.id + '|' + pid];
+      h += `<div class="pc${pleg ? ' pleg' : ''}"><div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}</div><button type="button" class="tx" data-plegar="${esc(pid)}" aria-expanded="${!pleg}"><b>${esc(p.nombre)}</b>${p.detalle ? `<small>${esc(p.detalle)}</small>` : ''}<span class="pl ${libres ? 'ok' : ''}">${libres ? (libres === 1 ? '1 libre' : libres + ' libres') : 'Completo'}${I('chev')}</span></button>${tieneLugar(p) ? `<button type="button" class="loc" data-lugar="${esc(c.id)}|${esc(pid)}" aria-label="Ver lugar">${I('pin', 'width:15px;height:15px')}<span>Ver lugar</span></button>` : ''}</div>`;
+      if (!pleg) h += `<div class="chips">${vis.map(x => {
+        const est = x.mio ? 'mio' : x.falta <= 0 ? 'lleno' : x.falta < x.n ? 'poco' : 'libre';
+        const txt = x.mio ? (x.mio === 'c' ? 'Tu turno' : 'Pedido') : x.falta <= 0 ? 'Completo' : x.falta === 1 ? 'Falta 1' : 'Faltan ' + x.falta;
+        const seats = Array.from({ length: Math.max(x.n, x.conf + x.pend) }, (_, k) => `<i class="${k < x.conf ? 'c' : k < x.conf + x.pend ? 'p' : ''}"></i>`).join('');
+        return `<button type="button" class="chip ${est}" ${x.mio ? `data-mio="${esc(x.t.id)}"` : `data-pedir="${esc(x.t.id)}"`}${!x.mio && x.falta <= 0 ? ' disabled' : ''}><b class="num">${esc(x.t.desde)}</b><span class="cs"><small>a ${esc(x.t.hasta)}</small>${seats}</span><em>${txt}</em></button>`;
+      }).join('')}</div>`;
+      h += '</div>';
+    });
+    if (filas.length && !vistos) h += '<div class="card"><div class="empty">Ese día ya no quedan lugares. Probá con otro día.</div></div>';
     $('app').innerHTML = h;
   }
   function verLugar(cid, pid) {
@@ -759,10 +774,13 @@
       <div class="two"><div class="fld"><label for="cfDes">Desde</label><input id="cfDes" type="date" value="${esc(c.desde || '')}"></div><div class="fld"><label for="cfHas">Hasta</label><input id="cfHas" type="date" value="${esc(c.hasta || '')}"></div></div>
       <label class="ck"><input type="checkbox" id="cfAct"${c.activa !== false ? ' checked' : ''}> <span>Visible para todos (si la desmarcás, deja de aparecer en el inicio)</span></label>
       <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div>`;
+    const vistosT = {}, repetidos = new Set();
+    turnos.forEach(t => { (t.dias || []).forEach(d => { const k = t.punto + '|' + t.desde + '|' + t.hasta + '|' + d; if (vistosT[k] && vistosT[k] !== t.id) { repetidos.add(t.id); repetidos.add(vistosT[k]); } else vistosT[k] = t.id; }); });
     const sinMarcar = puntos.filter(p => p.lat == null).length;
     if (puntos.length && sinMarcar) h += `<div class="aviso-mapa">${I('pin', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>${sinMarcar === puntos.length ? 'Ningún punto está marcado en el mapa' : `${sinMarcar} de ${puntos.length} puntos sin marcar en el mapa`}</b>Para que aparezcan en el mapa del Inicio, entrá a cada punto con "Editar" y tocá el mapa donde está el carrito (o "Estoy acá" parado en el lugar).</span></div>`;
     h += `<div class="sec">Puntos <button type="button" class="sbtn" data-punto="">+ Punto</button></div><div class="card">` + (puntos.map(p => `<div class="edit-row"><div><b class="er-t"><span class="er-ic">${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin', 'width:16px;height:16px')}</span>${esc(p.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc((TIPOS[p.tipo] || TIPOS.otro)[1])} · ${cupoDe(c, { punto: p.id })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small><small style="display:block;font-size:11.5px;color:${p.lat != null ? 'var(--ok)' : 'var(--warn)'};">${p.lat != null ? 'Marcado en el mapa' : tieneUbic(p) ? 'Con dirección, sin marcar en el mapa' : 'Sin marcar en el mapa'}${(p.fotos || []).length ? ' · ' + p.fotos.length + ((p.fotos.length === 1) ? ' foto' : ' fotos') : ''}</small></div><button type="button" class="sbtn" data-punto="${esc(p.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá el primer punto (un carrito, un stand…).</div>') + '</div>';
-    h += `<div class="sec">Turnos <button type="button" class="sbtn" data-turno="" ${puntos.length ? '' : 'disabled'}>+ Turno</button></div><div class="card">` + (turnos.map(t => `<div class="edit-row"><div><b>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc((c.puntos[t.punto] || {}).nombre || '¿?')}</b><small style="display:block;color:var(--soft);font-size:12px;">${(t.dias || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', ') || 'Ningún día'}</small></div><button type="button" class="sbtn" data-turno="${esc(t.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá los horarios de cada punto (por ejemplo, 8 a 10, de lunes a sábado).</div>') + '</div>';
+    if (repetidos.size) h += `<div class="aviso-mapa" id="avRep">${I('alert', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>${repetidos.size === 2 ? 'Hay un turno repetido' : 'Hay turnos repetidos'}</b>El mismo punto tiene dos turnos con el mismo horario y día. Los hermanos lo ven dos veces. Revisá los marcados abajo y borrá el que sobra (o cambiale el horario).</span></div>`;
+    h += `<div class="sec">Turnos <button type="button" class="sbtn" data-turno="" ${puntos.length ? '' : 'disabled'}>+ Turno</button></div><div class="card">` + (turnos.map(t => `<div class="edit-row${repetidos.has(t.id) ? ' rep' : ''}"><div><b>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc((c.puntos[t.punto] || {}).nombre || '¿?')}</b>${repetidos.has(t.id) ? '<span class="tag rep">Repetido</span>' : ''}<small style="display:block;color:var(--soft);font-size:12px;">${(t.dias || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', ') || 'Ningún día'}</small></div><button type="button" class="sbtn" data-turno="${esc(t.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá los horarios de cada punto (por ejemplo, 8 a 10, de lunes a sábado).</div>') + '</div>';
     return h;
   }
   const uidGen = () => Math.random().toString(36).slice(2, 9);
@@ -1509,6 +1527,8 @@
     if (ds.login !== undefined) { login(); return; }
     if (ds.ciudad) { S.ciudad = ds.ciudad; renderHome(); return; }
     if (ds.dia) { S.dia = ds.dia; renderCamp(); return; }
+    if (ds.cf) { S.campFiltro = ds.cf; renderCamp(); return; }
+    if (ds.plegar) { S.plegados = S.plegados || {}; const k = S.route.cid + '|' + ds.plegar; S.plegados[k] = !S.plegados[k]; renderCamp(); return; }
     if (ds.pedir) { pedir(ds.pedir); return; }
     if (ds.mio) { go('#/mis'); return; }
     if (ds.lugar) { const [cid, pid] = ds.lugar.split('|'); verLugar(cid, pid); return; }

@@ -545,3 +545,50 @@ label.sbtn { cursor: pointer; }
 .pp.sel.conpts .fan { top: -60px; }
 .macc { display: flex; gap: 8px; margin-top: 10px; }
 .macc .sbtn, .macc .go { flex: 1; justify-content: center; padding: 10px; }
+
+/* ---------- Día de campaña compacto: resumen, filtro, carritos plegables y horarios en botones ---------- */
+.dres { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin: -4px 4px 4px; font-size: 13px; color: var(--ink3); }
+.dres b { color: var(--ink); font-weight: 600; }
+.seg2.cf { margin: 0; flex: 0 0 auto; }
+.seg2.cf button { padding: 6px 11px; font-size: 12.5px; white-space: nowrap; }
+.pc { background: var(--card); border: 1px solid var(--line2); border-radius: 20px; padding: 10px 12px 12px; margin: 10px 0 0; }
+.pc .pt { margin: 0; gap: 10px; }
+.pc .pt .th { width: 40px; height: 40px; }
+.pc .pt .tx { border: none; background: none; font: inherit; color: inherit; text-align: left; padding: 2px 0; cursor: pointer; display: grid; grid-template-columns: 1fr auto; column-gap: 8px; align-items: center; }
+.pc .pt .tx b { grid-column: 1; font-size: 15px; line-height: 1.25; }
+.pc .pt .tx small { grid-column: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+.pc .pt .tx .pl { grid-column: 2; grid-row: 1 / span 2; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--ink3); white-space: nowrap; }
+.pc .pt .tx .pl.ok { color: var(--ok); }
+.pc .pt .tx .pl .ic { width: 15px; height: 15px; transform: rotate(90deg); transition: transform .2s; color: var(--ink3); }
+.pc.pleg .pt .tx .pl .ic { transform: rotate(0); }
+.pc .loc { flex-direction: column; gap: 1px; font-size: 10.5px; padding: 2px 0 2px 4px; }
+.pc .loc .ic { width: 18px !important; height: 18px !important; }
+.chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; margin-top: 10px; }
+.chip { border: 1.5px solid var(--line); background: var(--card); color: var(--ink); border-radius: 13px; padding: 6px 7px 7px; text-align: left; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 0; }
+.chip b { font-family: var(--tt); font-size: 15.5px; line-height: 1.15; }
+.chip small { font-size: 10.5px; color: var(--ink3); line-height: 1.2; }
+.chip .cs { display: flex; align-items: center; gap: 2px; }
+.chip .cs small { margin-right: auto; padding-right: 3px; white-space: nowrap; flex: none; }
+.chip .cs i { width: 8px; height: 8px; border-radius: 3px; border: 1.5px solid #CBD2D6; background: transparent; flex-shrink: 0; }
+.chip.mio .cs i { border-color: rgba(255,255,255,.6); }
+.chip .cs i.c { background: var(--pri2); border-color: var(--pri2); }
+.chip .cs i.p { background: var(--gold-bg); border-color: var(--gold); }
+.chip em { font-style: normal; font-size: 11px; font-weight: 600; margin-top: 3px; white-space: nowrap; }
+.chip.libre { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.chip.libre em { color: var(--ok); }
+.chip.poco { border-color: color-mix(in srgb, var(--gold) 70%, var(--line)); }
+.chip.poco em { color: var(--warn); }
+.chip.lleno { background: var(--line2); border-color: transparent; color: var(--ink3); cursor: default; }
+.chip.lleno b { color: var(--ink3); }
+.chip.mio { background: var(--pri); border-color: var(--pri); color: #fff; }
+.chip.mio small, .chip.mio em { color: rgba(255,255,255,.85); }
+.chip:not(:disabled):active { transform: scale(.97); }
+.edit-row.rep { background: var(--warn-bg); }
+.tag.rep { display: inline-block; margin-left: 6px; background: var(--warn); color: #fff; font-size: 10.5px; padding: 1px 7px; border-radius: 99px; vertical-align: 2px; }
+.chip.mio .cs i.c { background: #fff; border-color: #fff; }
+@media (prefers-color-scheme: dark) {
+  .chip.mio { background: var(--pri-bg); border-color: var(--pri); color: var(--ink); }
+  .chip.mio small, .chip.mio em { color: var(--acc-t); }
+  .chip.mio .cs i.c { background: var(--pri); border-color: var(--pri); }
+  .chip.lleno { background: rgba(255,255,255,.05); }
+}

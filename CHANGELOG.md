@@ -1,5 +1,13 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Día de campaña más corto y aviso de turno repetido — 13 oct 2026 (caché ppam-v20)
+
+- Al elegir un día, arriba se ve el resumen ("4 carritos · 16 lugares libres") y un filtro **Todos | Con lugar** que oculta los horarios completos.
+- Cada carrito o stand es una tarjeta con sus horarios como botones, uno al lado del otro: verde hay lugar, dorado falta poco, gris completo, oscuro tu turno. Los puntitos muestran confirmados y pedidos. Tocar un horario abre el formulario de siempre.
+- Tocando el nombre del carrito se pliega y queda solo con cuántos lugares le quedan.
+- Coordinación > Ajustes: aviso cuando un punto tiene dos turnos con el mismo horario y día, y los marca como "Repetido".
+- Versión 18. 157 pruebas de la página.
+
 ## Foto de cada carrito en el mapa y actualización al instante — 13 oct 2026 (caché ppam-v19)
 
 - Al tocar un carrito o stand en el mapa se muestra **su** foto (la primera de las que cargó el coordinador; si no tiene, la portada de la campaña), su nombre, el tipo y la dirección, con **Ver lugar** (todas sus fotos, mapa y "Cómo llegar") y **Ver turnos**.
