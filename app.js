@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '24';
+  const VERSION = '25';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -720,7 +720,7 @@
     const d = k === 'hoy' ? hoyS : sumarDias(hoyS, 1), filas = [];
     cs.forEach(c => turnosDelDia(c, d).forEach(t => { const oc = Object.values((busCupos(c.id)[cupoId(c.id, d, t.id)] || {}).ocupados || {}); if (oc.length < cupoDe(c, t)) filas.push([c, t]); }));
     filas.sort((a, b) => a[1].desde.localeCompare(b[1].desde));
-    return `<div class="bsg">Faltan ${k === 'hoy' ? 'hoy' : 'mañana'} · ${esc(cap(fmtDia(d)))}</div>` + (filas.length ? filas.map(([c, t]) => busTurnoFila(c, d, t)).join('') : '<div class="bs0">Todo cubierto.</div>');
+    return `<div class="bsg">Faltan ${k === 'hoy' ? 'hoy' : 'mañana'} · ${esc(cap(fmtDia(d)))}</div>` + (filas.length ? filas.map(([c, t]) => `<div class="bsrw">${busTurnoFila(c, d, t)}<button type="button" class="sbtn anot" data-banot="${esc(c.id)}|${d}|${esc(t.id)}">${I('plus', 'width:14px;height:14px')}Anotar</button></div>`).join('') : '<div class="bs0">Todo cubierto.</div>');
   }
   function busResultados(q0) {
     const q = sinTilde(q0), dig = q.replace(/\D/g, ''), cs = misCampanas(), hoyS = hoy();
@@ -730,9 +730,10 @@
     const per = {};
     cs.forEach(c => busPeds(c.id).filter(p => (p.estado === 'confirmado' || p.estado === 'pendiente') && (sinTilde(p.nombre + ' ' + p.apellido).includes(q) || sinTilde(p.apellido + ' ' + p.nombre).includes(q) || (dig.length >= 3 && !/[a-z]/.test(q) && String(p.celular || '').replace(/\D/g, '').includes(dig)))).forEach(p => { const k = p.uid || p.nombre + p.apellido; (per[k] = per[k] || []).push([c, p]); }));
     const ks = Object.keys(per).sort((a, b) => (per[a][0][1].nombre + per[a][0][1].apellido).localeCompare(per[b][0][1].nombre + per[b][0][1].apellido));
+    S.bus.per = per;
     if (ks.length) h += `<div class="bsg">Hermanos</div>` + ks.slice(0, 15).map(k => {
       const l = per[k].sort((a, b) => (a[1].fecha + a[1].desde).localeCompare(b[1].fecha + b[1].desde)), p0 = l[0][1], wa = String(p0.celular || '').replace(/\D/g, ''), varias = new Set(l.map(x => x[0].id)).size > 1;
-      return `<div class="bsh"><div class="t"><span class="ini">${esc(iniciales(p0.nombre + ' ' + p0.apellido))}</span><div class="who"><b>${esc(p0.nombre)} ${esc(p0.apellido)}</b><small>${esc(p0.congregacion)} · <span class="num">${esc(p0.celular || '')}</span></small></div>${wa ? `<a class="wa" href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}" target="_blank" rel="noopener" aria-label="WhatsApp">${I('chat')}</a>` : ''}</div>${l.map(([c, p]) => { const x = parseIso(p.fecha), pt = (c.puntos || {})[p.punto] || {}, pas = p.fecha < hoyS;
+      return `<div class="bsh"><div class="t"><span class="ini">${esc(iniciales(p0.nombre + ' ' + p0.apellido))}</span><div class="who"><b>${esc(p0.nombre)} ${esc(p0.apellido)}</b><small>${esc(p0.congregacion)} · <span class="num">${esc(p0.celular || '')}</span></small></div>${wa ? `<a class="wa" href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}" target="_blank" rel="noopener" aria-label="WhatsApp">${I('chat')}</a>` : ''}<button type="button" class="sbtn anot" data-bturno="${esc(k)}">${I('plus', 'width:14px;height:14px')}Turno</button></div>${l.map(([c, p]) => { const x = parseIso(p.fecha), pt = (c.puntos || {})[p.punto] || {}, pas = p.fecha < hoyS;
         return `<button type="button" class="bt${pas ? ' pas' : ''}" data-bir="${esc(c.id)}|${esc(p.fecha)}|${esc(p.tid)}"><span class="f"><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><small>${MES[x.getMonth()].slice(0, 3)}</small></span><span class="tx"><b class="num">${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))}</b><small>${esc(pt.nombre || '')}${varias || cs.length > 1 ? ' · ' + esc(c.nombre) : ''}</small></span><span class="tag ${p.estado}">${pas ? 'Ya pasó' : p.estado === 'confirmado' ? 'Confirmado' : 'Por confirmar'}</span></button>`; }).join('')}</div>`;
     }).join('');
     // Campañas
@@ -780,6 +781,8 @@
       if (d.bsat) { atajo = atajo === d.bsat ? null : d.bsat; pinta(); return; }
       if (d.bsrec) { inp.value = d.bsrec; pinta(); return; }
       if (d.bir) { e.stopPropagation(); busGuardar(inp.value); const [cid, f, tid] = d.bir.split('|'); cerrar(); S.coord.dia = f; S.coord.tab = 'dia'; S.coord.diaF = 'todos'; S.coord.flash = 'dt-' + tid; if (S.route.name === 'coord' && S.route.cid === cid) renderCoord(); else go('#/coord/' + cid); return; }
+      if (d.bturno) { e.stopPropagation(); busGuardar(inp.value); const l = (S.bus.per || {})[d.bturno]; if (!l) return; const ult = l.slice().sort((a, b) => String(b[1].creado || '').localeCompare(String(a[1].creado || '')))[0]; const p0 = ult[1]; cerrar(); elegirLugares(ult[0], { nombre: p0.nombre, apellido: p0.apellido, congregacion: p0.congregacion, celular: p0.celular || '', uid: /^m-/.test(p0.uid || '') ? p0.uid : '' }, null); return; }
+      if (d.banot) { e.stopPropagation(); const [cid, f, tid] = d.banot.split('|'); cerrar(); anotarHermano(S.campanas[cid], tid, f, () => { S.coord.tab = 'dia'; S.coord.dia = f; S.coord.diaF = 'todos'; S.coord.flash = 'dt-' + tid; if (S.route.name === 'coord' && S.route.cid === cid) renderCoord(); else go('#/coord/' + cid); }); return; }
       if (d.bpt) { e.stopPropagation(); busGuardar(inp.value); const [cid, pid] = d.bpt.split('|'); cerrar(); S.coord.tab = 'config'; S.coord.aj = 'puntos'; S.coord.flash = 'pc-' + pid; if (S.route.name === 'coord' && S.route.cid === cid) renderCoord(); else go('#/coord/' + cid); return; }
       if (d.go) { busGuardar(inp.value); cerrar(); }
     });
@@ -806,7 +809,7 @@
       box.classList.toggle('hidden', !l.length);
       box.querySelectorAll('[data-sug]').forEach(b => b.addEventListener('click', () => {
         const p = l[+b.dataset.sug];
-        q('#aNom').value = p.nombre; q('#aApe').value = p.apellido; q('#aCel').value = p.celular || '';
+        q('#aNom').value = p.nombre; q('#aApe').value = p.apellido; q('#aCel').value = p.celular || ''; q('#aNom').dataset.uid = /^m-/.test(p.uid || '') ? p.uid : '';
         const sel = q('#aCong'); if ([...sel.options].some(o => o.value === p.congregacion || o.text === p.congregacion)) { sel.value = p.congregacion; q('#aOtraF').classList.add('hidden'); } else { sel.value = '__otra'; q('#aOtra').value = p.congregacion; q('#aOtraF').classList.remove('hidden'); }
         box.classList.add('hidden'); q('#aGo').focus();
       }));
@@ -819,7 +822,7 @@
     const p = c.puntos[t.punto] || {};
     const congs = (S.publico.congregaciones || []).slice().sort((a, b) => a.localeCompare(b, 'es'));
     const ov = sheet(`<h3>Anotar a un hermano</h3><p class="hint">Para quien no puede usar la app. Queda <b>confirmado</b> y se lo podés avisar por WhatsApp.</p>
-      <div class="sum"><div>${I('cal')}${esc(cap(fmtDia(fecha)))}</div><div>${I('clock')}<span class="num">${esc(t.desde)} – ${esc(t.hasta)}</span></div><div>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}${esc(p.nombre || '')}</div></div>
+      <div class="sum"><div>${I('cal')}${esc(cap(fmtDia(fecha)))}</div><div>${I('clock')}<span class="num">${esc(t.desde)} – ${esc(t.hasta)}</span></div><div>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}${esc(p.nombre || '')}</div><div class="cqs ya">${I('users')}<span><em>${quienesEn(c.id, fecha, tid).length === 1 ? 'Ya va:' : quienesEn(c.id, fecha, tid).length ? 'Ya van:' : ''}</em> ${conQuienHTML(quienesEn(c.id, fecha, tid), '')}</span></div></div>
       <div class="two"><div class="fld"><label for="aNom">Nombre</label><input id="aNom" autocomplete="off"></div><div class="fld"><label for="aApe">Apellido</label><input id="aApe" autocomplete="off"></div></div><div class="sug hidden" id="aSug"></div>
       <div class="fld"><label for="aCong">Congregación</label><select id="aCong">${congs.length ? '<option value="">Elegí la congregación</option>' : ''}${congs.map(x => `<option>${esc(x)}</option>`).join('')}<option value="__otra">Otra…</option></select></div>
       <div class="fld hidden" id="aOtraF"><label for="aOtra">¿Cuál?</label><input id="aOtra" placeholder="Nombre de la congregación y ciudad"></div>
@@ -830,6 +833,8 @@
     const q = (x) => ov.querySelector(x);
     if (volver) q('#aCancel').addEventListener('click', () => setTimeout(volver, 0));
     bindAutocompletar(ov, c);
+    const marcaFam = () => { const ap = sinTilde(q('#aApe').value); ov.querySelectorAll('.cqs.ya .cq').forEach(x => x.classList.toggle('fam', !!ap && x.dataset.ape === ap)); };
+    q('#aApe').addEventListener('input', marcaFam); ov.addEventListener('click', () => setTimeout(marcaFam, 0));
     q('#aCong').addEventListener('change', () => q('#aOtraF').classList.toggle('hidden', q('#aCong').value !== '__otra'));
     q('#aGo').addEventListener('click', async () => {
       const nombre = q('#aNom').value.trim(), apellido = q('#aApe').value.trim(), celular = q('#aCel').value.trim();
@@ -839,27 +844,98 @@
       if (!nombre || !apellido) return err('Completá nombre y apellido.');
       if (!congregacion) return err('Elegí la congregación.');
       if (celular && (celular.match(/\d/g) || []).length < 8) return err('El celular va con característica (por ejemplo 343 555-0000), o dejalo vacío.');
-      const oc = (S.coord.cupos[cupoId(c.id, fecha, tid)] || {}).ocupados || {};
+      const oc = (busCupos(c.id)[cupoId(c.id, fecha, tid)] || {}).ocupados || {};
       if (Object.keys(oc).length >= cupoDe(c, t)) return err('Ese turno ya se completó.');
-      const uid = 'm-' + uidGen() + uidGen().slice(0, 3), id = cupoId(c.id, fecha, tid) + '__' + uid;
-      const d = { cid: c.id, fecha, tid, punto: t.punto, desde: t.desde, hasta: t.hasta, uid, nombre, apellido, congregacion, estado: 'confirmado', creado: new Date().toISOString(), manual: true, por: S.user.email.toLowerCase() };
-      if (celular) d.celular = celular;
-      if (nota) d.nota = nota;
+      const per = { nombre, apellido, congregacion, celular, nota, uid: q('#aNom').dataset.uid || '' };
       const b = q('#aGo'); b.disabled = true; b.textContent = 'Guardando…';
-      const batch = S.db.batch();
-      batch.set(S.db.doc('cupos/' + cupoId(c.id, fecha, tid)), { cid: c.id, fecha, tid, ocupados: { [uid]: 'c' } }, { merge: true });
-      batch.set(S.db.doc('pedidos/' + id), d);
-      try { await batch.commit(); } catch (e) { console.error(e); b.disabled = false; b.textContent = 'Anotar y confirmar'; return err('No se pudo guardar. Revisá la conexión y probá de nuevo.'); }
+      let hechos;
+      try { hechos = await guardarManual(c, per, [{ fecha, tid }]); } catch (e) { console.error(e); b.disabled = false; b.textContent = 'Anotar y confirmar'; return err('No se pudo guardar. Revisá la conexión y probá de nuevo.'); }
       ov.remove();
-      const url = comoLlegarUrl(p, c);
-      const msg = `Hola ${nombre}, ya tenés tu turno en la PPAM: ${cap(fmtDia(fecha))} de ${t.desde} a ${t.hasta} · ${p.nombre || ''}${p.detalle ? ' (' + p.detalle + ')' : ''} — ${c.nombre}${c.ciudad ? ', ' + c.ciudad : ''}.${url ? '\nCómo llegar: ' + url : ''}`;
-      const wa = String(celular).replace(/\D/g, '');
-      const ok = sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>${esc(nombre)} ya tiene su turno</h3><p>${esc(cap(fmtDia(fecha)))} · ${esc(t.desde)} a ${esc(t.hasta)} · ${esc(p.nombre || '')}</p><p><span class="tag confirmado">Confirmado</span></p></div>
-        ${wa ? `<a class="btn" id="aWa" href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${I('chat')}Avisarle por WhatsApp</a>` : `<button type="button" class="btn" id="aCopy">${I('copy')}Copiar el mensaje para avisarle</button>`}<button type="button" class="btn alt" data-cerrar>Listo</button>`);
-      const cp = ok.querySelector('#aCopy'); if (cp) cp.addEventListener('click', () => { copiar(msg); });
-      if (volver) ok.querySelectorAll('[data-cerrar]').forEach(x => x.addEventListener('click', () => setTimeout(volver, 0)));
-      const aw = ok.querySelector('#aWa'); if (aw && window.__ppamMock) aw.addEventListener('click', (e) => { e.preventDefault(); window.open(aw.href); });
+      listoManual(c, per, hechos, volver);
     });
+  }
+  // Quiénes ya van en un turno (confirmados o por confirmar), para no juntar a quien no corresponde
+  const quienesEn = (cid, fecha, tid) => busPeds(cid).filter(p => p.fecha === fecha && p.tid === tid && (p.estado === 'confirmado' || p.estado === 'pendiente'));
+  const congCorta = (x) => String(x || '').replace(/\s*\(.*\)\s*$/, '');
+  function conQuienHTML(gente, apellido) {
+    if (!gente.length) return '<span class="cq0">Nadie todavía</span>';
+    const ap = sinTilde(apellido || '');
+    return gente.map(g => `<span class="cq${ap && sinTilde(g.apellido) === ap ? ' fam' : ''}" data-ape="${esc(sinTilde(g.apellido))}">${esc(g.nombre)} ${esc(g.apellido)} <i>(${esc(congCorta(g.congregacion))})</i>${g.estado === 'pendiente' ? ' <i>· por confirmar</i>' : ''}<b class="ma">mismo apellido</b></span>`).join('');
+  }
+  // Guarda pedidos "cargados por coordinador" (confirmados) para una persona en uno o varios turnos; saltea los completos
+  async function guardarManual(c, per, slots) {
+    const uid = /^m-[a-z0-9]{6,24}$/.test(per.uid || '') ? per.uid : 'm-' + uidGen() + uidGen().slice(0, 3);
+    const cups = busCupos(c.id), batch = S.db.batch(), hechos = [], ahora = new Date().toISOString();
+    slots.forEach(({ fecha, tid }) => {
+      const t = c.turnos[tid]; if (!t) return;
+      const oc = (cups[cupoId(c.id, fecha, tid)] || {}).ocupados || {};
+      if (oc[uid] || Object.keys(oc).length >= cupoDe(c, Object.assign({ id: tid }, t))) return;
+      const d = { cid: c.id, fecha, tid, punto: t.punto, desde: t.desde, hasta: t.hasta, uid, nombre: per.nombre, apellido: per.apellido, congregacion: per.congregacion, estado: 'confirmado', creado: ahora, manual: true, por: S.user.email.toLowerCase() };
+      if (per.celular) d.celular = per.celular;
+      if (per.nota) d.nota = per.nota;
+      batch.set(S.db.doc('cupos/' + cupoId(c.id, fecha, tid)), { cid: c.id, fecha, tid, ocupados: { [uid]: 'c' } }, { merge: true });
+      batch.set(S.db.doc('pedidos/' + cupoId(c.id, fecha, tid) + '__' + uid), d);
+      hechos.push({ fecha, t: Object.assign({ id: tid }, t), p: c.puntos[t.punto] || {}, d });
+    });
+    if (!hechos.length) return hechos;
+    await batch.commit();
+    per.uid = uid;
+    // la lupa y el selector de lugares usan una copia: se actualiza al momento
+    hechos.forEach(h => { (S.bus.peds[c.id] = S.bus.peds[c.id] || []).push(Object.assign({ id: cupoId(c.id, h.fecha, h.t.id) + '__' + uid }, h.d)); const k = cupoId(c.id, h.fecha, h.t.id), cc = (S.bus.cupos[c.id] = S.bus.cupos[c.id] || {}); cc[k] = cc[k] || { cid: c.id, fecha: h.fecha, tid: h.t.id, ocupados: {} }; cc[k].ocupados = Object.assign({}, cc[k].ocupados, { [uid]: 'c' }); });
+    return hechos;
+  }
+  function avisoManual(c, nombre, hechos) {
+    const lugar = (p) => (p.nombre || '') + (p.detalle ? ' (' + p.detalle + ')' : '');
+    if (hechos.length === 1) { const h = hechos[0], url = comoLlegarUrl(h.p, c); return `Hola ${nombre}, ya tenés tu turno en la PPAM: ${cap(fmtDia(h.fecha))} de ${h.t.desde} a ${h.t.hasta} · ${lugar(h.p)} — ${c.nombre}${c.ciudad ? ', ' + c.ciudad : ''}.${url ? '\nCómo llegar: ' + url : ''}`; }
+    const ps = [...new Set(hechos.map(h => h.t.punto))];
+    return `Hola ${nombre}, ya tenés tus turnos en la PPAM (${c.nombre}${c.ciudad ? ', ' + c.ciudad : ''}):\n` + hechos.slice().sort((a, b) => (a.fecha + a.t.desde).localeCompare(b.fecha + b.t.desde)).map(h => `• ${cap(fmtDia(h.fecha))}, ${h.t.desde} a ${h.t.hasta} · ${lugar(h.p)}`).join('\n') +
+      ps.map(pid => { const url = comoLlegarUrl(c.puntos[pid] || {}, c); return url ? `\nCómo llegar a ${(c.puntos[pid] || {}).nombre || ''}: ${url}` : ''; }).join('');
+  }
+  function listoManual(c, per, hechos, volver) {
+    const msg = avisoManual(c, per.nombre, hechos), wa = String(per.celular || '').replace(/\D/g, ''), n = hechos.length;
+    const ok = sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>${esc(per.nombre)} ya tiene ${n === 1 ? 'su turno' : n + ' turnos'}</h3>${hechos.map(h => `<p>${esc(cap(fmtDia(h.fecha)))} · ${esc(h.t.desde)} a ${esc(h.t.hasta)} · ${esc(h.p.nombre || '')}</p>`).join('')}<p><span class="tag confirmado">Confirmado${n === 1 ? '' : 's'}</span></p></div>
+      ${wa ? `<a class="btn" id="aWa" href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${I('chat')}Avisarle por WhatsApp</a>` : `<button type="button" class="btn" id="aCopy">${I('copy')}Copiar el mensaje para avisarle</button>`}<button type="button" class="btn alt" id="aOtro">${I('plus')}Anotarlo en otro turno</button><button type="button" class="btn alt" data-cerrar>Listo</button>`);
+    const cp = ok.querySelector('#aCopy'); if (cp) cp.addEventListener('click', () => { copiar(msg); });
+    if (volver) ok.querySelectorAll('[data-cerrar]').forEach(x => x.addEventListener('click', () => setTimeout(volver, 0)));
+    ok.querySelector('#aOtro').addEventListener('click', () => { ok.remove(); elegirLugares(c, per, volver); });
+    const aw = ok.querySelector('#aWa'); if (aw && window.__ppamMock) aw.addEventListener('click', (e) => { e.preventDefault(); window.open(aw.href); });
+  }
+  /* Lugares libres de una campaña para anotar a una persona: se pueden marcar varios */
+  function elegirLugares(c0, per, volver) {
+    const ov = sheet('<div class="lg-body"></div>'); ov.classList.add('lgov');
+    let c = c0, todos = false;
+    const yaEsta = (cid, fecha, tid) => busPeds(cid).some(p => p.fecha === fecha && p.tid === tid && (p.estado === 'confirmado' || p.estado === 'pendiente') && ((per.uid && p.uid === per.uid) || sinTilde(p.nombre + ' ' + p.apellido) === sinTilde(per.nombre + ' ' + per.apellido)));
+    const pinta = () => {
+      const cs = misCampanas().filter(x => diasDe(x).length), dias = diasDe(c), ver = todos ? dias : dias.slice(0, 14), cups = busCupos(c.id);
+      let h = `<h3>Anotar a ${esc(per.nombre)} ${esc(per.apellido)}</h3><p class="hint">${esc(per.congregacion)}${per.celular ? ' · ' + esc(per.celular) : ''}. Marcá uno o varios lugares libres.</p>`;
+      if (cs.length > 1) h += `<div class="fld"><select id="lgCamp">${cs.map(x => `<option value="${esc(x.id)}"${x.id === c.id ? ' selected' : ''}>${esc(x.nombre)}${x.ciudad ? ' · ' + esc(x.ciudad) : ''}</option>`).join('')}</select></div>`;
+      let hay = 0;
+      ver.forEach(d => {
+        const fs = turnosDelDia(c, d).map(t => { const oc = Object.keys((cups[cupoId(c.id, d, t.id)] || {}).ocupados || {}).length; return { t, falta: cupoDe(c, t) - oc, esta: yaEsta(c.id, d, t.id) }; }).filter(x => x.falta > 0 || x.esta);
+        if (!fs.length) return;
+        h += `<div class="lgd">${esc(cap(fmtDia(d)))}</div>` + fs.map(({ t, falta, esta }) => { const p = c.puntos[t.punto] || {}; if (!esta) hay++;
+          return `<label class="lgr${esta ? ' ya' : ''}"><input type="checkbox" value="${d}|${esc(t.id)}"${esta ? ' disabled' : ''}><span class="tx"><b class="num">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))}</b> · ${esc(p.nombre || '')}<small>${esta ? 'Ya está anotado' : falta === 1 ? 'Falta 1' : 'Faltan ' + falta}${p.detalle ? ' · ' + esc(p.detalle) : ''}</small>${esta ? '' : `<span class="cqs"><em>Con:</em> ${conQuienHTML(quienesEn(c.id, d, t.id), per.apellido)}</span>`}</span></label>`; }).join('');
+      });
+      if (!hay) h += '<div class="bs0">No quedan lugares libres en esta campaña.</div>';
+      if (!todos && dias.length > 14) h += `<button type="button" class="btn alt" id="lgMas">Ver los días que siguen</button>`;
+      h += `<div class="lgbar"><p class="err hidden" id="lgErr"></p><button type="button" class="btn" id="lgGo" disabled>Elegí uno o más lugares</button><button type="button" class="btn alt" data-cerrar>Cancelar</button></div>`;
+      ov.querySelector('.lg-body').innerHTML = h;
+      const sel = ov.querySelector('#lgCamp'); if (sel) sel.addEventListener('change', () => { c = S.campanas[sel.value]; todos = false; pinta(); });
+      const mas = ov.querySelector('#lgMas'); if (mas) mas.addEventListener('click', () => { todos = true; pinta(); });
+      const go = ov.querySelector('#lgGo');
+      const cuenta = () => { const n = ov.querySelectorAll('.lgr input:checked').length; go.disabled = !n; go.textContent = n ? (n === 1 ? 'Anotar en 1 turno' : `Anotar en ${n} turnos`) : 'Elegí uno o más lugares'; };
+      ov.querySelectorAll('.lgr input').forEach(x => x.addEventListener('change', cuenta));
+      go.addEventListener('click', async () => {
+        const slots = [...ov.querySelectorAll('.lgr input:checked')].map(x => { const [fecha, tid] = x.value.split('|'); return { fecha, tid }; });
+        go.disabled = true; go.textContent = 'Guardando…';
+        let hechos;
+        try { hechos = await guardarManual(c, per, slots); } catch (e) { console.error(e); cuenta(); const er = ov.querySelector('#lgErr'); er.textContent = 'No se pudo guardar. Revisá la conexión y probá de nuevo.'; er.classList.remove('hidden'); return; }
+        if (!hechos.length) { cuenta(); const er = ov.querySelector('#lgErr'); er.textContent = 'Esos lugares se acaban de completar. Elegí otros.'; er.classList.remove('hidden'); return; }
+        ov.remove(); listoManual(c, per, hechos, volver);
+      });
+    };
+    pinta();
+    if (!S.bus.t) cargarBusqueda().then(() => { if (ov.isConnected) pinta(); });
   }
   function pedidoCoordRow(c, p, acciones) {
     const pt = (c.puntos || {})[p.punto] || {};

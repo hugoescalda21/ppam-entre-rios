@@ -700,3 +700,31 @@ a.btn { display: flex; align-items: center; justify-content: center; gap: 8px; t
 .sug .ini { width: 32px; height: 32px; border-radius: 50%; background: var(--pri-bg); color: var(--pri); display: grid; place-items: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
 .sug .tx b { display: block; font-size: 14px; }
 .sug .tx small { font-size: 12px; color: var(--ink3); }
+
+/* ---------- Anotar en varios lugares (desde la lupa o después de anotar) ---------- */
+.bsh .t .sbtn.anot, .bsrw .sbtn.anot { padding: 6px 10px; font-size: 12.5px; gap: 4px; color: var(--pri); border-color: var(--pri-bg); flex-shrink: 0; }
+.bsrw { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.bsrw .bsr { margin-bottom: 0; flex: 1; min-width: 0; }
+.lgov .lgd { font-size: 12px; font-weight: 700; color: var(--ink3); text-transform: uppercase; letter-spacing: .03em; margin: 16px 2px 6px; }
+.lgr { display: flex; align-items: center; gap: 11px; padding: 10px 10px; border: 1.5px solid var(--line2); border-radius: 13px; margin-bottom: 6px; cursor: pointer; background: var(--card); }
+.lgr input { width: 20px; height: 20px; accent-color: var(--pri); flex-shrink: 0; }
+.lgr .tx { flex: 1; min-width: 0; font-size: 14px; }
+.lgr .tx small { display: block; font-size: 12px; color: var(--ink3); }
+.lgr:has(input:checked) { border-color: var(--pri2); background: var(--pri-bg); }
+.lgr.ya { opacity: .55; cursor: default; }
+.lgbar { position: sticky; bottom: calc(-22px - env(safe-area-inset-bottom)); background: var(--card); padding: 10px 0 4px; margin-top: 8px; box-shadow: 0 -10px 12px -10px rgba(0,0,0,.15); }
+.ok-big p + p { margin-top: 2px; }
+
+/* ---------- Con quién va: nombres en el turno y "mismo apellido" ---------- */
+.cqs { display: block; font-size: 12px; color: var(--ink2); margin-top: 3px; line-height: 1.45; }
+.cqs em { font-style: normal; color: var(--ink3); font-weight: 600; }
+.cqs .cq { white-space: normal; }
+.cqs .cq .ma { white-space: nowrap; }
+.cqs .cq + .cq::before { content: ' · '; color: var(--ink3); }
+.cqs .cq i { font-style: normal; color: var(--ink3); }
+.cqs .cq .ma { display: none; margin-left: 4px; font-size: 10.5px; font-weight: 700; color: var(--warn); background: var(--warn-bg); border-radius: 99px; padding: 1px 6px; }
+.cqs .cq.fam .ma { display: inline; }
+.cqs .cq0 { color: var(--ink3); }
+.sum .cqs.ya { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; margin: 0; min-width: 0; }
+.sum .cqs.ya > span { min-width: 0; }
+.sum .cqs.ya > .ic { flex-shrink: 0; }

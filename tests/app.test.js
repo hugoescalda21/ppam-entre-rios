@@ -237,6 +237,9 @@ const SEED = {
   await c.click('[data-bscerrar]'); await c.waitForTimeout(50);
   await c.click('#dt-t3 [data-anotar]'); await c.waitForTimeout(120);
   check('"Anotar" en un lugar libre abre el formulario del coordinador', /Anotar a un hermano[\s\S]*Sábado 3 de octubre[\s\S]*16:00 – 18:00[\s\S]*Hall central/.test(await text(c, '.sheet')), await text(c, '.sheet'));
+  check('el formulario muestra quién ya va en ese turno', /Ya va:\s*Ana Paz \(San Agustín\)/.test(await text(c, '.sheet .sum')), await text(c, '.sheet .sum'));
+  await c.fill('#aApe', 'paz'); await c.waitForTimeout(50);
+  check('mismo apellido: se marca para revisar si es de la familia', await c.evaluate(() => !!document.querySelector('.sheet .cq.fam') && getComputedStyle(document.querySelector('.sheet .cq.fam .ma')).display !== 'none'));
   await c.fill('#aNom', 'Rosa'); await c.fill('#aApe', 'Díaz'); await c.click('#aGo');
   check('valida la congregación', /Elegí la congregación/.test(await text(c, '#aErr')));
   await c.selectOption('#aCong', 'Paraná Centro (Paraná)'); await c.fill('#aCel', '343 444-1234'); await c.fill('#aNota', 'Avisarle también por teléfono fijo.');
@@ -258,6 +261,24 @@ const SEED = {
   check('un toque completa nombre, apellido, congregación y celular', await c.evaluate(() => document.querySelector('#aNom').value === 'Rosa' && document.querySelector('#aApe').value === 'Díaz' && document.querySelector('#aCong').value === 'Paraná Centro (Paraná)' && document.querySelector('#aCel').value === '343 444-1234'));
   await c.click('#aGo'); await c.waitForTimeout(200); await c.click('.sheet [data-cerrar]'); await c.waitForTimeout(200);
   check('vuelve a "Del día" del sábado 10, con Rosa en ese turno', await c.evaluate(() => document.querySelector('.day.on').dataset.cdia === '2026-10-10' && /Rosa Díaz/.test(document.getElementById('dt-t3').innerText)));
+  await c.click('#busBtn'); await c.waitForTimeout(150); await c.click('[data-bsat="man"]'); await c.waitForTimeout(100);
+  await c.click('[data-banot^="parana-terminal|2026-10-01|"]'); await c.waitForTimeout(150);
+  check('"+ Anotar" desde "Faltan mañana" de la lupa abre el formulario de ese turno', /Anotar a un hermano[\s\S]*Jueves 1 de octubre/.test(await text(c, '.sheet')), await text(c, '.sheet'));
+  await c.click('#aCancel'); await c.waitForTimeout(150);
+  await c.click('#busBtn'); await c.waitForTimeout(150); await c.fill('#bsQ', 'rosa'); await c.waitForTimeout(250);
+  await c.click('#bsR [data-bturno]'); await c.waitForTimeout(200);
+  check('"+ Turno" desde el hermano: lugares libres por día, y dónde ya está', /Anotar a Rosa Díaz[\s\S]*Jueves 1 de octubre[\s\S]*10 a 12 · Andén 1\s*Falta 1[\s\S]*Sábado 3 de octubre[\s\S]*16 a 18 · Hall central\s*Ya está anotado/i.test(await text(c, '.lgov')), (await text(c, '.lgov')).slice(0, 600));
+  check('cada lugar libre dice con quién va', await c.evaluate(() => /Con:\s*Nadie todavía/.test(document.querySelector('.lgr input[value="2026-10-02|t1"]').closest('.lgr').innerText)));
+  await c.check('.lgr input[value="2026-10-01|t2"]'); await c.check('.lgr input[value="2026-10-03|t2"]');
+  check('marcar varios: "Anotar en 2 turnos"', /Anotar en 2 turnos/.test(await text(c, '#lgGo')));
+  await c.click('#lgGo'); await c.waitForTimeout(250);
+  check('listo: "Rosa ya tiene 2 turnos"', /Rosa ya tiene 2 turnos[\s\S]*Jueves 1 de octubre · 10:00 a 12:00 · Andén 1[\s\S]*Sábado 3 de octubre · 10:00 a 12:00 · Andén 1/.test(await text(c, '.sheet')), await text(c, '.sheet'));
+  const rosa = await c.evaluate(() => Object.values(window.__store).filter(d => d && d.nombre === 'Rosa' && d.manual).map(d => d.uid));
+  check('reusa el mismo hermano (un solo id) en todos sus turnos', rosa.length === 4 && new Set(rosa).size === 1, rosa);
+  await c.click('#aWa'); await c.waitForTimeout(80);
+  const av2 = await c.evaluate(() => decodeURIComponent(window.__opened.pop() || ''));
+  check('un solo WhatsApp con la lista de turnos', /ya tenés tus turnos en la PPAM \(Terminal de ómnibus, Paraná\):\n• Jueves 1 de octubre, 10:00 a 12:00 · Andén 1 \(Frente a boleterías\)\n• Sábado 3 de octubre, 10:00 a 12:00 · Andén 1 \(Frente a boleterías\)/.test(av2), av2);
+  await c.click('.sheet [data-cerrar]'); await c.waitForTimeout(100);
   // Configurar: un punto nuevo y turnos en serie
   await c.click('[data-tab="config"]'); await c.waitForTimeout(100);
   await c.click('[data-punto=""]'); await c.fill('#ptNom', 'Salida Av. Ramírez'); await c.click('#ptOk'); await c.waitForTimeout(150);

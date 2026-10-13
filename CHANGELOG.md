@@ -1,5 +1,13 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## "+ Turno" desde el hermano, varios turnos y con quién va — 13 oct 2026 (caché ppam-v27)
+
+- Lupa: cada hermano tiene "+ Turno": lista de lugares libres por día y carrito; se pueden marcar varios. Reusa sus datos (mismo id si ya fue cargado por coordinador).
+- Un solo aviso por WhatsApp con la lista de turnos. "Anotarlo en otro turno" después de cualquier anotación.
+- "+ Anotar" en el atajo "Faltan hoy / mañana" de la lupa.
+- Con quién va: cada lugar libre dice quién ya está ("Con: …"), y el formulario de anotar muestra "Ya va: …"; si coincide el apellido se marca "mismo apellido".
+- Versión 25. 198 pruebas de la página.
+
 ## Anotar más rápido: hermanos conocidos — 13 oct 2026 (caché ppam-v26)
 
 - Al anotar a un hermano, escribiendo 2 letras aparecen los que ya se anotaron en las campañas que coordina (con congregación y celular); un toque completa todo.
