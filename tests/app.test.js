@@ -224,7 +224,7 @@ const SEED = {
   const p1 = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; const pt = cp.puntos.p1; const f = pt.fotos && window.__store['fotos/parana-terminal__' + pt.fotos[0]]; return { pt, f: f && { cid: f.cid, ini: f.data.slice(0, 23), largo: f.data.length } }; });
   check('guarda dirección, ubicación, indicaciones y retiro del punto', p1.pt.direccion === 'Av. Ramírez 2598' && p1.pt.lat === -31.741234 && p1.pt.lng === -60.523678 && /a la derecha/.test(p1.pt.indicaciones) && /planta baja/.test(p1.pt.retiro) && p1.pt.nombre === 'Andén 1' && p1.pt.cupo === 2, p1.pt);
   check('la foto se guarda achicada como JPEG en fotos/{campaña}__{id}', p1.f && p1.f.cid === 'parana-terminal' && p1.f.ini === 'data:image/jpeg;base64,' && p1.f.largo < 440000, p1.f);
-  check('la lista de puntos muestra que tiene ubicación y foto', /Andén 1[\s\S]*Con ubicación · 1 foto/.test(await text(c, '#app')));
+  check('la lista de puntos muestra que tiene ubicación y foto', /Andén 1[\s\S]*Marcado en el mapa · 1 foto/.test(await text(c, '#app')));
   await c.click('[data-punto="p2"]'); await c.waitForTimeout(80);
   await c.click('#ptLinkB'); await c.fill('#ptLink', 'https://maps.app.goo.gl/AbCd123XyZ');
   check('un link corto de Maps se guarda como link', /Link de Maps guardado/.test(await text(c, '#ptUbi')));
@@ -568,8 +568,16 @@ const SEED = {
     check('tocar "Paraná · 2" acerca hasta separar sus campañas, con su nombre', l.includes('Terminal de ómnibus') && l.includes('Costanera'), l);
     await (await pin('Terminal de ómnibus')).click(); await m.waitForTimeout(1000);
     const ab = await m.evaluate(() => ({ sel: !!document.querySelector('.pp.sel'), dim: document.querySelector('.mapin').classList.contains('dim'), on: document.getElementById('msheet').classList.contains('on'), t: document.getElementById('msBody').innerText.replace(/\s+/g, ' ') }));
+    check('la campaña elegida muestra sus puntos con su nombre (Hall central)', await m.evaluate(() => [...document.querySelectorAll('.pso .lab')].map(x => x.textContent).join() === 'Hall central' || [...document.querySelectorAll('.pso .lab')].map(x => x.textContent).sort().join() === 'Andén 1,Hall central'));
     check('tocar una campaña: se vuelve su foto y sube la tarjeta con los lugares que faltan', ab.sel && ab.dim && ab.on && /Terminal de ómnibus/.test(ab.t) && /2 puntos/.test(ab.t) && /Faltan \d+ lugares|Falta 1 lugar/.test(ab.t), ab);
     await m.screenshot({ path: SHOTS + '/mapa-terminal.png' });
+    // una campaña sin puntos marcados: lo avisa en la tarjeta
+    await m.evaluate(() => { const S = window.__ppam; S.mapa.cs.push({ c: { id: 'x1', nombre: 'Sin marcar', ciudad: 'Crespo', puntos: { a: { nombre: 'A' }, b: { nombre: 'B' } } }, e: { est: 'ok', txt: 'Faltan 2 lugares esta semana' }, lat: -32.028, lng: -60.307, pts: [] }); });
+    await m.evaluate(() => { const S = window.__ppam; S.mapa.sel = null; });
+    await m.evaluate(() => window.__ppam.mapa.map.setView([-32.028, -60.307], 13)); await m.waitForTimeout(600);
+    await (await pin('Sin marcar')).click(); await m.waitForTimeout(900);
+    check('campaña sin puntos marcados: la tarjeta lo avisa', /todavía no están marcados en el mapa: aparece en el centro de Crespo/.test(await text(m, '#msBody')), await text(m, '#msBody'));
+    await m.evaluate(() => { window.__ppam.mapa.cs.pop(); });
     await m.click('#lmap', { position: { x: 30, y: 120 } }); await m.waitForTimeout(400);
     check('tocar el mapa cierra la tarjeta', await m.evaluate(() => !document.querySelector('.pp.sel') && !document.getElementById('msheet').classList.contains('on')));
     for (let i = 0; i < 4; i++) { await m.click('[data-mz="1"]'); await m.waitForTimeout(350); }

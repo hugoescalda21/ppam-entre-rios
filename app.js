@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '14';
+  const VERSION = '15';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -759,7 +759,9 @@
       <div class="two"><div class="fld"><label for="cfDes">Desde</label><input id="cfDes" type="date" value="${esc(c.desde || '')}"></div><div class="fld"><label for="cfHas">Hasta</label><input id="cfHas" type="date" value="${esc(c.hasta || '')}"></div></div>
       <label class="ck"><input type="checkbox" id="cfAct"${c.activa !== false ? ' checked' : ''}> <span>Visible para todos (si la desmarcás, deja de aparecer en el inicio)</span></label>
       <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div>`;
-    h += `<div class="sec">Puntos <button type="button" class="sbtn" data-punto="">+ Punto</button></div><div class="card">` + (puntos.map(p => `<div class="edit-row"><div><b class="er-t"><span class="er-ic">${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin', 'width:16px;height:16px')}</span>${esc(p.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc((TIPOS[p.tipo] || TIPOS.otro)[1])} · ${cupoDe(c, { punto: p.id })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small><small style="display:block;font-size:11.5px;color:${tieneUbic(p) ? 'var(--ok)' : 'var(--faint)'};">${tieneUbic(p) ? 'Con ubicación' : 'Sin ubicación'}${(p.fotos || []).length ? ' · ' + p.fotos.length + ((p.fotos.length === 1) ? ' foto' : ' fotos') : ''}</small></div><button type="button" class="sbtn" data-punto="${esc(p.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá el primer punto (un carrito, un stand…).</div>') + '</div>';
+    const sinMarcar = puntos.filter(p => p.lat == null).length;
+    if (puntos.length && sinMarcar) h += `<div class="aviso-mapa">${I('pin', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>${sinMarcar === puntos.length ? 'Ningún punto está marcado en el mapa' : `${sinMarcar} de ${puntos.length} puntos sin marcar en el mapa`}</b>Para que aparezcan en el mapa del Inicio, entrá a cada punto con "Editar" y tocá el mapa donde está el carrito (o "Estoy acá" parado en el lugar).</span></div>`;
+    h += `<div class="sec">Puntos <button type="button" class="sbtn" data-punto="">+ Punto</button></div><div class="card">` + (puntos.map(p => `<div class="edit-row"><div><b class="er-t"><span class="er-ic">${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin', 'width:16px;height:16px')}</span>${esc(p.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc((TIPOS[p.tipo] || TIPOS.otro)[1])} · ${cupoDe(c, { punto: p.id })} por turno${p.detalle ? ' · ' + esc(p.detalle) : ''}</small><small style="display:block;font-size:11.5px;color:${p.lat != null ? 'var(--ok)' : 'var(--warn)'};">${p.lat != null ? 'Marcado en el mapa' : tieneUbic(p) ? 'Con dirección, sin marcar en el mapa' : 'Sin marcar en el mapa'}${(p.fotos || []).length ? ' · ' + p.fotos.length + ((p.fotos.length === 1) ? ' foto' : ' fotos') : ''}</small></div><button type="button" class="sbtn" data-punto="${esc(p.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá el primer punto (un carrito, un stand…).</div>') + '</div>';
     h += `<div class="sec">Turnos <button type="button" class="sbtn" data-turno="" ${puntos.length ? '' : 'disabled'}>+ Turno</button></div><div class="card">` + (turnos.map(t => `<div class="edit-row"><div><b>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc((c.puntos[t.punto] || {}).nombre || '¿?')}</b><small style="display:block;color:var(--soft);font-size:12px;">${(t.dias || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', ') || 'Ningún día'}</small></div><button type="button" class="sbtn" data-turno="${esc(t.id)}">Editar</button></div>`).join('') || '<div class="empty">Agregá los horarios de cada punto (por ejemplo, 8 a 10, de lunes a sábado).</div>') + '</div>';
     return h;
   }
@@ -1400,20 +1402,29 @@
     document.querySelectorAll('.pp.sel').forEach(e => e.classList.remove('sel'));
     S.mapa.sel = g.key;
     const el = mk.getElement() && mk.getElement().querySelector('.pp');
-    if (el) { el.classList.add('sel'); el.classList.remove('ripgo'); void el.offsetWidth; el.classList.add('ripgo'); }
+    if (el) { el.classList.add('sel'); el.classList.toggle('conpts', g.tipo !== 'pt' && x.pts.length > 0); el.classList.remove('ripgo'); void el.offsetWidth; el.classList.add('ripgo'); }
     S.mapa.el.classList.add('dim');
-    const z = Math.max(m.getZoom(), g.tipo === 'pt' ? m.getZoom() : 13.5);
-    const pt = m.project([g.lat, g.lng], z).add([0, m.getSize().y * .22]);
-    m.flyTo(m.unproject(pt, z), z, { duration: .6 });
+    // Los carritos y stands de la campaña elegida, con su nombre, y el mapa encuadrado sobre ellos.
+    puntosCamp(x, g.tipo === 'pt' ? g.items[0].key : null);
+    const H = m.getSize().y;
+    if (g.tipo !== 'pt' && x.pts.length > 1) m.flyToBounds(window.L.latLngBounds(x.pts.map(p => [p.lat, p.lng])), { paddingTopLeft: [40, 70], paddingBottomRight: [40, Math.round(H * .45)], maxZoom: 16.5, duration: .7 });
+    else { const z = Math.max(m.getZoom(), g.tipo === 'pt' ? m.getZoom() : 15); const pt = m.project([g.lat, g.lng], z).add([0, H * .22]); m.flyTo(m.unproject(pt, z), z, { duration: .6 }); }
     const npt = (c.puntos ? Object.keys(c.puntos).length : 0);
-    $('msBody').innerHTML = `<h4>${esc(c.ciudad || '')}${g.tipo === 'pt' ? ' · ' + esc(g.items[0].lab) : ''}</h4><div class="mcc"><span class="im"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), npt + (npt === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small><span class="f ${x.e.est}">${esc(x.e.txt)}</span></span><button type="button" class="go" data-go="#/c/${esc(c.id)}">Ver turnos</button></div>`;
+    $('msBody').innerHTML = `<h4>${esc(c.ciudad || '')}${g.tipo === 'pt' ? ' · ' + esc(g.items[0].lab) : ''}</h4><div class="mcc"><span class="im"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), npt + (npt === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small><span class="f ${x.e.est}">${esc(x.e.txt)}</span></span><button type="button" class="go" data-go="#/c/${esc(c.id)}">Ver turnos</button></div>${x.pts.length < npt ? `<p class="mnota">${x.pts.length ? `${npt - x.pts.length} de ${npt} puntos todavía no están marcados en el mapa.` : `Los puntos de esta campaña todavía no están marcados en el mapa: aparece en el centro de ${esc(c.ciudad || 'su localidad')}.`}</p>` : ''}`;
     const sh = $('msheet'); sh.classList.remove('on'); void sh.offsetWidth; sh.classList.add('on');
     // Que se vea la tarjeta: si el mapa queda cortado abajo (por la barra), se acomoda la página.
     const r = $('mapw') && $('mapw').getBoundingClientRect(), tb = ($('tabbar') && $('tabbar').offsetHeight) || 0;
     if (r && r.bottom > window.innerHeight - tb) window.scrollBy({ top: r.bottom - (window.innerHeight - tb) + 8, behavior: 'smooth' });
   }
+  // Pines chicos de los puntos de la campaña elegida (se ven aunque el mapa esté lejos).
+  function puntosCamp(x, menos) {
+    const L = window.L;
+    if (S.mapa.ptsCapa) S.mapa.ptsCapa.remove();
+    S.mapa.ptsCapa = L.layerGroup(x.pts.filter(p => x.c.id + ':' + p.id !== menos).map(p => L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'ppi', html: `<div class="pp pt pso">${pinSvgMapa(COL_MAPA[x.e.est], '')}<span class="lab">${esc(p.nombre || 'Punto')}</span></div>`, iconSize: [0, 0] }), interactive: false, zIndexOffset: 500 }))).addTo(S.mapa.map);
+  }
   function cerrarPin(sinRedibujar) {
     if (!S.mapa.el) return;
+    if (S.mapa.ptsCapa) { S.mapa.ptsCapa.remove(); S.mapa.ptsCapa = null; }
     const habia = !!S.mapa.sel;
     S.mapa.sel = null;
     S.mapa.el.classList.remove('dim'); $('msheet') && $('msheet').classList.remove('on');

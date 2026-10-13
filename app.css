@@ -535,3 +535,10 @@ label.sbtn { cursor: pointer; }
 .mcc .go { border: none; background: var(--pri); color: #fff; font: inherit; font-weight: 700; font-size: 13px; border-radius: 12px; padding: 9px 11px; white-space: nowrap; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .pp .pin, .pp .ph, .msheet, .mcc { transition: none !important; } .pp.ripgo .rip, .yo { animation: none; } }
 @media (prefers-color-scheme: dark) { .mapin .leaflet-tile-pane { filter: saturate(.4) brightness(.8) contrast(1.05); } .mleg { background: rgba(20,30,30,.9); } }
+
+.mnota { margin: 8px 0 0; font-size: 12px; color: var(--warn); background: var(--warn-bg); border-radius: 10px; padding: 7px 10px; line-height: 1.4; }
+.mapin.dim .pp.pso { opacity: 1; }
+.aviso-mapa { display: flex; gap: 10px; align-items: flex-start; background: var(--warn-bg); color: var(--warn); border-radius: 16px; padding: 11px 13px; font-size: 13px; line-height: 1.45; margin: 4px 0 6px; }
+.aviso-mapa b { display: block; font-size: 14px; }
+.pp.sel.conpts .lab { display: none; }
+.pp.sel.conpts .fan { top: -60px; }

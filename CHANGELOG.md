@@ -1,5 +1,12 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Los carritos de la campaña en el mapa — 13 oct 2026 (caché ppam-v16)
+
+- Al tocar una campaña en el mapa se ven también sus puntos (carritos y stands) con su nombre, y el mapa se encuadra sobre ellos.
+- Si la campaña tiene puntos sin marcar en el mapa, la tarjeta lo dice ("Los puntos de esta campaña todavía no están marcados en el mapa: aparece en el centro de Crespo").
+- Coordinación → Ajustes → Puntos: cada punto dice "Marcado en el mapa", "Con dirección, sin marcar en el mapa" o "Sin marcar en el mapa", y arriba un aviso con cuántos faltan y cómo marcarlos.
+- Versión 15. 146 pruebas de la página.
+
 ## Mapa con zoom real y calles — 13 oct 2026 (caché ppam-v15)
 
 - El mapa del Inicio pasa a ser un mapa real (Leaflet + OpenStreetMap, el mismo de "Ver lugar"), con Entre Ríos resaltada y lo de afuera velado.
