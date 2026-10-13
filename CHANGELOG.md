@@ -1,5 +1,17 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Reportar un problema y equipo de soporte — 13 oct 2026 (caché ppam-v11)
+
+- Al pie de todas las pantallas: **"Reportar un problema"** y la **versión** de la página (Versión 11).
+- El reporte: se elige qué pasó (No me deja anotarme, No carga, Un dato está mal, No veo un botón, Otro), se cuenta con palabras propias y, si quiere, deja su celular. La página agrega sola la pantalla, el celular y navegador, la versión y el último error. Funciona sin haber iniciado sesión; con sesión lleva su cuenta y su nombre para responderle. Hasta 5 reportes por día por celular.
+- **Errores automáticos**: cuando algo falla (un error de la página o un aviso "No se pudo…"), se anota el mensaje, la pantalla, el celular y la versión, sin datos personales. Hasta 30 por día por celular.
+- **Rol Soporte** (Administración → Equipo de soporte): ve "Reportes y errores" desde Coordinar; no cambia campañas ni ve los pedidos. Los administradores lo ven arriba de Administración.
+- "Reportes y errores": resumen de los errores de las últimas 24 h (los más repetidos y dónde), "Ver detalle", y los reportes en Nuevos, Vistos y Resueltos, con WhatsApp o Email a quien reportó, "Marcar visto", "Resuelto" y "Volver a abrir".
+- Limpieza sola: los reportes resueltos hace más de 60 días y los errores de más de 30 se borran al abrir la sección.
+- "Cómo se usan tus datos" explica los reportes y los errores.
+- Reglas nuevas (`reportes`, `errores`, `config/soporte`): hay que publicarlas con `firebase deploy --only firestore:rules`.
+- 118 pruebas de la página; 22 pruebas nuevas de reglas.
+
 ## Nota para el coordinador — 12 oct 2026 (caché ppam-v10)
 
 - Al pedir un turno hay una **nota opcional para el coordinador** (hasta 200 letras), con atajos de un toque: "Voy con mi esposa/o", "Puedo llevar el carrito", "Es mi primera vez" y "Llego unos minutos tarde" (se tocan de nuevo para sacarlos).

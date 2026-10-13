@@ -46,11 +46,13 @@
     cc: {}, ccUnsub: {}, fotos: {},
     mis: {}, misUnsub: null,
     coord: { cid: null, tab: 'pedidos', pedidos: {}, cupos: {}, unsub: [] , semana: null },
-    admins: [], coordEmails: {}, pend: {}, pendUnsub: {}
+    admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
+    isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
+  const VERSION = '11';
   window.__ppam = S;   // para las pruebas
 
-  function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
+  function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
   function perfil() { try { return JSON.parse(localStorage.getItem('ppam-perfil') || '{}'); } catch (e) { return {}; } }
   function guardarPerfil(p) { try { localStorage.setItem('ppam-perfil', JSON.stringify(p)); } catch (e) { /* nada */ } }
 
@@ -72,12 +74,14 @@
     readRoute();
   }
   async function onUser(u) {
-    S.user = u || null; S.isAdmin = false; S.coordDe = [];
+    S.user = u || null; S.isAdmin = false; S.coordDe = []; S.isSoporte = false;
+    S.sop.unsub.forEach(f => f()); S.sop.unsub = []; S.sop.on = false; S.sop.okR = S.sop.okE = false; S.sop.reportes = {}; S.sop.errores = {};
     if (S.misUnsub) { S.misUnsub(); S.misUnsub = null; } S.mis = {};
     if (u) {
       S.misUnsub = S.db.collection('pedidos').where('uid', '==', u.uid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.mis = o; render(); }, () => {});
       try { const r = await S.db.doc('roles/' + u.email.toLowerCase()).get(); S.coordDe = (r.exists && r.data().campanas) || []; } catch (e) { /* sin rol */ }
       try { const a = await S.db.doc('config/admins').get(); S.isAdmin = true; S.admins = (a.exists && a.data().emails) || []; } catch (e) { S.isAdmin = false; }
+      try { const so = await S.db.doc('config/soporte').get(); S.soporteEmails = (so.exists && so.data().emails) || []; S.isSoporte = S.soporteEmails.includes(u.email.toLowerCase()); } catch (e) { S.isSoporte = false; }
     }
     renderTop(); render();
   }
@@ -99,6 +103,7 @@
     else if (h[0] === 'mis') S.route = { name: 'mis' };
     else if (h[0] === 'coord') S.route = { name: 'coord', cid: h[1] || null };
     else if (h[0] === 'admin') S.route = { name: 'admin' };
+    else if (h[0] === 'soporte') S.route = { name: 'soporte' };
     else S.route = { name: 'home' };
     window.scrollTo(0, 0);
   }
@@ -107,8 +112,8 @@
   function renderTop() {
     const r = S.route, c = r.cid && S.campanas[r.cid];
     document.body.className = 'r-' + r.name;
-    const esCoord = !!(S.user && (S.isAdmin || S.coordDe.length));
-    const atras = r.name === 'camp' || r.name === 'turno' || r.name === 'admin' || (r.name === 'coord' && r.cid && (S.isAdmin || S.coordDe.length > 1));
+    const esCoord = !!(S.user && (S.isAdmin || S.coordDe.length || S.isSoporte));
+    const atras = r.name === 'camp' || r.name === 'turno' || r.name === 'admin' || (r.name === 'soporte' && (S.isAdmin || S.coordDe.length)) || (r.name === 'coord' && r.cid && (S.isAdmin || S.coordDe.length > 1));
     $('backBtn').classList.toggle('hidden', !atras);
     $('brand').classList.toggle('hidden', r.name !== 'home');
     $('shareBtn').classList.toggle('hidden', r.name !== 'camp' || !c);
@@ -117,13 +122,14 @@
     ub.textContent = S.user ? iniciales(S.user.displayName || S.user.email) : 'Ingresar';
     ub.setAttribute('aria-label', S.user ? 'Mi cuenta' : 'Ingresar');
     $('coordBtn').classList.toggle('hidden', !esCoord);
-    [['tabHome', ['home', 'camp']], ['tabMis', ['mis', 'turno']], ['coordBtn', ['coord', 'admin']]].forEach(([id, rs]) => $(id).classList.toggle('on', rs.includes(r.name)));
+    [['tabHome', ['home', 'camp']], ['tabMis', ['mis', 'turno']], ['coordBtn', ['coord', 'admin', 'soporte']]].forEach(([id, rs]) => $(id).classList.toggle('on', rs.includes(r.name)));
     let k = '', t = '', s = '';
     if (r.name === 'camp' && c) { k = c.ciudad || ''; t = c.nombre; s = campRango(c); }
     else if (r.name === 'mis') { t = 'Mis turnos'; s = 'Tus turnos, su estado y cómo llegar.'; }
     else if (r.name === 'turno') { t = 'Tu turno'; }
     else if (r.name === 'coord') { k = 'Coordinación'; t = c ? c.nombre : 'Tus campañas'; s = c ? (c.ciudad || '') + ' · ' + campRango(c) : ''; }
     else if (r.name === 'admin') { k = 'Administración'; t = 'Campañas y equipo'; }
+    else if (r.name === 'soporte') { k = 'Soporte'; t = 'Reportes y errores'; s = 'Lo que avisan los hermanos y lo que la página anota sola.'; }
     $('tbKicker').textContent = k; $('tbTitle').textContent = t; $('tbSub').textContent = s;
     $('tbExtra').innerHTML = '';
     // En la campaña, la foto de portada (o su color) como encabezado grande
@@ -210,6 +216,7 @@
     if (r.name === 'turno') return renderTurno();
     if (r.name === 'coord') return renderCoord();
     if (r.name === 'admin') return renderAdmin();
+    if (r.name === 'soporte') return renderSoporte();
     renderHome();
   }
 
@@ -621,9 +628,11 @@
     if (!S.user) { $('app').innerHTML = '<div class="empty">Iniciá sesión para coordinar.</div><button type="button" class="btn" data-login>Iniciar sesión con Google</button>'; return; }
     const mias = misCampanas();
     if (!S.route.cid) {
-      if (mias.length === 1 && !S.isAdmin) { go('#/coord/' + mias[0].id); return; }
-      let h = S.isAdmin ? `<button type="button" class="coordbar" data-go="#/admin"><span class="n">${I('grid', 'width:15px;height:15px')}</span><span class="tx">Administración<small>Campañas, coordinadores y congregaciones</small></span>${I('chev')}</button><div class="sec">Campañas</div>` : '';
-      h += mias.length ? mias.map(c => `<button type="button" class="cc camp" data-go="#/coord/${esc(c.id)}"><span class="th"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc(c.ciudad || '')} · ${esc(campRango(c))}</small></span>${I('chev')}</button>`).join('') : '<div class="card"><div class="empty">No coordinás ninguna campaña todavía.</div></div>';
+      if (mias.length === 1 && !S.isAdmin && !S.isSoporte) { go('#/coord/' + mias[0].id); return; }
+      if (!mias.length && !S.isAdmin && S.isSoporte) { go('#/soporte'); return; }
+      let h = S.isSoporte && !S.isAdmin ? `<button type="button" class="coordbar" data-go="#/soporte"><span class="n">${I('alert', 'width:15px;height:15px')}</span><span class="tx">Reportes y errores<small>Equipo de soporte</small></span>${I('chev')}</button>` : '';
+      h += S.isAdmin ? `<button type="button" class="coordbar" data-go="#/admin"><span class="n">${I('grid', 'width:15px;height:15px')}</span><span class="tx">Administración<small>Campañas, coordinadores y congregaciones</small></span>${I('chev')}</button><div class="sec">Campañas</div>` : '';
+      h += !mias.length && !S.isAdmin && S.isSoporte ? '' : mias.length ? mias.map(c => `<button type="button" class="cc camp" data-go="#/coord/${esc(c.id)}"><span class="th"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc(c.ciudad || '')} · ${esc(campRango(c))}</small></span>${I('chev')}</button>`).join('') : '<div class="card"><div class="empty">No coordinás ninguna campaña todavía.</div></div>';
       $('app').innerHTML = h; return;
     }
     const c = S.campanas[S.route.cid];
@@ -1008,11 +1017,18 @@
   async function renderAdmin() {
     if (!S.isAdmin) { $('app').innerHTML = '<div class="empty">Esta sección es para los administradores.</div>'; return; }
     const cs = Object.values(S.campanas).sort((a, b) => String(b.desde || '').localeCompare(String(a.desde || '')));
-    let h = `<div class="sec">Campañas <button type="button" class="sbtn pri" data-nueva>+ Campaña</button></div><div class="card">`;
+    escucharSoporte();
+    let h = soporteHTML(true);
+    h += `<div class="sec">Campañas <button type="button" class="sbtn pri" data-nueva>+ Campaña</button></div><div class="card">`;
     h += cs.map(c => `<div class="edit-row adm"><div><b>${esc(c.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc(c.ciudad || '')} · ${esc(campRango(c))}${c.activa === false ? ' · oculta' : ''}</small><small style="display:block;color:var(--soft);font-size:12px;">Coordinan: ${esc((S.coordEmails[c.id] || []).join(', ') || '—')}</small></div><div style="display:flex;gap:6px;"><button type="button" class="sbtn" data-coords="${esc(c.id)}">Coordinadores</button><button type="button" class="sbtn" data-go="#/coord/${esc(c.id)}">Abrir</button></div></div>`).join('') || '<div class="empty">Creá la primera campaña.</div>';
     h += `</div><div class="sec">Congregaciones</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Una por renglón, con la ciudad: "San Agustín (Paraná)". Es la lista que eligen los publicadores al pedir un turno.</p><div class="fld"><textarea id="adCongs" rows="8">${esc((S.publico.congregaciones || []).join('\n'))}</textarea></div><button type="button" class="btn" id="adCongsOk">Guardar lista</button></div>`;
     h += `<div class="sec">Administradores</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Pueden crear campañas y elegir sus coordinadores. Un email por renglón.</p><div class="fld"><textarea id="adAdm" rows="3">${esc(S.admins.join('\n'))}</textarea></div><button type="button" class="btn" id="adAdmOk">Guardar</button></div>`;
+    h += `<div class="sec">Equipo de soporte</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Ven los reportes de problemas y los errores de la página. No cambian campañas ni ven los pedidos. Un email por renglón.</p><div class="fld"><textarea id="adSop" rows="3">${esc(S.soporteEmails.join('\n'))}</textarea></div><button type="button" class="btn" id="adSopOk">Guardar</button></div>`;
     $('app').innerHTML = h;
+    $('adSopOk').addEventListener('click', async () => {
+      const lista = [...new Set($('adSop').value.split('\n').map(x => x.trim().toLowerCase()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))];
+      try { await S.db.doc('config/soporte').set({ emails: lista }); S.soporteEmails = lista; toast('Equipo de soporte guardado'); renderAdmin(); } catch (e) { toast('No se pudo guardar.'); }
+    });
     $('adCongsOk').addEventListener('click', async () => {
       const lista = [...new Set($('adCongs').value.split('\n').map(s => s.trim()).filter(Boolean))];
       try { await S.db.doc('config/publico').set({ congregaciones: lista }, { merge: true }); toast('Lista guardada'); } catch (e) { toast('No se pudo guardar.'); }
@@ -1063,14 +1079,158 @@
       <p>Para pedir un turno te pedimos <b>nombre, apellido, congregación y celular</b>. Los ven <b>solo los coordinadores de esa campaña</b> (y los administradores), para organizar los turnos y avisarte si hay un cambio.</p>
       <p>En la página pública solo se ve cuántos lugares quedan en cada turno, nunca quién los ocupa.</p>
       <p>No se usan para nada más ni se comparten con nadie. Podés cancelar tu turno cuando quieras desde "Mis turnos", y así se borran tus datos de ese turno.</p>
-      <p>Iniciás sesión con Google solo para que nadie pueda pedir turnos a tu nombre.</p></div><button type="button" class="btn" data-cerrar>Entendido</button>`);
+      <p>Iniciás sesión con Google solo para que nadie pueda pedir turnos a tu nombre.</p>
+      <p>Si mandás un reporte de problema, lo ve el equipo de soporte de la PPAM, con tu cuenta y tu celular si los dejaste, para poder responderte. Cuando algo falla, la página anota solo el error, la pantalla y el tipo de celular, sin tus datos.</p></div><button type="button" class="btn" data-cerrar>Entendido</button>`);
+  }
+
+
+  /* ---------- Soporte: reportes de problemas y errores automáticos ----------
+     reportes/{id}: lo que manda un hermano con "Reportar un problema" (lo ven Soporte y los administradores).
+     errores/{id}: lo que la página anota sola cuando algo falla (sin datos personales).
+     Topes en el celular: 5 reportes y 30 errores por día (para cuidar la cuota gratis de Firebase). */
+  const REP_TIPOS = ['No me deja anotarme', 'No carga / se queda en blanco', 'Un dato está mal', 'No veo un botón', 'Otro'];
+  function dispositivo() {
+    const ua = navigator.userAgent || '';
+    let so = /Android ([\d.]+)/.test(ua) ? 'Android ' + RegExp.$1.split('.')[0] : /iPhone|iPad|iPod/.test(ua) ? ((/iPad/.test(ua) ? 'iPad' : 'iPhone') + (/OS (\d+)/.test(ua) ? ' · iOS ' + RegExp.$1 : '')) : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Otro';
+    const nav = /SamsungBrowser\/(\d+)/.test(ua) ? 'Samsung Internet ' + RegExp.$1 : /Edg\/(\d+)/.test(ua) ? 'Edge ' + RegExp.$1 : /(?:Chrome|CriOS)\/(\d+)/.test(ua) ? 'Chrome ' + RegExp.$1 : /(?:Firefox|FxiOS)\/(\d+)/.test(ua) ? 'Firefox ' + RegExp.$1 : /Version\/(\d+).*Safari/.test(ua) ? 'Safari ' + RegExp.$1 : 'Navegador';
+    return (so + ' · ' + nav).slice(0, 80);
+  }
+  function tope(clave, max) {
+    try {
+      const k = 'ppam-tope-' + clave, d = JSON.parse(localStorage.getItem(k) || '{}'), h = hoy();
+      const n = d.dia === h ? d.n : 0;
+      if (n >= max) return false;
+      localStorage.setItem(k, JSON.stringify({ dia: h, n: n + 1 }));
+      return true;
+    } catch (e) { return true; }
+  }
+  const pantallaActual = () => (location.hash || '#/').slice(0, 100);
+  function pantallaLabel(h) {
+    const x = String(h || '#/').slice(1).split('/').filter(Boolean);
+    const camp = (id) => { const c = S.campanas[id]; return c ? c.nombre + (c.ciudad ? ' (' + c.ciudad + ')' : '') : id; };
+    if (x[0] === 'c' && x[1]) return camp(x[1]);
+    if (x[0] === 't' && x[1]) return 'Tu turno · ' + camp(decodeURIComponent(x[1]).split('__')[0]);
+    if (x[0] === 'mis') return 'Mis turnos';
+    if (x[0] === 'coord') return 'Coordinación' + (x[1] ? ' · ' + camp(x[1]) : '');
+    if (x[0] === 'admin') return 'Administración';
+    if (x[0] === 'soporte') return 'Soporte';
+    return 'Inicio';
+  }
+  let enRegistro = false;
+  function registrarError(tipo, msg) {
+    const m = String(msg || '').slice(0, 300);
+    if (!m || enRegistro) return;
+    S.ultimoError = { msg: m, hora: new Date().toISOString() };
+    if (!S.db || !tope('err', 30)) return;
+    enRegistro = true;
+    try {
+      S.db.collection('errores').doc(Date.now().toString(36) + uidGen()).set({ tipo, msg: m, pantalla: pantallaActual(), disp: dispositivo(), ver: VERSION, creado: new Date().toISOString() }).catch(() => {});
+    } catch (e) { /* nada */ }
+    enRegistro = false;
+  }
+  window.addEventListener('error', (e) => { if (e && e.message) registrarError('js', e.message + (e.filename ? ' · ' + String(e.filename).split('/').pop() + ':' + e.lineno : '')); });
+  window.addEventListener('unhandledrejection', (e) => { const r = e && e.reason; registrarError('js', (r && (r.code || r.message)) || String(r)); });
+
+  function reportar() {
+    const pf = perfil();
+    const ult = S.ultimoError;
+    const ov = sheet(`<h3>Reportar un problema</h3><p class="hint">Contanos qué pasó. Lo recibe el equipo de soporte de la PPAM.</p>
+      <div class="fld"><label>¿Qué pasó?</label></div>
+      <div class="rp-chips">${REP_TIPOS.map(t => `<button type="button" data-rptipo="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+      <div class="fld"><label for="rpTx">Contalo con tus palabras</label><textarea id="rpTx" rows="3" maxlength="1000" placeholder="Qué estabas haciendo, qué tocaste y qué apareció"></textarea></div>
+      <div class="fld"><label for="rpCel">Tu celular <span class="opc">(opcional, para responderte)</span></label><input id="rpCel" type="tel" value="${esc(pf.celular || '')}" placeholder="343 555-0000"></div>
+      <div class="fld"><label>Se envía también</label></div>
+      <div class="rp-tec"><b>Pantalla:</b> ${esc(pantallaLabel(pantallaActual()))}<br><b>Celular:</b> ${esc(dispositivo())}<br><b>Versión:</b> ${VERSION}${ult ? ` · <b>Último error:</b> "${esc(ult.msg.slice(0, 80))}"` : ''}${S.user ? `<br><b>Tu cuenta:</b> ${esc(S.user.email)}` : ''}</div>
+      <p class="err hidden" id="rpErr"></p>
+      <button type="button" class="btn" id="rpGo">Enviar reporte</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    const q = (x) => ov.querySelector(x);
+    let tipo = '';
+    ov.querySelectorAll('[data-rptipo]').forEach(b => b.addEventListener('click', () => { tipo = b.dataset.rptipo; ov.querySelectorAll('[data-rptipo]').forEach(x => x.classList.toggle('on', x === b)); }));
+    q('#rpGo').addEventListener('click', async () => {
+      const texto = q('#rpTx').value.trim().slice(0, 1000), cel = q('#rpCel').value.trim().slice(0, 30);
+      const err = (m) => { q('#rpErr').textContent = m; q('#rpErr').classList.remove('hidden'); };
+      if (!tipo) return err('Elegí qué pasó.');
+      if (texto.length < 3) return err('Contá en pocas palabras qué pasó.');
+      if (!tope('rep', 5)) return err('Ya mandaste varios reportes hoy. Si es urgente, avisale a tu coordinador.');
+      const d = { tipo, texto, pantalla: pantallaActual(), disp: dispositivo(), ver: VERSION, estado: 'nuevo', creado: new Date().toISOString() };
+      if (ult) d.ultErr = ult.msg.slice(0, 300);
+      if (cel) d.celular = cel;
+      if (S.user) { d.uid = S.user.uid; d.email = S.user.email.toLowerCase(); const n = [pf.nombre, pf.apellido].filter(Boolean).join(' ') || S.user.displayName || ''; if (n) d.nombre = n.slice(0, 80); }
+      const b = q('#rpGo'); b.disabled = true; b.textContent = 'Enviando…';
+      try { await S.db.collection('reportes').doc(Date.now().toString(36) + uidGen()).set(d); ov.remove(); toast('¡Gracias! Lo recibió el equipo de soporte.'); }
+      catch (e) { console.error(e); b.disabled = false; b.textContent = 'Enviar reporte'; err('No se pudo enviar. Revisá la conexión y probá de nuevo.'); }
+    });
+  }
+
+  function escucharSoporte() {
+    if (!(S.isAdmin || S.isSoporte) || S.sop.on) return;
+    S.sop.on = true;
+    let pend = false;
+    const re = () => { if (pend) return; pend = true; setTimeout(() => { pend = false; if (S.route.name === 'soporte' || S.route.name === 'admin') { const y = window.scrollY; render(); window.scrollTo(0, y); } }, 0); };
+    S.sop.unsub.push(S.db.collection('reportes').onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.sop.reportes = o; S.sop.okR = true; limpiarViejos(); re(); }, (e) => console.error(e)));
+    S.sop.unsub.push(S.db.collection('errores').onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.sop.errores = o; S.sop.okE = true; limpiarViejos(); re(); }, (e) => console.error(e)));
+  }
+  // Los reportes resueltos hace más de 60 días y los errores de más de 30 se borran solos (una vez por sesión).
+  function limpiarViejos() {
+    if (S.sop.limpio || !S.sop.okR || !S.sop.okE) return;   // una vez, con las dos listas cargadas
+    S.sop.limpio = true;
+    const lim60 = new Date(Date.now() - 60 * 864e5).toISOString(), lim30 = new Date(Date.now() - 30 * 864e5).toISOString();
+    const viejos = Object.keys(S.sop.reportes).filter(id => S.sop.reportes[id].estado === 'resuelto' && String(S.sop.reportes[id].actualizado || S.sop.reportes[id].creado) < lim60).map(id => 'reportes/' + id)
+      .concat(Object.keys(S.sop.errores).filter(id => String(S.sop.errores[id].creado) < lim30).map(id => 'errores/' + id)).slice(0, 200);
+    if (!viejos.length) return;
+    const b = S.db.batch(); viejos.forEach(x => b.delete(S.db.doc(x))); b.commit().catch(() => {});
+  }
+  function haceCuanto(iso) {
+    const d = new Date(iso), hh = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const dif = Math.round((new Date(hoy() + 'T12:00:00') - new Date(isoDia(d) + 'T12:00:00')) / 864e5);
+    return dif === 0 ? 'hoy ' + hh : dif === 1 ? 'ayer ' + hh : d.getDate() + '/' + (d.getMonth() + 1) + ' ' + hh;
+  }
+  const isoDia = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  function soporteHTML(enAdmin) {
+    if (!(S.isAdmin || S.isSoporte)) return '';
+    const reps = Object.keys(S.sop.reportes).map(id => Object.assign({ id }, S.sop.reportes[id])).sort((a, b) => String(b.creado).localeCompare(String(a.creado)));
+    const errs = Object.keys(S.sop.errores).map(id => Object.assign({ id }, S.sop.errores[id])).sort((a, b) => String(b.creado).localeCompare(String(a.creado)));
+    const n = { nuevo: 0, visto: 0, resuelto: 0 }; reps.forEach(r => { n[r.estado] = (n[r.estado] || 0) + 1; });
+    const tagN = n.nuevo ? `<span class="rp-tag nuevo">${n.nuevo} ${n.nuevo === 1 ? 'nuevo' : 'nuevos'}</span>` : '';
+    let h = enAdmin ? `<div class="sec">Reportes y errores ${tagN}</div>` : '';
+    const desde = new Date(Date.now() - 864e5).toISOString(), e24 = errs.filter(e => String(e.creado) >= desde);
+    if (e24.length) {
+      const g = {}; e24.forEach(e => { const k = e.msg; g[k] = g[k] || { msg: k, n: 0, lugares: {}, disp: {} }; g[k].n++; g[k].lugares[pantallaLabel(e.pantalla)] = 1; g[k].disp[e.disp] = 1; });
+      const top = Object.values(g).sort((a, b) => b.n - a.n).slice(0, 2);
+      h += `<div class="rp-auto">${I('alert', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>Errores automáticos: ${e24.length} en las últimas 24 h</b>${top.map(x => `${x.n} × "${esc(x.msg.slice(0, 70))}" · ${esc(Object.keys(x.lugares).slice(0, 2).join(', '))}`).join('<br>')}<br><button type="button" class="linkish rp-det" data-rpdet>${S.sop.detalle ? 'Ocultar detalle' : 'Ver detalle'}</button></span></div>`;
+    } else h += `<div class="rp-auto ok">${I('check', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>Sin errores automáticos en las últimas 24 h</b>${errs.length ? 'El último fue ' + esc(haceCuanto(errs[0].creado)) + '.' : 'Todavía no se registró ninguno.'}${errs.length ? `<br><button type="button" class="linkish rp-det" data-rpdet>${S.sop.detalle ? 'Ocultar detalle' : 'Ver detalle'}</button>` : ''}</span></div>`;
+    if (S.sop.detalle && errs.length) h += '<div class="card">' + errs.slice(0, 30).map(e => `<div class="rp-item"><div class="m">${esc(haceCuanto(e.creado))} · ${esc(pantallaLabel(e.pantalla))}</div><p class="rp-msg">${esc(e.msg)}</p><div class="m">${esc(e.disp)} · v${esc(e.ver)}${e.ver !== VERSION ? ' (versión vieja)' : ''}</div></div>`).join('') + '</div>';
+    const F = [['nuevo', 'Nuevos'], ['visto', 'Vistos'], ['resuelto', 'Resueltos']];
+    h += `<div class="rp-seg">${F.map(([k, l]) => `<button type="button" class="${S.sop.filtro === k ? 'on' : ''}" data-rpfiltro="${k}">${l} (${n[k] || 0})</button>`).join('')}</div>`;
+    const lista = reps.filter(r => (r.estado || 'nuevo') === S.sop.filtro);
+    h += '<div class="card">' + (lista.map(r => {
+      const tel = String(r.celular || '').replace(/\D/g, '');
+      const acc = [tel ? `<a class="sbtn" href="https://wa.me/${tel.length === 10 ? '549' + tel : tel}" target="_blank" rel="noopener">${I('chat', 'width:15px;height:15px')}WhatsApp</a>` : '', r.email ? `<a class="sbtn" href="mailto:${esc(r.email)}?subject=${encodeURIComponent('PPAM · ' + r.tipo)}">Email</a>` : '',
+        r.estado !== 'visto' && r.estado !== 'resuelto' ? `<button type="button" class="sbtn" data-rpestado="${esc(r.id)}|visto">Marcar visto</button>` : '',
+        r.estado === 'resuelto' ? `<button type="button" class="sbtn" data-rpestado="${esc(r.id)}|nuevo">Volver a abrir</button>` : `<button type="button" class="sbtn pri" data-rpestado="${esc(r.id)}|resuelto">${I('check', 'width:15px;height:15px')}Resuelto</button>`].filter(Boolean).join('');
+      return `<div class="rp-item"><div class="h"><b>${esc(r.tipo)}</b><span class="rp-tag ${r.estado === 'resuelto' ? 'ok' : r.estado === 'visto' ? 'visto' : 'nuevo'}">${r.estado === 'resuelto' ? 'Resuelto' : r.estado === 'visto' ? 'Visto' : 'Nuevo'}</span></div>
+        <div class="m">${esc(r.nombre || (r.uid ? r.email : 'Sin nombre (no inició sesión)'))} · ${esc(pantallaLabel(r.pantalla))} · ${esc(haceCuanto(r.creado))}</div><p>${esc(r.texto)}</p>
+        <div class="m">${esc(r.disp)} · v${esc(r.ver)}${r.ver !== VERSION ? ' (versión vieja)' : ''}${r.ultErr ? ' · último error: "' + esc(r.ultErr.slice(0, 80)) + '"' : ''}${r.email ? ' · ' + esc(r.email) : ''}</div>
+        <div class="acts" style="margin:10px 0 0">${acc}</div></div>`;
+    }).join('') || `<div class="empty">${S.sop.filtro === 'nuevo' ? 'No hay reportes nuevos.' : 'Nada por acá.'}</div>`) + '</div>';
+    return h;
+  }
+  function renderSoporte() {
+    if (!S.user) { $('app').innerHTML = '<div class="empty">Iniciá sesión para ver los reportes.</div><button type="button" class="btn" data-login>Iniciar sesión con Google</button>'; return; }
+    if (!(S.isAdmin || S.isSoporte)) { $('app').innerHTML = '<div class="empty">Esta sección es para el equipo de soporte.</div>'; return; }
+    escucharSoporte();
+    $('app').innerHTML = soporteHTML(false);
+  }
+  async function cambiarReporte(id, estado) {
+    try { await S.db.doc('reportes/' + id).update({ estado, actualizado: new Date().toISOString(), por: S.user.email.toLowerCase() }); toast(estado === 'resuelto' ? 'Marcado como resuelto' : estado === 'visto' ? 'Marcado como visto' : 'Vuelve a Nuevos'); }
+    catch (e) { console.error(e); toast('No se pudo guardar.'); }
   }
 
   /* ---------- Clics ---------- */
   document.addEventListener('click', (e) => {
     const t = e.target.closest('button, a[data-go]'); if (!t) return;
     const ds = t.dataset;
-    if (t.id === 'backBtn') { const r = S.route; go((r.name === 'coord' && r.cid) || r.name === 'admin' ? '#/coord' : r.name === 'turno' ? '#/mis' : '#/'); return; }
+    if (t.id === 'backBtn') { const r = S.route; go((r.name === 'coord' && r.cid) || r.name === 'admin' || r.name === 'soporte' ? '#/coord' : r.name === 'turno' ? '#/mis' : '#/'); return; }
     if (t.id === 'shareBtn') { const c = S.campanas[S.route.cid]; if (!c) return; const txt = `PPAM · ${c.nombre} (${c.ciudad || ''}). Anotate en un turno: ${linkCampana(c)}`; if (navigator.share && !window.__ppamMock) navigator.share({ title: c.nombre, text: txt }).catch(() => {}); else compartir(txt); return; }
     if (t.id === 'userBtn') {
       if (!S.user) { login(); return; }
@@ -1081,6 +1241,10 @@
     }
     if (t.id === 'coordBtn') { go('#/coord'); return; }
     if (t.id === 'privBtn') { privacidad(); return; }
+    if (t.id === 'repBtn' || t.closest('#repBtn')) { reportar(); return; }
+    if (ds.rpfiltro) { S.sop.filtro = ds.rpfiltro; render(); return; }
+    if (ds.rpdet !== undefined) { S.sop.detalle = !S.sop.detalle; render(); return; }
+    if (ds.rpestado) { const [id, est] = ds.rpestado.split('|'); cambiarReporte(id, est); return; }
     if (ds.go) { const ov = t.closest('.ov'); if (ov) ov.remove(); go(ds.go); return; }
     if (ds.login !== undefined) { login(); return; }
     if (ds.ciudad) { S.ciudad = ds.ciudad; renderHome(); return; }

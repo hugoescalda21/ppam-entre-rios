@@ -21,7 +21,8 @@ confirman los pedidos, ven qué turnos faltan cubrir y comparten las listas por 
 - **Administrador técnico:** hugoescalda@gmail.com (fijo en las reglas, para no quedar nunca afuera).
 - **Administradores:** crean campañas, eligen coordinadores y cargan la lista de congregaciones (Coordinación → Administración).
 - **Coordinadores:** configuran su campaña (puntos, turnos), confirman pedidos, ven la cobertura y comparten listas.
-- **Publicadores:** miran libremente; con sesión piden turnos y ven "Mis turnos".
+- **Soporte:** emails en Administración → Equipo de soporte; ven los reportes de problemas y los errores de la página (no campañas ni pedidos).
+- **Publicadores:** miran libremente; con sesión piden turnos y ven "Mis turnos". Cualquiera puede mandar un reporte de problema.
 
 ## Datos (Firestore)
 
@@ -29,7 +30,8 @@ confirman los pedidos, ven qué turnos faltan cubrir y comparten las listas por 
 - `fotos/{campaña}__{id}`: las fotos, achicadas a JPEG de menos de ~330 KB. Públicas; las suben los coordinadores. Tienen que ser del lugar, sin personas reconocibles.
 - `cupos/{campaña}__{fecha}__{turno}`: quién ocupa cada lugar, solo con el id de la cuenta (sin datos personales). Público.
 - `pedidos/{…}__{uid}`: nombre, apellido, congregación y celular. Solo los ven quien pidió y los coordinadores de esa campaña.
-- `coordinadores/{id}`, `roles/{email}`, `config/admins`, `config/publico` (lista de congregaciones).
+- `reportes/{id}`: los reportes de problemas (los ven Soporte y los administradores). `errores/{id}`: los errores que la página anota sola, sin datos personales.
+- `coordinadores/{id}`, `roles/{email}`, `config/admins`, `config/soporte`, `config/publico` (lista de congregaciones).
 
 ## Publicar
 

@@ -29,6 +29,12 @@ service cloud.firestore {
       return conSesion() && exists(d) && mail() in get(d).data.get('emails', []);
     }
     function gestiona(cid) { return esAdmin() || esCoord(cid); }
+    // Equipo de soporte: config/soporte.emails — ven los reportes y los errores (no campañas ni pedidos).
+    function esSoporte() {
+      let d = /databases/$(database)/documents/config/soporte;
+      return esAdmin() || (conSesion() && exists(d) && mail() in get(d).data.get('emails', []));
+    }
+    function texto(d, k, max) { return !(k in d) || (d[k] is string && d[k].size() <= max); }
 
     match /config/publico {
       allow read: if true;
@@ -36,6 +42,33 @@ service cloud.firestore {
     }
     match /config/admins {
       allow read, write: if esAdmin();
+    }
+    match /config/soporte {
+      allow read: if esSoporte();
+      allow write: if esAdmin();
+    }
+
+    // Reportes de problemas: cualquiera los manda (con o sin sesión); los ven Soporte y los administradores.
+    match /reportes/{id} {
+      function reporteValido(d) {
+        return d.keys().hasOnly(['tipo', 'texto', 'pantalla', 'disp', 'ver', 'ultErr', 'celular', 'uid', 'email', 'nombre', 'estado', 'creado']) &&
+               d.tipo is string && d.tipo.size() > 0 && d.tipo.size() <= 40 &&
+               d.texto is string && d.texto.size() > 0 && d.texto.size() <= 1000 &&
+               d.estado == 'nuevo' && d.creado is string && d.creado.size() <= 30 &&
+               texto(d, 'pantalla', 100) && texto(d, 'disp', 80) && texto(d, 'ver', 20) && texto(d, 'ultErr', 300) && texto(d, 'celular', 30) && texto(d, 'nombre', 80) &&
+               (('uid' in d) ? (conSesion() && d.uid == request.auth.uid && d.email == mail()) : !('email' in d) && !('nombre' in d));
+      }
+      allow create: if reporteValido(request.resource.data);
+      allow read, delete: if esSoporte();
+      allow update: if esSoporte() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'actualizado', 'por']) &&
+                       request.resource.data.estado in ['nuevo', 'visto', 'resuelto'];
+    }
+    // Errores que la página anota sola (sin datos personales).
+    match /errores/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['tipo', 'msg', 'pantalla', 'disp', 'ver', 'creado']) &&
+                       request.resource.data.tipo in ['js', 'aviso'] && request.resource.data.msg is string && request.resource.data.msg.size() > 0 && request.resource.data.msg.size() <= 300 &&
+                       texto(request.resource.data, 'pantalla', 100) && texto(request.resource.data, 'disp', 80) && texto(request.resource.data, 'ver', 20) && texto(request.resource.data, 'creado', 30);
+      allow read, delete: if esSoporte();
     }
     // roles/{email}: en qué campañas coordina cada uno (lo lee él mismo para ver el botón "Coordinación").
     match /roles/{correo} {

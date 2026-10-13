@@ -408,6 +408,94 @@ const SEED = {
     await cy.close();
   }
 
+  console.log('\nReportar un problema y errores automáticos');
+  {
+    const seed = JSON.parse(JSON.stringify(SEED));
+    seed['config/soporte'] = { emails: ['sop@x.com'] };
+    seed['reportes/viejo1'] = { tipo: 'Otro', texto: 'Viejo', estado: 'resuelto', creado: '2026-06-01T10:00:00Z', actualizado: '2026-06-02T10:00:00Z', ver: '9' };
+    seed['reportes/viejo2'] = { tipo: 'Otro', texto: 'Visto hace mucho', estado: 'visto', creado: '2026-06-01T10:00:00Z', ver: '9' };
+    seed['errores/viejo'] = { tipo: 'js', msg: 'Error viejo', creado: '2026-08-01T10:00:00Z', ver: '9' };
+    const ctxOpts = { viewport: { width: 390, height: 1000 }, timezoneId: 'America/Argentina/Buenos_Aires' };
+    const abrir = async (sd, users, hash) => {
+      const cx = await b.newContext(ctxOpts);
+      await cx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+      await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+      await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(sd)}, ${JSON.stringify(users)})`);
+      const m = await cx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
+      await m.goto(FILE + (hash || '')); await m.waitForTimeout(300);
+      return { cx, m };
+    };
+    let { cx, m } = await abrir(seed, [], '#/c/parana-terminal');
+    check('al pie: "Reportar un problema" y la versión', /Reportar un problema\s*·\s*Cómo se usan tus datos\s*Versión 11/.test(await text(m, '.foot')), await text(m, '.foot'));
+    await m.evaluate(() => { window.dispatchEvent(new ErrorEvent('error', { message: 'Prueba de error', filename: 'https://x/app.js', lineno: 12 })); }); await m.waitForTimeout(150);
+    let err = await m.evaluate(() => Object.entries(window.__store).filter(([k]) => k.startsWith('errores/') && k !== 'errores/viejo').map(([, v]) => v));
+    check('un error de la página queda anotado solo, con pantalla, celular y versión (sin datos personales)', err.length === 1 && /Prueba de error/.test(err[0].msg) && err[0].pantalla === '#/c/parana-terminal' && err[0].ver === '11' && err[0].disp && err[0].tipo === 'js' && Object.keys(err[0]).sort().join() === 'creado,disp,msg,pantalla,tipo,ver', err);
+    await m.click('#repBtn'); await m.waitForTimeout(100);
+    const sh = await text(m, '.sheet');
+    check('la ventana muestra lo que se envía también (pantalla, celular, versión, último error)', /Reportar un problema/.test(sh) && /Pantalla:\s*Terminal de ómnibus \(Paraná\)/.test(sh) && /Versión:\s*11/.test(sh) && /Último error:\s*"Prueba de error/.test(sh) && !/Tu cuenta/.test(sh), sh);
+    await m.fill('#rpTx', 'No me deja anotarme el sábado'); await m.click('#rpGo');
+    check('pide elegir qué pasó', /Elegí qué pasó/.test(await text(m, '#rpErr')));
+    await m.click('[data-rptipo="No me deja anotarme"]'); await m.fill('#rpCel', '343 555-9999');
+    await m.screenshot({ path: SHOTS + '/reportar.png' });
+    await m.click('#rpGo'); await m.waitForTimeout(200);
+    let reps = await m.evaluate(() => Object.entries(window.__store).filter(([k]) => k.startsWith('reportes/') && !k.includes('viejo')).map(([, v]) => v));
+    check('sin sesión: el reporte se guarda sin cuenta, con el celular que dejó y el último error', reps.length === 1 && reps[0].estado === 'nuevo' && reps[0].tipo === 'No me deja anotarme' && reps[0].celular === '343 555-9999' && !reps[0].uid && !reps[0].email && /Prueba de error/.test(reps[0].ultErr), reps);
+    check('avisa que lo recibió el equipo de soporte', /Lo recibió el equipo de soporte/.test(await text(m, '#toast')));
+    for (let i = 0; i < 4; i++) { await m.click('#repBtn'); await m.click('[data-rptipo="Otro"]'); await m.fill('#rpTx', 'Prueba ' + i); await m.click('#rpGo'); await m.waitForTimeout(120); }
+    await m.click('#repBtn'); await m.click('[data-rptipo="Otro"]'); await m.fill('#rpTx', 'Uno más'); await m.click('#rpGo'); await m.waitForTimeout(120);
+    check('tope: el sexto reporte del día no se manda', /Ya mandaste varios reportes hoy/.test(await text(m, '#rpErr')) && await m.evaluate(() => Object.keys(window.__store).filter(k => k.startsWith('reportes/') && !k.includes('viejo')).length) === 5);
+    await m.evaluate(() => { document.querySelectorAll('.ov').forEach(x => x.remove()); });
+    const seed2 = await m.evaluate(() => JSON.parse(JSON.stringify(window.__store)));
+    check('sin errores de la página (reportar)', m.errs.length === 0, m.errs);
+    await cx.close();
+    // Con sesión, el reporte lleva quién es
+    ({ cx, m } = await abrir(seed2, [{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }], '#/mis'));
+    await m.click('#userBtn'); await m.waitForTimeout(300);
+    await m.click('#repBtn'); await m.waitForTimeout(80);
+    check('con sesión muestra "Tu cuenta"', /Tu cuenta:\s*ana@x.com/.test(await text(m, '.sheet')));
+    await m.click('[data-rptipo="No veo un botón"]'); await m.fill('#rpTx', 'No veo Coordinar'); await m.click('#rpGo'); await m.waitForTimeout(200);
+    const r2 = await m.evaluate(() => Object.values(window.__store).find(v => v && v.texto === 'No veo Coordinar'));
+    check('con sesión: guarda uid, email y nombre para responderle', r2 && r2.uid === 'u-ana' && r2.email === 'ana@x.com' && r2.nombre === 'Ana Paz' && r2.pantalla === '#/mis', r2);
+    check('un publicador no ve "Coordinar"', await m.evaluate(() => document.getElementById('coordBtn').classList.contains('hidden')));
+    const seed3 = await m.evaluate(() => JSON.parse(JSON.stringify(window.__store)));
+    await cx.close();
+    // Equipo de soporte
+    ({ cx, m } = await abrir(seed3, [{ uid: 'u-sop', email: 'sop@x.com', displayName: 'Sofía Soporte' }]));
+    await m.click('#userBtn'); await m.waitForTimeout(300);
+    check('soporte ve "Coordinar" en la barra', await m.evaluate(() => !document.getElementById('coordBtn').classList.contains('hidden')));
+    await m.click('#coordBtn'); await m.waitForTimeout(300);
+    let tx = await text(m, '#app');
+    check('va directo a "Reportes y errores"', /#\/soporte/.test(await m.evaluate(() => location.hash)) && /Reportes y errores/.test(await text(m, '#tbTitle')), await m.evaluate(() => location.hash));
+    check('resumen de errores automáticos de las últimas 24 h', /Errores automáticos: 1 en las últimas 24 h\s*1 × "Prueba de error/.test(tx), tx.slice(0, 300));
+    check('reportes: Nuevos (6), con el más nuevo arriba', /Nuevos \(6\)\s*Vistos \(1\)\s*Resueltos \(0\)/.test(tx) && /No veo un botón\s*Nuevo\s*Ana Paz · Mis turnos/.test(tx), tx.slice(0, 600));
+    check('el reporte sin sesión dice "Sin nombre" y tiene WhatsApp', /Sin nombre \(no inició sesión\) · Terminal de ómnibus \(Paraná\)/.test(tx) && await m.evaluate(() => [...document.querySelectorAll('#app a[href*="wa.me"]')].some(a => /5493435559999/.test(a.href))), tx);
+    check('se borraron solos el reporte resuelto de hace más de 60 días y el error viejo (no el visto)', await m.evaluate(() => !window.__store['reportes/viejo1'] && !window.__store['errores/viejo'] && !!window.__store['reportes/viejo2']));
+    await m.screenshot({ path: SHOTS + '/soporte.png', fullPage: true });
+    const idAna = await m.evaluate(() => Object.keys(window.__store).find(k => k.startsWith('reportes/') && window.__store[k].texto === 'No veo Coordinar').split('/')[1]);
+    await m.click(`[data-rpestado="${idAna}|visto"]`); await m.waitForTimeout(150);
+    check('"Marcar visto" lo pasa a Vistos y anota quién', await m.evaluate((id) => window.__store['reportes/' + id].estado === 'visto' && window.__store['reportes/' + id].por === 'sop@x.com', idAna) && /Nuevos \(5\)\s*Vistos \(2\)/.test(await text(m, '#app')));
+    await m.click('[data-rpfiltro="visto"]'); await m.waitForTimeout(80);
+    await m.click(`[data-rpestado="${idAna}|resuelto"]`); await m.waitForTimeout(150);
+    await m.click('[data-rpfiltro="resuelto"]'); await m.waitForTimeout(80);
+    check('"Resuelto" y aparece en Resueltos con "Volver a abrir"', /No veo un botón\s*Resuelto/.test(await text(m, '#app')) && !!(await m.$(`[data-rpestado="${idAna}|nuevo"]`)));
+    await m.click('[data-rpdet]'); await m.waitForTimeout(80);
+    check('"Ver detalle" muestra cada error', /Prueba de error/.test(await text(m, '#app')));
+    await m.evaluate(() => { location.hash = '#/admin'; }); await m.waitForTimeout(200);
+    check('soporte NO entra a Administración', /Esta sección es para los administradores/.test(await text(m, '#app')));
+    check('sin errores (soporte)', m.errs.length === 0, m.errs);
+    const seed4 = await m.evaluate(() => JSON.parse(JSON.stringify(window.__store)));
+    await cx.close();
+    // Administrador
+    ({ cx, m } = await abrir(seed4, [{ uid: 'u-ad', email: 'admin@x.com', displayName: 'Admin' }], '#/admin'));
+    await m.click('#userBtn'); await m.waitForTimeout(400);
+    tx = await text(m, '#app');
+    check('administración: "Reportes y errores" arriba y "Equipo de soporte" abajo', /^Reportes y errores\s*5 nuevos/.test(tx.trim()) && /Equipo de soporte/.test(tx), tx.slice(0, 200));
+    await m.fill('#adSop', 'sop@x.com\nOTRO@x.com\nno-email'); await m.click('#adSopOk'); await m.waitForTimeout(200);
+    check('guarda el equipo de soporte (minúscula, sin lo que no es email)', await m.evaluate(() => JSON.stringify(window.__store['config/soporte'].emails) === '["sop@x.com","otro@x.com"]'));
+    check('sin errores (admin, soporte)', m.errs.length === 0, m.errs);
+    await cx.close();
+  }
+
   await b.close(); console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;
 })();
