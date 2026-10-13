@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '29';
+  const VERSION = '30';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -115,7 +115,7 @@
     const esCoord = !!(S.user && (S.isAdmin || S.coordDe.length || S.isSoporte));
     const atras = r.name === 'camp' || r.name === 'turno' || r.name === 'admin' || (r.name === 'soporte' && (S.isAdmin || S.coordDe.length)) || (r.name === 'coord' && r.cid && (S.isAdmin || S.coordDe.length > 1));
     $('backBtn').classList.toggle('hidden', !atras);
-    $('brand').classList.toggle('hidden', r.name !== 'home');
+    $('brand').classList.toggle('hidden', r.name !== 'home' && S.loaded);
     $('shareBtn').classList.toggle('hidden', r.name !== 'camp' || !c);
     const ub = $('userBtn');
     ub.className = S.user ? 'av' : 'login';
@@ -450,6 +450,26 @@
   }
   /* ---------- Nota para el coordinador (opcional, privada como el celular) ---------- */
   const NOTA_MAX = 200;
+  /* Celular argentino: se limpia el +54, el 9, el 0 y el 15, y se guarda siempre igual (ej. 343 555-0000) */
+  function normCel(s0) {
+    let d = String(s0 || '').replace(/\D/g, '');
+    if (!d) return { ok: false, vacio: true };
+    if (d.startsWith('54') && d.length >= 12) d = d.slice(2);
+    if (d.length === 11 && d[0] === '9') d = d.slice(1);
+    if (d[0] === '0') d = d.slice(1);
+    let area = 0;
+    if (d.length === 12) { for (const a of [2, 3, 4]) if (d.substr(a, 2) === '15') { d = d.slice(0, a) + d.slice(a + 2); area = a; break; } }
+    if (d.length !== 10) return { ok: false, d };
+    if (!area) area = d.startsWith('11') ? 2 : 3;
+    const resto = d.slice(area);
+    return { ok: true, d, txt: d.slice(0, area) + ' ' + resto.slice(0, resto.length - 4) + '-' + resto.slice(-4) };
+  }
+  const CEL_ERR = 'Revisá el celular: característica y número, sin 0 ni 15 (por ejemplo 343 555-0000).';
+  function bindCel(inp, out) {
+    const f = () => { const r = normCel(inp.value); out.className = 'celok' + (r.ok ? ' ok' : r.vacio ? '' : ' mal'); out.textContent = r.ok ? (r.txt === inp.value.trim() ? '' : 'Se guarda como ' + r.txt) : r.vacio ? '' : (r.d && r.d.length < 10 ? 'Faltan números: con característica son 10 (por ejemplo 343 555-0000).' : 'Tiene números de más: sacale el 0 y el 15.'); };
+    inp.addEventListener('input', f); inp.addEventListener('blur', () => { const r = normCel(inp.value); if (r.ok) { inp.value = r.txt; out.textContent = ''; out.className = 'celok'; } });
+    f();
+  }
   const NOTA_ATAJOS = ['Voy con mi esposa/o', 'Puedo llevar el carrito', 'Es mi primera vez', 'Llego unos minutos tarde'];
   function notaCampo(valor) {
     return `<div class="fld nota-fld"><label for="pNota">Nota para el coordinador <span class="opc">(opcional)</span><span class="nt-cnt" id="pNotaCnt">${(valor || '').length}/${NOTA_MAX}</span></label>
@@ -504,7 +524,7 @@
       <div class="fld"><label for="pApe">Apellido</label><input id="pApe" autocomplete="family-name" value="${esc(pf.apellido || (S.user.displayName || '').split(' ').slice(1).join(' ') || '')}"></div></div>
       <div class="fld"><label for="pCong">Congregación</label><select id="pCong">${congs.length ? '<option value="">Elegí tu congregación</option>' : ''}${opts}</select></div>
       <div class="fld${pf.congregacion && !congs.includes(pf.congregacion) ? '' : ' hidden'}" id="pOtraF"><label for="pOtra">¿Cuál?</label><input id="pOtra" value="${esc(pf.congregacion && !congs.includes(pf.congregacion) ? pf.congregacion : '')}" placeholder="Nombre de tu congregación y ciudad"></div>
-      <div class="fld"><label for="pCel">Celular (WhatsApp)</label><input id="pCel" type="tel" autocomplete="tel" value="${esc(pf.celular || '')}" placeholder="343 555-0000"></div>
+      <div class="fld"><label for="pCel">Celular (WhatsApp)</label><input id="pCel" type="tel" autocomplete="tel" value="${esc(pf.celular || '')}" placeholder="343 555-0000"><small class="celok" id="pCelOk"></small></div>
       ${notaCampo('')}
       <label class="ck"><input type="checkbox" id="pOk"${pf.acepto ? ' checked' : ''}> <span>Solo los coordinadores de esta campaña ven mis datos, para organizar los turnos. <a href="#" data-priv>Más info</a></span></label>
       <p class="err hidden" id="pErr"></p>
@@ -513,14 +533,15 @@
     bindNota(ov);
     q('#pCong').addEventListener('change', () => q('#pOtraF').classList.toggle('hidden', q('#pCong').value !== '__otra'));
     q('[data-priv]').addEventListener('click', (e) => { e.preventDefault(); privacidad(); });
+    bindCel(q('#pCel'), q('#pCelOk'));
     q('#pGo').addEventListener('click', async () => {
-      const nombre = q('#pNom').value.trim(), apellido = q('#pApe').value.trim(), celular = q('#pCel').value.trim();
+      const nombre = q('#pNom').value.trim(), apellido = q('#pApe').value.trim(), cel = normCel(q('#pCel').value), celular = cel.ok ? cel.txt : q('#pCel').value.trim();
       const nota = q('#pNota').value.trim().slice(0, NOTA_MAX);
       const congregacion = q('#pCong').value === '__otra' ? q('#pOtra').value.trim() : q('#pCong').value;
       const err = (m) => { q('#pErr').textContent = m; q('#pErr').classList.remove('hidden'); };
       if (!nombre || !apellido) return err('Completá tu nombre y apellido.');
       if (!congregacion) return err('Elegí tu congregación.');
-      if ((celular.match(/\d/g) || []).length < 8) return err('Escribí tu celular con característica (por ejemplo 343 555-0000).');
+      if (!cel.ok) return err(cel.vacio ? 'Escribí tu celular con característica (por ejemplo 343 555-0000).' : CEL_ERR);
       if (!q('#pOk').checked) return err('Para pedir el turno tenés que aceptar que los coordinadores vean tus datos.');
       guardarPerfil({ nombre, apellido, congregacion, celular, acepto: true });
       const b = q('#pGo'); b.disabled = true; b.textContent = 'Enviando…';
@@ -528,7 +549,7 @@
         await enviarPedido(c, t, S.dia, { nombre, apellido, congregacion, celular, nota });
         ov.remove();
         const pid = cupoId(c.id, S.dia, t.id) + '__' + S.user.uid;
-        sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>¡Listo! Te anotaste</h3><p>${esc(cap(fmtDia(S.dia)))} · ${esc(t.desde)} a ${esc(t.hasta)} · ${esc(p.nombre)}</p><p><span class="tag pendiente">Esperando confirmación</span><br>Cuando un coordinador lo confirme lo vas a ver en el inicio y en Mis turnos.</p></div><button type="button" class="btn" data-go="#/t/${esc(pid)}" data-cerrar>Ver mi turno</button><button type="button" class="btn alt" data-cerrar>Listo</button>`);
+        sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>¡Listo! Te anotaste</h3><p>${esc(cap(fmtDia(S.dia)))} · ${esc(t.desde)} a ${esc(t.hasta)} · ${esc(p.nombre)}</p><p><span class="tag pendiente">Esperando confirmación</span><br>Cuando un coordinador lo confirme lo vas a ver en el inicio y en Mis turnos.</p></div><div class="okacts"><button type="button" class="sbtn" data-ics="${esc(pid)}">${I('cal', 'width:16px;height:16px')}Agendar</button><button type="button" class="sbtn" data-comp="${esc(pid)}">${I('share', 'width:16px;height:16px')}Compartir</button><button type="button" class="sbtn" data-invitar="${esc(pid)}">${I('chat', 'width:16px;height:16px')}Invitar</button></div><button type="button" class="btn" data-go="#/t/${esc(pid)}" data-cerrar>Ver mi turno</button><button type="button" class="btn alt" data-cerrar>Listo</button>`);
       } catch (e) {
         console.error(e); b.disabled = false; b.textContent = 'Anotarme en este turno';
         err(/permission|insufficient/i.test(e && (e.code || e.message) || '') ? 'Ese turno se acaba de completar. Elegí otro.' : 'No se pudo enviar. Revisá la conexión y probá de nuevo.');
@@ -932,24 +953,25 @@
       <div class="two"><div class="fld"><label for="aNom">Nombre</label><input id="aNom" autocomplete="off"></div><div class="fld"><label for="aApe">Apellido</label><input id="aApe" autocomplete="off"></div></div><div class="sug hidden" id="aSug"></div>
       <div class="fld"><label for="aCong">Congregación</label><select id="aCong">${congs.length ? '<option value="">Elegí la congregación</option>' : ''}${congs.map(x => `<option>${esc(x)}</option>`).join('')}<option value="__otra">Otra…</option></select></div>
       <div class="fld hidden" id="aOtraF"><label for="aOtra">¿Cuál?</label><input id="aOtra" placeholder="Nombre de la congregación y ciudad"></div>
-      <div class="fld"><label for="aCel">Celular (WhatsApp) <span class="opc">(opcional)</span></label><input id="aCel" type="tel" autocomplete="off" placeholder="343 555-0000"></div>
+      <div class="fld"><label for="aCel">Celular (WhatsApp) <span class="opc">(opcional)</span></label><input id="aCel" type="tel" autocomplete="off" placeholder="343 555-0000"><small class="celok" id="aCelOk"></small></div>
       <div class="fld"><label for="aNota">Nota <span class="opc">(opcional)</span></label><textarea id="aNota" rows="2" maxlength="${NOTA_MAX}" placeholder="Por ejemplo: avisarle por teléfono fijo, viene con su esposa…"></textarea></div>
       <p class="err hidden" id="aErr"></p>
       <button type="button" class="btn" id="aGo">Anotar y confirmar</button><button type="button" class="btn alt" data-cerrar id="aCancel">Cancelar</button>`);
     const q = (x) => ov.querySelector(x);
     if (volver) q('#aCancel').addEventListener('click', () => setTimeout(volver, 0));
     bindAutocompletar(ov, c);
+    bindCel(q('#aCel'), q('#aCelOk'));
     const marcaFam = () => { const ap = sinTilde(q('#aApe').value); ov.querySelectorAll('.cqs.ya .cq').forEach(x => x.classList.toggle('fam', !!ap && x.dataset.ape === ap)); };
     q('#aApe').addEventListener('input', marcaFam); ov.addEventListener('click', () => setTimeout(marcaFam, 0));
     q('#aCong').addEventListener('change', () => q('#aOtraF').classList.toggle('hidden', q('#aCong').value !== '__otra'));
     q('#aGo').addEventListener('click', async () => {
-      const nombre = q('#aNom').value.trim(), apellido = q('#aApe').value.trim(), celular = q('#aCel').value.trim();
+      const nombre = q('#aNom').value.trim(), apellido = q('#aApe').value.trim(), cel = normCel(q('#aCel').value), celular = cel.ok ? cel.txt : '';
       const congregacion = q('#aCong').value === '__otra' ? q('#aOtra').value.trim() : q('#aCong').value;
       const nota = (q('#aNota') ? q('#aNota').value.trim() : '').slice(0, NOTA_MAX);
       const err = (m) => { q('#aErr').textContent = m; q('#aErr').classList.remove('hidden'); };
       if (!nombre || !apellido) return err('Completá nombre y apellido.');
       if (!congregacion) return err('Elegí la congregación.');
-      if (celular && (celular.match(/\d/g) || []).length < 8) return err('El celular va con característica (por ejemplo 343 555-0000), o dejalo vacío.');
+      if (!cel.ok && !cel.vacio) return err(CEL_ERR + ' O dejalo vacío.');
       const oc = (busCupos(c.id)[cupoId(c.id, fecha, tid)] || {}).ocupados || {};
       if (Object.keys(oc).length >= cupoDe(c, t)) return err('Ese turno ya se completó.');
       const per = { nombre, apellido, congregacion, celular, nota, uid: q('#aNom').dataset.uid || '' };
@@ -971,19 +993,20 @@
       <div class="two"><div class="fld"><label for="nNom">Nombre</label><input id="nNom" value="${esc(nom)}" autocomplete="off"></div><div class="fld"><label for="nApe">Apellido</label><input id="nApe" value="${esc(ape)}" autocomplete="off"></div></div>
       <div class="fld"><label for="nCong">Congregación</label><select id="nCong">${congs.length ? '<option value="">Elegí la congregación</option>' : ''}${congs.map(x => `<option>${esc(x)}</option>`).join('')}<option value="__otra">Otra…</option></select></div>
       <div class="fld hidden" id="nOtraF"><label for="nOtra">¿Cuál?</label><input id="nOtra" placeholder="Nombre de la congregación y ciudad"></div>
-      <div class="fld"><label for="nCel">Celular (WhatsApp) <span class="opc">(opcional)</span></label><input id="nCel" type="tel" autocomplete="off" placeholder="343 555-0000"></div>
+      <div class="fld"><label for="nCel">Celular (WhatsApp) <span class="opc">(opcional)</span></label><input id="nCel" type="tel" autocomplete="off" placeholder="343 555-0000"><small class="celok" id="nCelOk"></small></div>
       <div class="fld"><label for="nNota">Nota <span class="opc">(opcional)</span></label><textarea id="nNota" rows="2" maxlength="${NOTA_MAX}" placeholder="Por ejemplo: avisarle por teléfono fijo, viene con su esposa…"></textarea></div>
       <p class="err hidden" id="nErr"></p>
       <button type="button" class="btn" id="nGo">Elegir sus turnos</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
     const qs = (x) => ov.querySelector(x);
+    bindCel(qs('#nCel'), qs('#nCelOk'));
     qs('#nCong').addEventListener('change', () => qs('#nOtraF').classList.toggle('hidden', qs('#nCong').value !== '__otra'));
     setTimeout(() => (ape ? qs('#nCong') : qs('#nApe')).focus(), 60);
     qs('#nGo').addEventListener('click', () => {
-      const per = { nombre: capNombre(qs('#nNom').value), apellido: capNombre(qs('#nApe').value), congregacion: qs('#nCong').value === '__otra' ? qs('#nOtra').value.trim() : qs('#nCong').value, celular: qs('#nCel').value.trim(), nota: qs('#nNota').value.trim().slice(0, NOTA_MAX), uid: '' };
+      const per = { nombre: capNombre(qs('#nNom').value), apellido: capNombre(qs('#nApe').value), congregacion: qs('#nCong').value === '__otra' ? qs('#nOtra').value.trim() : qs('#nCong').value, celular: normCel(qs('#nCel').value).txt || '', nota: qs('#nNota').value.trim().slice(0, NOTA_MAX), uid: '' };
       const err = (m) => { qs('#nErr').textContent = m; qs('#nErr').classList.remove('hidden'); };
       if (!per.nombre || !per.apellido) return err('Completá nombre y apellido.');
       if (!per.congregacion) return err('Elegí la congregación.');
-      if (per.celular && (per.celular.match(/\d/g) || []).length < 8) return err('El celular va con característica (por ejemplo 343 555-0000), o dejalo vacío.');
+      if (!normCel(qs('#nCel').value).ok && !normCel(qs('#nCel').value).vacio) return err(CEL_ERR + ' O dejalo vacío.');
       ov.remove(); elegirLugares(c0, per, null);
     });
   }

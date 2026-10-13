@@ -152,6 +152,12 @@ const SEED = {
   await p.selectOption('#pCong', 'San Agustín (Paraná)'); await p.fill('#pCel', '343 555');
   await p.click('#pGo');
   check('valida el celular', /celular/.test(await text(p, '#pErr')));
+  for (const [entra, sale] of [['0343 15 555-0000', '343 555-0000'], ['+54 9 343 555 0000', '343 555-0000'], ['3435550000', '343 555-0000'], ['011 15 4444-5555', '11 4444-5555'], ['03446 15 41-2345', '3446 41-2345']]) {
+    await p.fill('#pCel', entra); await p.waitForTimeout(20);
+    check(`celular "${entra}" se guarda como "${sale}"`, (await text(p, '#pCelOk')) === 'Se guarda como ' + sale, await text(p, '#pCelOk'));
+  }
+  await p.fill('#pCel', '343 15 555'); await p.waitForTimeout(20);
+  check('celular incompleto: avisa que faltan números', /Faltan números/.test(await text(p, '#pCelOk')));
   await p.fill('#pCel', '343 555-0000'); await p.uncheck('#pOk'); await p.click('#pGo');
   check('pide aceptar el uso de los datos', /aceptar/.test(await text(p, '#pErr')));
   await p.check('#pOk');
@@ -161,6 +167,7 @@ const SEED = {
   check('queda anotada en el cupo como "pedido", sin datos personales', st.cupo && st.cupo.ocupados['u-ana'] === 'p' && !JSON.stringify(st.cupo).includes('Ana'), st.cupo);
   check('el pedido guarda nombre, apellido, congregación y celular', st.ped && st.ped.nombre === 'Ana' && st.ped.apellido === 'Paz' && st.ped.congregacion === 'San Agustín (Paraná)' && st.ped.celular === '343 555-0000' && st.ped.estado === 'pendiente' && st.ped.email === 'ana@x.com', st.ped);
   check('confirmación en pantalla', /Te anotaste/.test(await text(p, '.sheet')));
+  check('al anotarse: Agendar, Compartir e Invitar ahí mismo', await p.evaluate(() => !!document.querySelector('.sheet .okacts [data-ics]') && !!document.querySelector('.sheet .okacts [data-comp]') && !!document.querySelector('.sheet .okacts [data-invitar]')));
   await p.click('.sheet .btn.alt[data-cerrar]'); await p.waitForTimeout(80);
   check('el turno ahora dice "Pedido" y faltan 2', /Hall central\s*2 libres\s*16:00\s*a 18:00\s*Pedido/.test(await text(p, '#app')), await text(p, '#app'));
   await p.click('#backBtn'); await p.waitForTimeout(100);

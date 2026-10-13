@@ -1,5 +1,12 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Celular siempre igual, Agendar al anotarse y título mientras carga — 13 oct 2026 (caché ppam-v32)
+
+- El celular se limpia solo (+54, 9, 0 y 15) y se guarda siempre igual (ej. 343 555-0000); aviso debajo del campo si faltan o sobran números. También en los formularios del coordinador. Los ya guardados no cambian.
+- Al anotarse: Agendar, Compartir e Invitar en la misma pantalla de "¡Listo!".
+- Mientras carga con mala señal se ve "PPAM Entre Ríos" en el encabezado.
+- Versión 30. 228 pruebas de la página.
+
 ## Carga con mala señal y accesibilidad — 13 oct 2026 (caché ppam-v31)
 
 - Si a los 12 segundos no cargaron las campañas (mala señal, link abierto en la calle), en lugar de "Cargando…" para siempre aparece un aviso con "Reintentar". También si Firebase devuelve error.
