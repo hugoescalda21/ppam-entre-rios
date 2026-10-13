@@ -149,7 +149,7 @@ service cloud.firestore {
                       request.resource.data.estado in ['pendiente', 'confirmado', 'rechazado']) ||
                      (resource.data.uid == request.auth.uid && resource.data.estado == 'rechazado' && pedidoValido(request.resource.data)) ||
                      // quien pidió puede cambiar o borrar su nota
-                     (resource.data.uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nota']) && notaOk(request.resource.data)));
+                     (resource.data.uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nota']) && request.resource.data.diff(resource.data).affectedKeys().size() == 1 && notaOk(request.resource.data)));
       allow delete: if conSesion() && (resource.data.uid == request.auth.uid || gestiona(resource.data.cid));
     }
   }

@@ -117,6 +117,7 @@ const section = (t) => console.log('\n' + t);
   await check('Beto borra su nota', assertSucceeds(db(B).doc(ped('t2', uidOf(B))).update({ nota: require('firebase/compat/app').default.firestore.FieldValue.delete() })));
   await check('NO una nota de más de 200 letras', assertFails(db(B).doc(ped('t2', uidOf(B))).update({ nota: 'x'.repeat(201) })));
   await check('NO una nota vacía', assertFails(db(B).doc(ped('t2', uidOf(B))).update({ nota: '' })));
+  await check('un cambio que no cambia nada NO pasa por la nota', assertFails(db(B).doc(ped('t2', uidOf(B))).update({ estado: 'pendiente' })));
   await check('con la nota NO cambia otros datos', assertFails(db(B).doc(ped('t2', uidOf(B))).update({ nota: 'ok', estado: 'confirmado' })));
   await check('otro NO cambia la nota de Beto', assertFails(db(A).doc(ped('t2', uidOf(B))).update({ nota: 'hola' })));
   await check('el coordinador NO cambia la nota', assertFails(db(CO).doc(ped('t2', uidOf(B))).update({ nota: 'hola' })));
