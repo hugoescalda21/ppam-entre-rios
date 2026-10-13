@@ -1,5 +1,10 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Coordinación: buscar un hermano — 13 oct 2026 (caché ppam-v23)
+
+- Buscador arriba de las pestañas ("nombre o celular", sin tildes): muestra cada hermano con su congregación, celular, WhatsApp y todos sus turnos de la campaña con su estado. Tocar un turno abre "Del día" en ese turno.
+- Versión 21. 172 pruebas de la página.
+
 ## Coordinación: quiénes van en cada carrito — 13 oct 2026 (caché ppam-v22)
 
 - "Del día" agrupado por punto: cada horario muestra quiénes van (✓ confirmados; por confirmar con Confirmar / No ahí mismo y su nota), WhatsApp de cada uno, y cuántos lugares quedan.

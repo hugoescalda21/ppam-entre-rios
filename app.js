@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '20';
+  const VERSION = '21';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -678,13 +678,38 @@
     const personas = new Set(peds.filter(p => p.estado === 'confirmado').map(p => p.uid)).size;
     let h = `<div class="kpis"><div class="kpi hl"><b class="num">${pend.length}</b><span>por confirmar</span></div><div class="kpi"><b class="num">${total ? Math.round(ocup * 100 / total) : 0}%</b><span>cubierto</span></div><div class="kpi"><b class="num">${personas}</b><span>publicadores</span></div></div>`;
     const tabs = [['pedidos', 'Pedidos'], ['cobertura', 'Cobertura'], ['dia', 'Del día'], ['config', 'Ajustes']];
-    h += `<div class="tabs">${tabs.map(([k, l]) => `<button type="button" class="${S.coord.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
+    const bus = S.coord.bus || '';
+    h += `<label class="cbus">${I('search')}<input id="cBus" type="search" placeholder="Buscar un hermano: nombre o celular" value="${esc(bus)}" autocomplete="off"><button type="button" class="${bus ? '' : 'hidden'}" id="cBusX" aria-label="Borrar búsqueda">${I('x', 'width:16px;height:16px')}</button></label><div id="cBusR">${busquedaHTML(c, peds, bus)}</div>`;
+    h += `<div id="cTab"${bus.trim().length >= 2 ? ' class="hidden"' : ''}><div class="tabs">${tabs.map(([k, l]) => `<button type="button" class="${S.coord.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
     if (S.coord.tab === 'pedidos') h += coordPedidos(c, pend, peds);
     else if (S.coord.tab === 'cobertura') h += coordCobertura(c, dias);
     else if (S.coord.tab === 'dia') h += coordDia(c, dias, peds);
     else h += coordConfig(c);
-    $('app').innerHTML = h;
+    $('app').innerHTML = h + '</div>';
     if (S.coord.tab === 'config') bindConfig(c);
+    const inp = $('cBus'), pinta = () => { S.coord.bus = inp.value; const on = inp.value.trim().length >= 2; $('cBusR').innerHTML = busquedaHTML(c, peds, inp.value); $('cTab').classList.toggle('hidden', on); $('cBusX').classList.toggle('hidden', !inp.value); };
+    inp.addEventListener('input', pinta);
+    $('cBusX').addEventListener('click', (e) => { e.preventDefault(); inp.value = ''; pinta(); inp.focus(); });
+  }
+  // Buscar un hermano en la campaña: todos sus turnos (próximos y pasados), por nombre, apellido o celular
+  function busquedaHTML(c, peds, q) {
+    q = sinTilde(q); const dig = q.replace(/\D/g, '');
+    if (q.length < 2) return '';
+    const vivos = peds.filter(p => p.estado === 'confirmado' || p.estado === 'pendiente');
+    const hits = vivos.filter(p => sinTilde(p.nombre + ' ' + p.apellido).includes(q) || sinTilde(p.apellido + ' ' + p.nombre).includes(q) || (dig.length >= 3 && String(p.celular || '').replace(/\D/g, '').includes(dig)));
+    const per = {};
+    hits.forEach(p => { const k = p.uid || (p.nombre + p.apellido); (per[k] = per[k] || []).push(p); });
+    const ks = Object.keys(per).sort((a, b) => (per[a][0].nombre + per[a][0].apellido).localeCompare(per[b][0].nombre + per[b][0].apellido));
+    if (!ks.length) return `<div class="card bus0"><div class="empty">Nadie con “${esc(q)}” anotado en esta campaña.</div></div>`;
+    const hoyS = hoy();
+    return `<div class="busn">${ks.length === 1 ? '1 hermano' : ks.length + ' hermanos'}</div>` + ks.map(k => {
+      const ps = per[k].sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde)), p0 = ps[0];
+      const wa = String(p0.celular || '').replace(/\D/g, ''), prox = ps.filter(p => p.fecha >= hoyS).length;
+      const pal = ['#E5EEEB|#12433F', '#F4ECDC|#8A6A2E', '#E6ECF5|#2F4B7A', '#F3E6EC|#7A3553'][(p0.nombre || '').length % 4].split('|');
+      return `<div class="rq bus"><div class="t"><span class="ini" style="background:${pal[0]};color:${pal[1]}">${esc(iniciales(p0.nombre + ' ' + p0.apellido))}</span><div class="who"><b>${esc(p0.nombre)} ${esc(p0.apellido)}</b><small>${esc(p0.congregacion)} · <span class="num">${esc(p0.celular || '')}</span></small></div>${wa ? `<a class="wa" href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}" target="_blank" rel="noopener" aria-label="WhatsApp">${I('chat')}</a>` : ''}</div>
+        <div class="bt-l">${prox ? (prox === 1 ? '1 turno por delante' : prox + ' turnos por delante') : 'Sin turnos por delante'}</div>${ps.map(p => { const pt = (c.puntos || {})[p.punto] || {}, x = parseIso(p.fecha), pas = p.fecha < hoyS;
+          return `<button type="button" class="bt${pas ? ' pas' : ''}" data-cir="${esc(p.fecha)}|${esc(p.tid)}"><span class="f"><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><small>${MES[x.getMonth()].slice(0, 3)}</small></span><span class="tx"><b class="num">${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))}</b><small>${esc(pt.nombre || '')}</small></span><span class="tag ${p.estado}">${pas ? 'Ya pasó' : p.estado === 'confirmado' ? 'Confirmado' : 'Por confirmar'}</span>${I('chev')}</button>`; }).join('')}</div>`;
+    }).join('');
   }
   function pedidoCoordRow(c, p, acciones) {
     const pt = (c.puntos || {})[p.punto] || {};
@@ -1610,7 +1635,7 @@
     if (ds.sem) { const c = S.campanas[S.route.cid], dias = diasDe(c); const i = Math.max(0, Math.min(dias.length - 1, dias.indexOf(S.coord.semana) + (+ds.sem))); S.coord.semana = dias[i]; renderCoord(); return; }
     if (ds.cdia) { S.coord.dia = ds.cdia; renderCoord(); return; }
     if (ds.cdf) { S.coord.diaF = ds.cdf; renderCoord(); return; }
-    if (ds.cir) { const [d, tid] = ds.cir.split('|'); S.coord.dia = d; S.coord.tab = 'dia'; S.coord.diaF = 'todos'; renderCoord(); const e = document.getElementById('dt-' + tid); if (e) { e.scrollIntoView({ block: 'center' }); e.classList.add('flash'); } return; }
+    if (ds.cir) { const [d, tid] = ds.cir.split('|'); S.coord.bus = ''; S.coord.dia = d; S.coord.tab = 'dia'; S.coord.diaF = 'todos'; renderCoord(); const e = document.getElementById('dt-' + tid); if (e) { e.scrollIntoView({ block: 'center' }); e.classList.add('flash'); } return; }
     if (ds.voluntarios !== undefined) { const c = S.campanas[S.route.cid]; compartir(textoVoluntarios(c, diasDe(c))); return; }
     if (ds.listadia !== undefined) { const c = S.campanas[S.route.cid]; compartir(textoDia(c, Object.values(S.coord.pedidos))); return; }
     if (ds.punto !== undefined) { editarPunto(S.campanas[S.route.cid], ds.punto || null); return; }

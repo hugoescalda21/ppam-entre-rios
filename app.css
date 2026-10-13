@@ -641,3 +641,21 @@ label.sbtn { cursor: pointer; }
 .dp .bb .sbtn { flex: 1; padding: 7px; }
 .dp .nota { flex-basis: 100%; margin: 2px 0 0 29px; }
 .dp.v { color: var(--ink3); font-size: 13px; }
+
+/* ---------- Coordinación: buscar un hermano ---------- */
+.cbus { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line2); border-radius: 14px; padding: 0 6px 0 12px; margin: 12px 0 0; }
+.cbus .ic { width: 18px; height: 18px; color: var(--ink3); flex-shrink: 0; }
+.cbus input { flex: 1; min-width: 0; border: none; background: none; font: inherit; font-size: 15px; color: var(--ink); padding: 11px 0; outline: none; }
+.cbus input::-webkit-search-cancel-button { display: none; }
+.cbus button { border: none; background: var(--line2); color: var(--ink2); width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; }
+.busn { font-size: 12px; font-weight: 600; color: var(--ink3); text-transform: uppercase; letter-spacing: .03em; margin: 14px 4px 8px; }
+.rq.bus .bt-l { font-size: 12px; font-weight: 600; color: var(--ink3); margin: 12px 2px 4px; }
+.rq.bus .bt { display: flex; align-items: center; gap: 11px; width: 100%; border: none; border-top: 1px solid var(--line2); background: none; font: inherit; color: inherit; text-align: left; padding: 9px 2px; cursor: pointer; }
+.rq.bus .bt .f { width: 42px; flex-shrink: 0; text-align: center; background: var(--field); border-radius: 10px; padding: 3px 0; line-height: 1.1; }
+.rq.bus .bt .f small { display: block; font-size: 9.5px; font-weight: 600; text-transform: uppercase; color: var(--ink3); }
+.rq.bus .bt .f b { font-size: 16px; display: block; }
+.rq.bus .bt .tx { flex: 1; min-width: 0; }
+.rq.bus .bt .tx b { font-size: 14px; }
+.rq.bus .bt .tx small { display: block; }
+.rq.bus .bt > .ic { width: 15px; height: 15px; color: var(--ink3); }
+.rq.bus .bt.pas { opacity: .55; }
