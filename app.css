@@ -612,3 +612,32 @@ label.sbtn { cursor: pointer; }
 .tchip.rep { border-color: var(--gold); background: var(--warn-bg); }
 .tchip.add { border-style: dashed; color: var(--pri); font-weight: 600; font-size: 13.5px; justify-content: center; }
 .linkish.cph { margin: 10px 2px 0; font-size: 13px; font-weight: 600; color: var(--pri); }
+
+/* ---------- Coordinación > Del día: por punto, con quiénes van ---------- */
+.grid button { border: none; font: inherit; border-radius: 7px; padding: 6px 2px; text-align: center; white-space: nowrap; cursor: pointer; }
+.dres.cd { margin: 8px 4px 2px; }
+.dres.cd .pe { color: var(--warn); }
+.dres.cd .fa { color: var(--bad); }
+.pc.cdp .pt { align-items: center; }
+.pc.cdp .pl { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.pc.cdp .pl.fa, .dt .dth .fa { color: var(--bad); }
+.pc.cdp .pl.ok, .dt .dth .ok { color: var(--ok); }
+.dt { border-top: 1px solid var(--line2); margin-top: 10px; padding-top: 9px; border-radius: 4px; transition: background .6s; }
+.dt.flash { background: var(--gold-bg); }
+.dth { display: flex; justify-content: space-between; align-items: baseline; margin: 0 2px 6px; }
+.dth b { font-size: 14.5px; }
+.dth span { font-size: 12px; font-weight: 700; }
+.dp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; padding: 6px 4px; }
+.dp .mk { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; border: 1.5px dashed var(--line); }
+.dp.c .mk { background: var(--pri2); border: none; color: #fff; }
+.dp.p .mk { background: var(--gold-bg); border: 1.5px solid var(--gold); }
+.dp .who { flex: 1; min-width: 0; }
+.dp .who b { font-size: 14px; display: block; }
+.dp .who small { font-size: 12px; color: var(--ink3); }
+.dp .who em { font-style: normal; color: var(--warn); font-weight: 600; }
+.dp .wa { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--ok-bg); color: var(--ok); flex-shrink: 0; }
+.dp .wa .ic { width: 17px; height: 17px; }
+.dp .bb { flex-basis: 100%; display: flex; gap: 8px; padding-left: 29px; }
+.dp .bb .sbtn { flex: 1; padding: 7px; }
+.dp .nota { flex-basis: 100%; margin: 2px 0 0 29px; }
+.dp.v { color: var(--ink3); font-size: 13px; }

@@ -203,10 +203,17 @@ const SEED = {
   const vol = await c.evaluate(() => decodeURIComponent(window.__opened.pop().split('text=')[1]));
   check('"Pedir voluntarios" arma el mensaje con los turnos que faltan y el link', /Necesitamos voluntarios/.test(vol) && /Jueves 1 de octubre · 10 a 12 · Andén 1 \(falta 1\)/.test(vol) && /#\/c\/parana-terminal/.test(vol), vol.slice(0, 300));
   await c.click('[data-tab="dia"]'); await c.click('[data-cdia="2026-10-03"]'); await c.waitForTimeout(100);
-  check('lista del día: Ana en el stand del sábado', /16 a 18 · Hall central\s*Ana Paz \(San Agustín \(Paraná\)\) · 1\/3/.test(await text(c, '#app')), await text(c, '#app'));
+  check('lista del día: Ana en el stand del sábado', /Hall central\s*Faltan 2\s*16 a 18\s*Faltan 2\s*Ana Paz\s*San Agustín \(Paraná\)\s*2 lugares libres/.test(await text(c, '#app')) && /1 confirmados/.test(await text(c, '#app')), await text(c, '#app'));
   await c.click('[data-listadia]');
   const lista = await c.evaluate(() => decodeURIComponent(window.__opened.pop().split('text=')[1]));
   check('compartir la lista del día por WhatsApp', /\*16 a 18 · Hall central\*\n  – Ana Paz/.test(lista), lista);
+  check('Del día: WhatsApp de cada hermano', await c.evaluate(() => /wa\.me\/549343/.test(document.querySelector('#dt-t3 .dp.c .wa').href)));
+  await c.click('[data-cdia="2026-10-01"]'); await c.click('[data-cdf="faltan"]'); await c.waitForTimeout(80);
+  check('filtro "Faltan": oculta el turno completo (8 a 10 del jueves)', !(await c.$('#dt-t1')) && !!(await c.$('#dt-t2')));
+  await c.click('[data-cdf="todos"]');
+  await c.click('[data-tab="cobertura"]'); await c.waitForTimeout(80);
+  await c.click('[data-cir="2026-10-03|t3"]'); await c.waitForTimeout(120);
+  check('tocar una casilla de Cobertura abre ese día y turno en "Del día"', await c.evaluate(() => document.querySelector('.tabs .on').dataset.tab === 'dia' && document.querySelector('.day.on').dataset.cdia === '2026-10-03' && document.getElementById('dt-t3').classList.contains('flash')));
   // Configurar: un punto nuevo y turnos en serie
   await c.click('[data-tab="config"]'); await c.waitForTimeout(100);
   await c.click('[data-punto=""]'); await c.fill('#ptNom', 'Salida Av. Ramírez'); await c.click('#ptOk'); await c.waitForTimeout(150);
@@ -425,7 +432,7 @@ const SEED = {
     await k.screenshot({ path: SHOTS + '/coord-nota.png' });
     await k.click('[data-confirmar]'); await k.waitForTimeout(200);
     await k.click('[data-tab="dia"]'); await k.click('[data-cdia="2026-10-03"]'); await k.waitForTimeout(100);
-    check('y en la lista del día, debajo del turno', /Hall central\s*Luis Gómez \(San Agustín \(Paraná\)\) · 1\/3\s*Luis: Es mi primera vez\./.test(await text(k, '#app')), await text(k, '#app'));
+    check('y en la lista del día, debajo del turno', /Hall central[\s\S]*Luis Gómez\s*San Agustín \(Paraná\)\s*Luis: Es mi primera vez\./.test(await text(k, '#app')), await text(k, '#app'));
     await k.click('[data-listadia]');
     const msg = await k.evaluate(() => decodeURIComponent(window.__opened.pop().split('text=')[1]));
     check('la lista que se comparte por WhatsApp no lleva la nota', /Luis Gómez/.test(msg) && !/primera vez/.test(msg), msg);

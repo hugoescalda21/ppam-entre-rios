@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '19';
+  const VERSION = '20';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -717,23 +717,44 @@
           const t = turnosDelDia(c, d).find(x => x.punto === pid && x.desde === a && x.hasta === b);
           if (!t) { h += '<div class="na">·</div>'; return; }
           const oc = Object.values((S.coord.cupos[cupoId(c.id, d, t.id)] || {}).ocupados || {}), n = cupoDe(c, t), k = oc.filter(v => v === 'c').length, pe = oc.length - k;
-          h += `<div class="${k >= n ? 'full' : k > 0 ? 'half' : 'none'}" title="${pe} por confirmar">${k}/${n}${pe ? '<sup>+' + pe + '</sup>' : ''}</div>`;
+          h += `<button type="button" class="${k >= n ? 'full' : k > 0 ? 'half' : 'none'}" data-cir="${d}|${esc(t.id)}" title="Ver quiénes van${pe ? ' (' + pe + ' por confirmar)' : ''}">${k}/${n}${pe ? '<sup>+' + pe + '</sup>' : ''}</button>`;
         });
       });
       h += '</div>';
     });
-    h += `<div class="acts"><button type="button" class="sbtn pri" data-voluntarios>${I('chat')}Pedir voluntarios por WhatsApp</button></div><p class="note">Arma un mensaje con los turnos de estos días que todavía no están completos y el link a la campaña.</p>`;
+    h += `<div class="acts"><button type="button" class="sbtn pri" data-voluntarios>${I('chat')}Pedir voluntarios por WhatsApp</button></div><p class="note">Tocá una casilla para ver quiénes van en ese turno. "Pedir voluntarios" arma un mensaje con los turnos de estos días que todavía no están completos y el link a la campaña.</p>`;
     return h;
   }
   function coordDia(c, dias, peds) {
     if (!dias.length) return '<div class="empty">No hay días con turnos por delante.</div>';
     if (!S.coord.dia || !dias.includes(S.coord.dia)) S.coord.dia = dias[0];
     let h = `<div class="days">${dias.slice(0, 30).map(d => { const x = parseIso(d); return `<button type="button" class="day${d === S.coord.dia ? ' on' : ''}" data-cdia="${d}"><small>${DOW[x.getDay()]}</small><b>${x.getDate()}</b><i>${MES[x.getMonth()].slice(0, 3)}</i></button>`; }).join('')}</div>`;
-    const ts = turnosDelDia(c, S.coord.dia);
-    h += '<div class="card">' + ts.map(t => {
-      const ps = peds.filter(p => p.fecha === S.coord.dia && p.tid === t.id && p.estado === 'confirmado');
-      return `<div class="row" style="display:block"><b>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc(c.puntos[t.punto].nombre)}</b><small>${ps.length ? ps.map(p => esc(p.nombre + ' ' + p.apellido) + ' (' + esc(p.congregacion) + ')').join(' · ') : 'Nadie confirmado todavía'} · ${ps.length}/${cupoDe(c, t)}</small>${ps.filter(p => p.nota).map(p => `<div class="nota chica">${I('edit', 'width:14px;height:14px')}<span><b>${esc(p.nombre)}:</b> ${esc(p.nota)}</span></div>`).join('')}</div>`;
-    }).join('') + '</div>';
+    const d = S.coord.dia, ts = turnosDelDia(c, d), soloF = S.coord.diaF === 'faltan';
+    const info = ts.map(t => {
+      const ocup = Object.values((S.coord.cupos[cupoId(c.id, d, t.id)] || {}).ocupados || {}), n = cupoDe(c, t);
+      const ps = peds.filter(p => p.fecha === d && p.tid === t.id && (p.estado === 'confirmado' || p.estado === 'pendiente')).sort((x, y) => (x.estado === 'confirmado' ? 0 : 1) - (y.estado === 'confirmado' ? 0 : 1));
+      return { t, n, ps, falta: Math.max(0, n - Math.max(ocup.length, ps.length)) };
+    });
+    const nc = info.reduce((a, x) => a + x.ps.filter(p => p.estado === 'confirmado').length, 0), np = info.reduce((a, x) => a + x.ps.filter(p => p.estado === 'pendiente').length, 0), nf = info.reduce((a, x) => a + x.falta, 0);
+    h += `<div class="dres cd"><span><b>${nc}</b> confirmados${np ? ` · <b class="pe">${np}</b> por confirmar` : ''} · ${nf ? `<b class="fa">faltan ${nf}</b>` : '<b>completo</b>'}</span><div class="seg2 cf"><button type="button" data-cdf="todos" class="${soloF ? '' : 'on'}">Todos</button><button type="button" data-cdf="faltan" class="${soloF ? 'on' : ''}">Faltan</button></div></div>`;
+    const wa = (cel) => { const x = String(cel || '').replace(/\D/g, ''); return 'https://wa.me/' + (x.length === 10 ? '549' + x : x); };
+    let vistos = 0;
+    Object.keys(c.puntos || {}).forEach(pid => {
+      const p = c.puntos[pid], its = info.filter(x => x.t.punto === pid && (!soloF || x.falta > 0));
+      if (!its.length) return;
+      vistos++;
+      const fp = info.filter(x => x.t.punto === pid).reduce((a, x) => a + x.falta, 0);
+      h += `<div class="pc cdp"><div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}</div><div class="tx"><b>${esc(p.nombre)}</b>${p.detalle ? `<small>${esc(p.detalle)}</small>` : ''}</div><span class="pl ${fp ? 'fa' : 'ok'}">${fp ? (fp === 1 ? 'Falta 1' : 'Faltan ' + fp) : 'Completo'}</span></div>`;
+      its.forEach(x => {
+        h += `<div class="dt" id="dt-${esc(x.t.id)}"><div class="dth"><b class="num">${esc(fmtHora(x.t.desde))} a ${esc(fmtHora(x.t.hasta))}</b><span class="${x.falta ? 'fa' : 'ok'}">${x.falta ? (x.falta === 1 ? 'Falta 1' : 'Faltan ' + x.falta) : 'Completo'}</span></div>`;
+        h += x.ps.map(q => `<div class="dp ${q.estado === 'confirmado' ? 'c' : 'p'}"><span class="mk">${q.estado === 'confirmado' ? I('check', 'width:13px;height:13px;stroke-width:3') : ''}</span><div class="who"><b>${esc(q.nombre)} ${esc(q.apellido)}</b><small>${esc(q.congregacion)}${q.estado === 'pendiente' ? ' · <em>por confirmar</em>' : ''}</small></div>${q.celular ? `<a class="wa" href="${wa(q.celular)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(q.nombre)}">${I('chat')}</a>` : ''}${q.estado === 'pendiente' ? `<div class="bb"><button type="button" class="sbtn nk" data-rechazar="${esc(q.id)}">No</button><button type="button" class="sbtn pri" data-confirmar="${esc(q.id)}">Confirmar</button></div>` : ''}${q.nota ? `<div class="nota chica">${I('edit', 'width:14px;height:14px')}<span><b>${esc(q.nombre)}:</b> ${esc(q.nota)}</span></div>` : ''}</div>`).join('');
+        if (x.falta) h += `<div class="dp v"><span class="mk"></span><span>${x.ps.length ? (x.falta === 1 ? '1 lugar libre' : x.falta + ' lugares libres') : 'Nadie anotado todavía'}</span></div>`;
+        h += '</div>';
+      });
+      h += '</div>';
+    });
+    if (!ts.length) h += '<div class="card"><div class="empty">No hay turnos ese día.</div></div>';
+    else if (!vistos) h += '<div class="card"><div class="empty">Ese día está todo cubierto.</div></div>';
     h += `<div class="acts"><button type="button" class="sbtn pri" data-listadia>${I('share')}Compartir la lista por WhatsApp</button></div>`;
     return h;
   }
@@ -1588,6 +1609,8 @@
     if (ds.quitar) { if (confirm('¿Quitar a esta persona del turno? Se libera el lugar.')) cambiarEstado(ds.quitar, 'rechazado'); return; }
     if (ds.sem) { const c = S.campanas[S.route.cid], dias = diasDe(c); const i = Math.max(0, Math.min(dias.length - 1, dias.indexOf(S.coord.semana) + (+ds.sem))); S.coord.semana = dias[i]; renderCoord(); return; }
     if (ds.cdia) { S.coord.dia = ds.cdia; renderCoord(); return; }
+    if (ds.cdf) { S.coord.diaF = ds.cdf; renderCoord(); return; }
+    if (ds.cir) { const [d, tid] = ds.cir.split('|'); S.coord.dia = d; S.coord.tab = 'dia'; S.coord.diaF = 'todos'; renderCoord(); const e = document.getElementById('dt-' + tid); if (e) { e.scrollIntoView({ block: 'center' }); e.classList.add('flash'); } return; }
     if (ds.voluntarios !== undefined) { const c = S.campanas[S.route.cid]; compartir(textoVoluntarios(c, diasDe(c))); return; }
     if (ds.listadia !== undefined) { const c = S.campanas[S.route.cid]; compartir(textoDia(c, Object.values(S.coord.pedidos))); return; }
     if (ds.punto !== undefined) { editarPunto(S.campanas[S.route.cid], ds.punto || null); return; }

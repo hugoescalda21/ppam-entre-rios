@@ -1,5 +1,12 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Coordinación: quiénes van en cada carrito — 13 oct 2026 (caché ppam-v22)
+
+- "Del día" agrupado por punto: cada horario muestra quiénes van (✓ confirmados; por confirmar con Confirmar / No ahí mismo y su nota), WhatsApp de cada uno, y cuántos lugares quedan.
+- Resumen del día ("10 confirmados · 3 por confirmar · faltan 13") y filtro **Todos | Faltan**.
+- Cobertura: tocar una casilla abre ese día y turno en "Del día", resaltado.
+- Versión 20. 169 pruebas de la página.
+
 ## Ajustes ordenados por punto y días de la campaña — 13 oct 2026 (caché ppam-v21)
 
 - Coordinación > Ajustes en dos pestañas: **Campaña** (portada, nombre, fechas, visibilidad) y **Puntos y turnos** (se abre primero).
