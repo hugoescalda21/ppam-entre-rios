@@ -124,6 +124,27 @@ service cloud.firestore {
       allow delete: if gestiona(resource.data.cid);
     }
 
+    // Historial (auditoría): quién cambió o borró qué y cuándo. Solo se agregan líneas, firmadas y con la hora del servidor.
+    match /auditoria/{id} {
+      function lineaOk(d) {
+        return d.keys().hasOnly(['cid', 'tipo', 'texto', 'por', 'uid', 'at', 'antes', 'ref', 'de']) &&
+               d.por == mail() && d.uid == request.auth.uid && d.at == request.time &&
+               d.cid is string && d.cid.size() <= 80 &&
+               d.tipo is string && d.tipo.size() > 0 && d.tipo.size() <= 30 &&
+               d.texto is string && d.texto.size() > 0 && d.texto.size() <= 400 &&
+               (!('antes' in d) || d.antes is map) &&
+               (!('ref' in d) || (d.ref is string && d.ref.size() <= 120)) &&
+               (!('de' in d) || (d.de is string && d.de.size() <= 60));
+      }
+      allow create: if conSesion() && lineaOk(request.resource.data) && (
+                     (request.resource.data.cid == '' && esAdmin()) ||
+                     (request.resource.data.cid != '' && (gestiona(request.resource.data.cid) || request.resource.data.tipo == 'cancelo')));
+      allow read: if conSesion() && (esAdmin() || (resource.data.cid != '' && esCoord(resource.data.cid)));
+      // Nadie la cambia; solo el administrador borra líneas de más de 6 meses.
+      allow update: if false;
+      allow delete: if esAdmin() && resource.data.at < request.time - duration.value(183, 'd');
+    }
+
     // Pedidos: los datos de quien pide un turno.
     match /pedidos/{id} {
       // Nota para el coordinador: opcional, texto de hasta 200 letras.

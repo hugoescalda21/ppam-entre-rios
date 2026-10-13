@@ -1,5 +1,12 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Historial de cambios (auditoría) — 13 oct 2026 (caché ppam-v30)
+
+- Nueva colección "auditoria": cada cambio importante deja una línea (quién, qué, cuándo, con la hora del servidor). Las reglas solo dejan agregar; nadie edita ni borra (el administrador limpia lo de más de 6 meses).
+- Coordinación › Ajustes › Historial (de la campaña) y Administración › Historial de cambios (todo, con filtro por campaña y persona). Filtro "Solo borrados y quitados".
+- "Restaurar" para turnos y puntos borrados. Al borrar un punto ya no se borran sus fotos (para poder restaurarlo completo).
+- Reglas: 16 pruebas nuevas (112). Versión 28. 218 pruebas de la página.
+
 ## Lupa para los hermanos e "Invitar a alguien" — 13 oct 2026 (caché ppam-v29)
 
 - Todos los hermanos con sesión tienen la lupa: buscan lugares, ciudades, días y horarios con lugar ("Con lugar hoy / mañana"); tocar uno abre "Confirmá tu turno". Nunca muestra personas.

@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '27';
+  const VERSION = '28';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -557,11 +557,23 @@
       const batch = S.db.batch();
       batch.update(S.db.doc('cupos/' + cupoId(p.cid, p.fecha, p.tid)), { ['ocupados.' + p.uid]: S.del() });
       batch.delete(S.db.doc('pedidos/' + pid));
-      try { await batch.commit(); ov.remove(); toast('Turno cancelado'); if (S.route.name === 'turno') go('#/mis'); }
+      try { await batch.commit(); auditar(p.cid, 'cancelo', 'canceló su turno: ' + pTxt(c, p)); ov.remove(); toast('Turno cancelado'); if (S.route.name === 'turno') go('#/mis'); }
       catch (e) { console.error(e); b.disabled = false; b.textContent = 'Sí, cancelar el turno'; toast('No se pudo cancelar. Probá de nuevo.'); }
     });
   }
   S.del = () => (window.__ppamMock ? window.__ppamMock.del() : firebase.firestore.FieldValue.delete());
+  S.ahora = () => (window.__ppamMock ? new Date().toISOString() : firebase.firestore.FieldValue.serverTimestamp());
+  /* ---------- Historial (auditoría): quién cambió o borró qué y cuándo. Solo se agregan líneas; nadie las edita ---------- */
+  function auditar(cid, tipo, texto, extra) {
+    if (!S.user) return Promise.resolve();
+    const d = Object.assign({ cid: cid || '', tipo, texto: String(texto).slice(0, 400), por: S.user.email.toLowerCase(), uid: S.user.uid, at: S.ahora() }, extra || {});
+    return S.db.collection('auditoria').doc(Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).set(d).catch(e => console.error('auditoria', e));
+  }
+  const difTxt = (a, b) => { const mas = b.filter(x => !a.includes(x)), menos = a.filter(x => !b.includes(x)); return (mas.length ? ': agregó ' + mas.join(', ') : '') + (menos.length ? (mas.length ? '; sacó ' : ': sacó ') + menos.join(', ') : ''); };
+  const tTxt = (c, t) => `${fmtHora(t.desde)}–${fmtHora(t.hasta)} del ${((c.puntos || {})[t.punto] || {}).nombre || 'punto'}`;
+  const dTxt = (ds) => (ds || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', ');
+  const fTxt = (f) => { const x = parseIso(f); return `${DOW[x.getDay()]} ${x.getDate()}/${x.getMonth() + 1}`; };
+  const pTxt = (c, p) => `${p.nombre} ${p.apellido} · ${fTxt(p.fecha)} ${fmtHora(p.desde)}–${fmtHora(p.hasta)} · ${((c.puntos || {})[p.punto] || {}).nombre || ''}`;
 
   /* ---------- Mis turnos ---------- */
   function renderMis() {
@@ -667,6 +679,8 @@
     if (S.coord.cid === cid) return;
     S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = cid; S.coord.pedidos = {}; S.coord.cupos = {};
     S.coord.unsub.push(S.db.collection('pedidos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.pedidos = o; if (S.route.name === 'coord') renderCoord(); }, (e) => console.error(e)));
+    S.coord.aud = {};
+    S.coord.unsub.push(S.db.collection('auditoria').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.aud = o; if (S.route.name === 'coord' && S.coord.tab === 'config' && S.coord.aj === 'hist') renderCoord(); }, () => {}));
     S.coord.unsub.push(S.db.collection('cupos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.cupos = o; if (S.route.name === 'coord') renderCoord(); }, (e) => console.error(e)));
   }
   function renderCoord() {
@@ -998,6 +1012,7 @@
     });
     if (!hechos.length) return hechos;
     await batch.commit();
+    auditar(c.id, 'anoto', `anotó a ${per.nombre} ${per.apellido} en ${hechos.length === 1 ? '' : hechos.length + ' turnos: '}` + hechos.map(h => `${fTxt(h.fecha)} ${tTxt(c, h.t)}`).join('; '));
     per.uid = uid;
     // la lupa y el selector de lugares usan una copia: se actualiza al momento
     hechos.forEach(h => { (S.bus.peds[c.id] = S.bus.peds[c.id] || []).push(Object.assign({ id: cupoId(c.id, h.fecha, h.t.id) + '__' + uid }, h.d)); const k = cupoId(c.id, h.fecha, h.t.id), cc = (S.bus.cupos[c.id] = S.bus.cupos[c.id] || {}); cc[k] = cc[k] || { cid: c.id, fecha: h.fecha, tid: h.t.id, ocupados: {} }; cc[k].ocupados = Object.assign({}, cc[k].ocupados, { [uid]: 'c' }); });
@@ -1055,6 +1070,68 @@
     };
     pinta();
     if (!S.bus.t) cargarBusqueda().then(() => { if (ov.isConnected) pinta(); });
+  }
+  /* ---------- Historial: lista, filtro "solo borrados" y "Restaurar" ---------- */
+  const audFecha = (x) => { const v = x && x.at; if (!v) return null; if (typeof v === 'string') return new Date(v); if (v.toDate) return v.toDate(); if (v.seconds) return new Date(v.seconds * 1000); return null; };
+  const AUD_IC = { borro_turno: 'x', borro_punto: 'x', borro_foto: 'x', quito: 'x', cancelo: 'x', no_confirmo: 'x', confirmo: 'check', anoto: 'plus', creo_turno: 'plus', creo_punto: 'plus', creo_campana: 'plus', restauro: 'back', cambio_turno: 'edit', cambio_punto: 'edit', cambio_campana: 'edit', coordinadores: 'edit', config: 'edit' };
+  const esBorrado = (x) => /^(borro_|quito|cancelo|no_confirmo)/.test(x.tipo);
+  function cuandoTxt(d) {
+    if (!d) return 'recién';
+    const min = Math.round((Date.now() - d.getTime()) / 60000);
+    if (min < 1) return 'recién'; if (min < 60) return `hace ${min} min`;
+    const hh = pad(d.getHours()) + ':' + pad(d.getMinutes()), iso = isoOf(d);
+    if (iso === hoy()) return 'hoy ' + hh; if (iso === addDays(hoy(), -1)) return 'ayer ' + hh;
+    return `${DOW[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1} ${hh}`;
+  }
+  function historialHTML(lista, o) {
+    o = o || {};
+    const f = S.audF || 'todo', restaurados = new Set(lista.filter(x => x.tipo === 'restauro' && x.de).map(x => x.de));
+    let l = lista.slice().sort((a, b) => (audFecha(b) || new Date()).getTime() - (audFecha(a) || new Date()).getTime() || String(b.id).localeCompare(String(a.id)));
+    if (f === 'borr') l = l.filter(esBorrado);
+    if (o.cid) l = l.filter(x => x.cid === o.cid);
+    if (o.q) { const q = sinTilde(o.q); l = l.filter(x => sinTilde(x.por + ' ' + x.texto).includes(q)); }
+    let h = `<div class="seg2 hf"><button type="button" data-hf="todo" class="${f === 'todo' ? 'on' : ''}">Todo</button><button type="button" data-hf="borr" class="${f === 'borr' ? 'on' : ''}">Solo borrados y quitados</button></div>`;
+    if (!l.length) return h + '<div class="card"><div class="empty">No hay cambios registrados todavía.</div></div>';
+    const lim = o.lim || 150;
+    h += '<div class="card hist">' + l.slice(0, lim).map(x => {
+      const c = S.campanas[x.cid], [k, rid] = String(x.ref || '').split(':');
+      const existe = c && (k === 'turno' ? !!(c.turnos || {})[rid] : k === 'punto' ? !!(c.puntos || {})[rid] : false);
+      const puede = x.antes && (x.tipo === 'borro_turno' || x.tipo === 'borro_punto') && !restaurados.has(x.id) && c && !existe && (S.isAdmin || S.coordDe.includes(x.cid));
+      return `<div class="hrow ${esBorrado(x) ? 'del' : ''}"><span class="hic">${I(AUD_IC[x.tipo] || 'edit', 'width:14px;height:14px')}</span><div class="htx"><b>${esc(x.por)}</b> ${esc(x.texto)}<small>${esc(cuandoTxt(audFecha(x)))}${o.cam && x.cid ? ' · ' + esc(c ? c.nombre : x.cid) : o.cam ? ' · Configuración general' : ''}${restaurados.has(x.id) ? ' · <span class="ok">restaurado</span>' : ''}</small></div>${puede ? `<button type="button" class="sbtn" data-restaurar="${esc(x.id)}">${I('back', 'width:14px;height:14px')}Restaurar</button>` : ''}</div>`;
+    }).join('') + '</div>' + (l.length > lim ? `<p class="note">Se muestran los últimos ${lim} de ${l.length}.</p>` : '');
+    return h;
+  }
+  async function restaurar(id) {
+    const x = (S.coord.aud || {})[id] || ((S.audAll || []).find(y => y.id === id)); if (!x || !x.antes) return;
+    const c = S.campanas[x.cid]; if (!c) return;
+    const [k, rid] = String(x.ref).split(':'), upd = {};
+    if (k === 'turno') upd['turnos.' + rid] = x.antes;
+    else if (k === 'punto') { upd['puntos.' + rid] = x.antes.punto; Object.keys(x.antes.turnos || {}).forEach(t => { upd['turnos.' + t] = x.antes.turnos[t]; }); }
+    else return;
+    if (!confirm(k === 'turno' ? `¿Restaurar el turno ${tTxt(c, x.antes)}?` : `¿Restaurar el punto ${x.antes.punto.nombre} y sus turnos?`)) return;
+    try { await S.db.doc('campanas/' + c.id).update(upd); await auditar(c.id, 'restauro', k === 'turno' ? `restauró el turno ${tTxt(Object.assign({}, c, { puntos: Object.assign({}, c.puntos) }), x.antes)}` : `restauró el punto ${x.antes.punto.nombre}${Object.keys(x.antes.turnos || {}).length ? ' y sus turnos' : ''}`, { de: id }); toast('Restaurado'); if (S.audAll) abrirHistorialGeneral(true); }
+    catch (e) { console.error(e); toast('No se pudo restaurar.'); }
+  }
+  async function abrirHistorialGeneral(refrescar) {
+    let ov = document.querySelector('.hgov');
+    if (!ov) { ov = sheet('<div class="hg-body"><div class="empty">Cargando…</div></div>'); ov.classList.add('hgov'); ov.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.hf) { e.stopPropagation(); S.audF = b.dataset.hf; pinta(); } if (b.dataset.restaurar) { e.stopPropagation(); restaurar(b.dataset.restaurar); } }); }
+    const fp = window.__ppamMock ? 'id' : firebase.firestore.FieldPath.documentId();
+    const pinta = () => {
+      const body = ov.querySelector('.hg-body'), cid = (ov.querySelector('#hgCamp') || {}).value || '', q = (ov.querySelector('#hgQ') || {}).value || '';
+      const cs = Object.values(S.campanas).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+      body.innerHTML = `<h3>Historial de cambios</h3><p class="hint">Todas las campañas y la configuración general. Nadie puede editar ni borrar estas líneas; se guardan 6 meses.</p>
+        <div class="two"><div class="fld"><select id="hgCamp"><option value="">Todas las campañas</option><option value="__gen"${cid === '__gen' ? ' selected' : ''}>Configuración general</option>${cs.map(c => `<option value="${esc(c.id)}"${c.id === cid ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select></div><div class="fld"><input id="hgQ" type="search" placeholder="Persona o texto" value="${esc(q)}"></div></div>` +
+        historialHTML((S.audAll || []).filter(x => cid === '__gen' ? !x.cid : true), { cam: true, cid: cid && cid !== '__gen' ? cid : '', q }) + '<button type="button" class="btn alt" data-cerrar>Cerrar</button>';
+      body.querySelector('#hgCamp').addEventListener('change', pinta);
+      const qi = body.querySelector('#hgQ'); qi.addEventListener('input', () => { clearTimeout(pinta.t); pinta.t = setTimeout(() => { pinta(); const n = ov.querySelector('#hgQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); });
+    };
+    try {
+      const qs = await S.db.collection('auditoria').orderBy(fp, 'desc').limit(500).get(); const a = []; qs.forEach(d => a.push(Object.assign({ id: d.id }, d.data()))); S.audAll = a;
+      // limpieza: las líneas de más de 6 meses se borran (solo el administrador puede, y solo esas)
+      const viejas = a.filter(x => { const d = audFecha(x); return d && Date.now() - d.getTime() > 183 * 864e5; });
+      if (viejas.length) { const b = S.db.batch(); viejas.slice(0, 200).forEach(x => b.delete(S.db.doc('auditoria/' + x.id))); b.commit().catch(() => {}); }
+    } catch (e) { console.error(e); ov.querySelector('.hg-body').innerHTML = '<div class="empty">No se pudo cargar el historial.</div><button type="button" class="btn alt" data-cerrar>Cerrar</button>'; return; }
+    pinta();
   }
   function pedidoCoordRow(c, p, acciones) {
     const pt = (c.puntos || {})[p.punto] || {};
@@ -1135,7 +1212,7 @@
     if (estado === 'confirmado') batch.set(cref, { cid: p.cid, fecha: p.fecha, tid: p.tid, ocupados: { [p.uid]: 'c' } }, { merge: true });
     else batch.update(cref, { ['ocupados.' + p.uid]: S.del() });
     batch.update(S.db.doc('pedidos/' + pid), { estado, actualizado: new Date().toISOString(), por: S.user.email.toLowerCase() });
-    try { await batch.commit(); toast(estado === 'confirmado' ? 'Confirmado' : 'Listo'); } catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); }
+    try { await batch.commit(); const c = S.campanas[p.cid] || {}; auditar(p.cid, estado === 'confirmado' ? 'confirmo' : p.estado === 'confirmado' ? 'quito' : 'no_confirmo', (estado === 'confirmado' ? 'confirmó a ' : p.estado === 'confirmado' ? 'quitó del turno a ' : 'no confirmó a ') + pTxt(c, p)); toast(estado === 'confirmado' ? 'Confirmado' : 'Listo'); } catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); }
   }
   function compartir(texto) {
     const url = 'https://wa.me/?text=' + encodeURIComponent(texto);
@@ -1164,7 +1241,8 @@
     const puntos = Object.keys(c.puntos || {}).map(id => Object.assign({ id }, c.puntos[id]));
     const turnos = Object.keys(c.turnos || {}).map(id => Object.assign({ id }, c.turnos[id])).sort((a, b) => (a.desde + a.hasta).localeCompare(b.desde + b.hasta));
     const aj = S.coord.aj || 'puntos';
-    let h = `<div class="seg2 aj"><button type="button" data-aj="campana" class="${aj === 'campana' ? 'on' : ''}">Campaña</button><button type="button" data-aj="puntos" class="${aj === 'puntos' ? 'on' : ''}">Puntos y turnos</button></div>`;
+    let h = `<div class="seg2 aj"><button type="button" data-aj="campana" class="${aj === 'campana' ? 'on' : ''}">Campaña</button><button type="button" data-aj="puntos" class="${aj === 'puntos' ? 'on' : ''}">Puntos y turnos</button><button type="button" data-aj="hist" class="${aj === 'hist' ? 'on' : ''}">Historial</button></div>`;
+    if (aj === 'hist') return h + `<p class="note hnote">Quién cambió o borró algo en esta campaña, y cuándo. Nadie puede editar ni borrar estas líneas. Se guardan 6 meses.</p>` + historialHTML(Object.keys(S.coord.aud || {}).map(id => Object.assign({ id }, S.coord.aud[id])), { cam: false });
     if (aj === 'campana') {
       h += `<div class="sec">Datos de la campaña</div><div class="card" style="padding:12px 13px 4px;">
       <div class="lbl">Foto de portada</div><div class="portada"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></div>
@@ -1208,7 +1286,7 @@
       const upd = {};
       const corta = diasCorta(c); Object.values(c.turnos).filter(t => t.punto === bt.dataset.de).forEach(t => { const dias = (t.dias || []).filter(d => !corta || corta.some(x => x.d === d)); if (dias.length) upd['turnos.t' + uidGen()] = { punto: pid, desde: t.desde, hasta: t.hasta, dias }; });
       if (!Object.keys(upd).length) { toast('Ese punto no tiene turnos en los días de esta campaña.'); return; }
-      try { await S.db.doc('campanas/' + c.id).update(upd); ov.remove(); toast(Object.keys(upd).length === 1 ? '1 turno copiado' : Object.keys(upd).length + ' turnos copiados'); } catch (e) { console.error(e); toast('No se pudo copiar.'); }
+      try { await S.db.doc('campanas/' + c.id).update(upd); auditar(c.id, 'creo_turno', `copió ${Object.keys(upd).length} turno(s) de ${c.puntos[bt.dataset.de].nombre} a ${c.puntos[pid].nombre}`); ov.remove(); toast(Object.keys(upd).length === 1 ? '1 turno copiado' : Object.keys(upd).length + ' turnos copiados'); } catch (e) { console.error(e); toast('No se pudo copiar.'); }
     }));
   }
   const uidGen = () => Math.random().toString(36).slice(2, 9);
@@ -1222,13 +1300,14 @@
     if ($('cfFotoDel')) $('cfFotoDel').addEventListener('click', async () => {
       if (!confirm('¿Quitar la foto de portada?')) return;
       const b = S.db.batch(); b.update(S.db.doc('campanas/' + c.id), { portada: S.del() }); b.delete(S.db.doc('fotos/' + fotoKey(c.id, c.portada)));
-      try { await b.commit(); toast('Foto quitada'); } catch (e) { console.error(e); toast('No se pudo quitar.'); }
+      try { await b.commit(); auditar(c.id, 'borro_foto', 'quitó la foto de portada'); toast('Foto quitada'); } catch (e) { console.error(e); toast('No se pudo quitar.'); }
     });
     $('cfSave').addEventListener('click', async () => {
       const d = { nombre: $('cfNom').value.trim(), ciudad: $('cfCiu').value.trim(), lugar: $('cfLug').value.trim(), desde: $('cfDes').value, hasta: $('cfHas').value, activa: $('cfAct').checked };
       if (!d.nombre || !d.desde || !d.hasta) { toast('Completá el nombre y las fechas.'); return; }
       if (d.hasta < d.desde) { toast('La fecha "hasta" es anterior a "desde".'); return; }
-      try { await S.db.doc('campanas/' + c.id).update(d); toast('Guardado'); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
+      const cam = []; if (d.nombre !== c.nombre) cam.push(`nombre ("${c.nombre}" → "${d.nombre}")`); if (d.ciudad !== (c.ciudad || '')) cam.push(`ciudad (${c.ciudad || '—'} → ${d.ciudad})`); if (d.lugar !== (c.lugar || '')) cam.push('lugar'); if (d.desde !== c.desde || d.hasta !== c.hasta) cam.push(`fechas (${c.desde} a ${c.hasta} → ${d.desde} a ${d.hasta})`); if (d.activa !== (c.activa !== false)) cam.push(d.activa ? 'la hizo visible' : 'la ocultó');
+      try { await S.db.doc('campanas/' + c.id).update(d); if (cam.length) auditar(c.id, 'cambio_campana', 'cambió los datos de la campaña: ' + cam.join(', ')); toast('Guardado'); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
     });
   }
   /* ---------- Mapa para marcar un punto (Leaflet + OpenStreetMap; buscador y direcciones: Nominatim) ---------- */
@@ -1429,7 +1508,7 @@
       st.borrar.forEach(f => b.delete(S.db.doc('fotos/' + fotoKey(c.id, f))));
       b.update(S.db.doc('campanas/' + c.id), { ['puntos.' + pid]: d });
       const btn = q('#ptOk'); btn.disabled = true; btn.textContent = 'Guardando…';
-      try { await b.commit(); ov.remove(); toast('Punto guardado'); }
+      try { await b.commit(); auditar(c.id, pidIn ? 'cambio_punto' : 'creo_punto', (pidIn ? 'cambió el punto ' : 'creó el punto ') + d.nombre + (st.borrar.length ? ` (quitó ${st.borrar.length} foto${st.borrar.length === 1 ? '' : 's'})` : '')); ov.remove(); toast('Punto guardado'); }
       catch (e) { console.error(e); btn.disabled = false; btn.textContent = 'Guardar'; toast('No se pudo guardar. Probá de nuevo.'); }
     });
     if (pidIn) q('#ptDel').addEventListener('click', async () => {
@@ -1437,9 +1516,10 @@
       if (!confirm(usados ? `Este punto tiene ${usados} turno(s). Se borran también. ¿Seguir?` : '¿Borrar este punto?')) return;
       const upd = { ['puntos.' + pid]: S.del() };
       Object.keys(c.turnos || {}).forEach(tid => { if (c.turnos[tid].punto === pid) upd['turnos.' + tid] = S.del(); });
-      const b = S.db.batch(); b.update(S.db.doc('campanas/' + c.id), upd);
-      (p.fotos || []).forEach(f => b.delete(S.db.doc('fotos/' + fotoKey(c.id, f))));
-      try { await b.commit(); ov.remove(); toast('Punto borrado'); } catch (e) { toast('No se pudo borrar.'); }
+      const antes = { punto: JSON.parse(JSON.stringify(c.puntos[pid])), turnos: {} };
+      Object.keys(c.turnos || {}).forEach(tid => { if (c.turnos[tid].punto === pid) antes.turnos[tid] = JSON.parse(JSON.stringify(c.turnos[tid])); });
+      // las fotos se conservan para poder restaurar el punto desde el historial
+      try { await S.db.doc('campanas/' + c.id).update(upd); auditar(c.id, 'borro_punto', `borró el punto ${c.puntos[pid].nombre}${usados ? ` y sus ${usados} turno${usados === 1 ? '' : 's'}` : ''}`, { antes, ref: 'punto:' + pid }); ov.remove(); toast('Punto borrado'); } catch (e) { toast('No se pudo borrar.'); }
     });
   }
   function editarTurno(c, tid, pto) {
@@ -1474,9 +1554,16 @@
         let n = 0;
         while (a + dur <= fin && n < 12) { upd['turnos.t' + uidGen()] = Object.assign({}, d, { desde: toHH(a), hasta: toHH(a + dur) }); a += dur; n++; }
       }
-      try { await S.db.doc('campanas/' + c.id).update(upd); ov.remove(); toast(Object.keys(upd).length > 1 ? `${Object.keys(upd).length} turnos creados` : 'Turno guardado'); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
+      const pn = (c.puntos[d.punto] || {}).nombre || '';
+      const at = tid ? (t0 => `cambió el turno ${tTxt(c, t0)} (${dTxt(t0.dias)}) → ${fmtHora(d.desde)}–${fmtHora(d.hasta)} del ${pn} (${dTxt(d.dias)})`)(c.turnos[tid]) : `creó ${Object.keys(upd).length === 1 ? 'el turno' : Object.keys(upd).length + ' turnos'} ${Object.values(upd).map(x => fmtHora(x.desde) + '–' + fmtHora(x.hasta)).join(', ')} del ${pn} (${dTxt(d.dias)})`;
+      const ex = tid ? { antes: JSON.parse(JSON.stringify(c.turnos[tid])), ref: 'turno:' + tid } : null;
+      try { await S.db.doc('campanas/' + c.id).update(upd); auditar(c.id, tid ? 'cambio_turno' : 'creo_turno', at, ex); ov.remove(); toast(Object.keys(upd).length > 1 ? `${Object.keys(upd).length} turnos creados` : 'Turno guardado'); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
     });
-    if (tid) q('#tuDel').addEventListener('click', async () => { if (!confirm('¿Borrar este turno? Los pedidos que ya tenga quedan en la lista.')) return; if (await guardarCampo(c, 'turnos.' + tid, S.del(), 'Turno borrado')) ov.remove(); });
+    if (tid) q('#tuDel').addEventListener('click', async () => {
+      if (!confirm('¿Borrar este turno? Los pedidos que ya tenga quedan en la lista.')) return;
+      const antes = JSON.parse(JSON.stringify(c.turnos[tid])), n = Object.values(S.coord.pedidos || {}).filter(p => p.tid === tid && p.fecha >= hoy() && (p.estado === 'confirmado' || p.estado === 'pendiente')).length;
+      if (await guardarCampo(c, 'turnos.' + tid, S.del(), 'Turno borrado')) { auditar(c.id, 'borro_turno', `borró el turno ${tTxt(c, antes)} (${dTxt(antes.dias)})${n ? ` — tenía ${n} anotado${n === 1 ? '' : 's'} por delante` : ''}`, { antes, ref: 'turno:' + tid }); ov.remove(); }
+    });
   }
 
   /* ---------- Administración (provincial) ---------- */
@@ -1490,24 +1577,28 @@
     h += `</div><div class="sec">Congregaciones</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Una por renglón, con la ciudad: "San Agustín (Paraná)". Es la lista que eligen los publicadores al pedir un turno.</p><div class="fld"><textarea id="adCongs" rows="8">${esc((S.publico.congregaciones || []).join('\n'))}</textarea></div><button type="button" class="btn" id="adCongsOk">Guardar lista</button></div>`;
     h += `<div class="sec">Administradores</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Pueden crear campañas y elegir sus coordinadores. Un email por renglón.</p><div class="fld"><textarea id="adAdm" rows="3">${esc(S.admins.join('\n'))}</textarea></div><button type="button" class="btn" id="adAdmOk">Guardar</button></div>`;
     h += `<div class="sec">Inicio</div><div class="card" style="padding:12px 13px;"><label class="ck" style="margin:0 2px"><input type="checkbox" id="adMapa"${S.publico.mapa !== false ? ' checked' : ''}> <span><b>Mostrar el mapa en el Inicio</b><br>Debajo de "Campañas" se puede elegir Lista o Mapa. Si lo apagás, todos ven solo la lista.</span></label></div>`;
+    h += `<div class="sec">Historial de cambios</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Quién creó, cambió o borró algo, en todas las campañas y en esta configuración, y cuándo. Lo borrado se puede restaurar desde ahí.</p><button type="button" class="sbtn pri" data-histgen>${I('clock', 'width:15px;height:15px')}Ver el historial</button></div>`;
     h += `<div class="sec">Equipo de soporte</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Ven los reportes de problemas y los errores de la página. No cambian campañas ni ven los pedidos. Un email por renglón.</p><div class="fld"><textarea id="adSop" rows="3">${esc(S.soporteEmails.join('\n'))}</textarea></div><button type="button" class="btn" id="adSopOk">Guardar</button></div>`;
     $('app').innerHTML = h;
     $('adMapa').addEventListener('change', async (e) => {
       const on = e.target.checked;
-      try { await S.db.doc('config/publico').set({ mapa: on }, { merge: true }); toast(on ? 'El mapa se muestra en el Inicio' : 'El mapa quedó apagado'); } catch (er) { e.target.checked = !on; toast('No se pudo guardar.'); }
+      try { await S.db.doc('config/publico').set({ mapa: on }, { merge: true }); auditar('', 'config', on ? 'prendió el mapa del Inicio' : 'apagó el mapa del Inicio'); toast(on ? 'El mapa se muestra en el Inicio' : 'El mapa quedó apagado'); } catch (er) { e.target.checked = !on; toast('No se pudo guardar.'); }
     });
     $('adSopOk').addEventListener('click', async () => {
       const lista = [...new Set($('adSop').value.split('\n').map(x => x.trim().toLowerCase()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))];
-      try { await S.db.doc('config/soporte').set({ emails: lista }); S.soporteEmails = lista; toast('Equipo de soporte guardado'); renderAdmin(); } catch (e) { toast('No se pudo guardar.'); }
+      const sa = S.soporteEmails || [];
+      try { await S.db.doc('config/soporte').set({ emails: lista }); auditar('', 'config', 'cambió el equipo de soporte' + difTxt(sa, lista)); S.soporteEmails = lista; toast('Equipo de soporte guardado'); renderAdmin(); } catch (e) { toast('No se pudo guardar.'); }
     });
     $('adCongsOk').addEventListener('click', async () => {
       const lista = [...new Set($('adCongs').value.split('\n').map(s => s.trim()).filter(Boolean))];
-      try { await S.db.doc('config/publico').set({ congregaciones: lista }, { merge: true }); toast('Lista guardada'); } catch (e) { toast('No se pudo guardar.'); }
+      const ca = S.publico.congregaciones || [];
+      try { await S.db.doc('config/publico').set({ congregaciones: lista }, { merge: true }); auditar('', 'config', 'cambió la lista de congregaciones' + difTxt(ca, lista)); toast('Lista guardada'); } catch (e) { toast('No se pudo guardar.'); }
     });
     $('adAdmOk').addEventListener('click', async () => {
       const lista = [...new Set($('adAdm').value.split('\n').map(s => s.trim().toLowerCase()).filter(s => /@/.test(s)))];
       if (!lista.includes(S.user.email.toLowerCase()) && !confirm('No estás en la lista: vas a dejar de ser administrador. ¿Seguir?')) return;
-      try { await S.db.doc('config/admins').set({ emails: lista }); S.admins = lista; toast('Guardado'); } catch (e) { toast('No se pudo guardar.'); }
+      const aa = S.admins || [];
+      try { await S.db.doc('config/admins').set({ emails: lista }); auditar('', 'config', 'cambió los administradores' + difTxt(aa, lista)); S.admins = lista; toast('Guardado'); } catch (e) { toast('No se pudo guardar.'); }
     });
     // Coordinadores de cada campaña (solo los ven los administradores)
     const faltan = cs.filter(c => !(c.id in S.coordEmails));
@@ -1526,7 +1617,7 @@
         creada: new Date().toISOString() };
       if (!d.nombre || !d.ciudad || !d.desde || !d.hasta || d.hasta < d.desde) { toast('Completá nombre, ciudad y fechas.'); return; }
       const slug = (d.ciudad + '-' + d.nombre).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + uidGen().slice(0, 3);
-      try { await S.db.doc('campanas/' + slug).set(d); ov.remove(); toast('Campaña creada'); S.coord.tab = 'config'; go('#/coord/' + slug); } catch (e) { console.error(e); toast('No se pudo crear.'); }
+      try { await S.db.doc('campanas/' + slug).set(d); auditar(slug, 'creo_campana', `creó la campaña ${d.nombre} (${d.ciudad})`); ov.remove(); toast('Campaña creada'); S.coord.tab = 'config'; go('#/coord/' + slug); } catch (e) { console.error(e); toast('No se pudo crear.'); }
     });
   }
   function editarCoordinadores(cid) {
@@ -1540,7 +1631,7 @@
       const arr = window.__ppamMock ? window.__ppamMock.arr : firebase.firestore.FieldValue;
       lista.filter(e => !antes.includes(e)).forEach(e => batch.set(S.db.doc('roles/' + e), { campanas: arr.arrayUnion(cid) }, { merge: true }));
       antes.filter(e => !lista.includes(e)).forEach(e => batch.set(S.db.doc('roles/' + e), { campanas: arr.arrayRemove(cid) }, { merge: true }));
-      try { await batch.commit(); S.coordEmails[cid] = lista; ov.remove(); toast('Coordinadores guardados'); renderAdmin(); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
+      try { await batch.commit(); auditar(cid, 'coordinadores', 'cambió los coordinadores' + difTxt(antes, lista)); S.coordEmails[cid] = lista; ov.remove(); toast('Coordinadores guardados'); renderAdmin(); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
     });
   }
 
@@ -1992,6 +2083,9 @@
     if (ds.turno !== undefined) { editarTurno(S.campanas[S.route.cid], ds.turno || null, ds.tpto); return; }
     if (ds.cph) { copiarHorarios(S.campanas[S.route.cid], ds.cph); return; }
     if (ds.aj) { S.coord.aj = ds.aj; renderCoord(); return; }
+    if (ds.hf && !t.closest('.hgov')) { S.audF = ds.hf; renderCoord(); return; }
+    if (ds.restaurar && !t.closest('.hgov')) { restaurar(ds.restaurar); return; }
+    if (ds.histgen !== undefined) { S.audF = 'todo'; abrirHistorialGeneral(); return; }
     if (ds.nueva !== undefined) { nuevaCampana(); return; }
     if (ds.coords) { editarCoordinadores(ds.coords); return; }
   });

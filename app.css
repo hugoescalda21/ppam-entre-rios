@@ -741,3 +741,19 @@ a.btn { display: flex; align-items: center; justify-content: center; gap: 8px; t
 .bsr .st.lib { color: var(--ok); }
 .bsr:disabled { opacity: .5; cursor: default; }
 .det .btn.inv { margin-top: 12px; }
+
+/* ---------- Historial (auditoría) ---------- */
+.seg2.hf { margin: 10px 0 10px; }
+.seg2.hf button { font-size: 12.5px; padding: 7px 10px; }
+.hnote { margin: 10px 4px 0; }
+.card.hist { padding: 2px 0; }
+.hrow { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-top: 1px solid var(--line2); }
+.hrow:first-child { border-top: none; }
+.hrow .hic { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; background: var(--pri-bg); color: var(--pri); }
+.hrow.del .hic { background: var(--bad-bg); color: var(--bad); }
+.hrow .htx { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.hrow .htx b { font-weight: 600; }
+.hrow .htx small { display: block; font-size: 11.5px; color: var(--ink3); margin-top: 2px; }
+.hrow .htx .ok { color: var(--ok); font-weight: 600; }
+.hrow .sbtn { padding: 6px 10px; font-size: 12.5px; gap: 4px; }
+.seg2.aj button { font-size: 13px; }

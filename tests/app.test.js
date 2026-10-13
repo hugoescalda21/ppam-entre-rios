@@ -51,15 +51,20 @@ function mock(seed, users) {
     delete: async () => { ops.delete(p); window.__writes.push(['delete', p]); notify(); },
     onSnapshot: (cb) => { const f = () => cb(snap(p)); listeners.add(f); f(); return () => listeners.delete(f); }
   });
-  const col = (p, filters) => ({
-    doc: (id) => doc(p + '/' + id),
-    where: (f, op, v) => col(p, [...(filters || []), [f, v]]),
-    get: async () => { const docs = Object.keys(store).filter(k => k.startsWith(p + '/') && !k.slice(p.length + 1).includes('/') && (filters || []).every(([ff, v]) => store[k][ff] === v)).map(snap); return { docs, size: docs.length, forEach: (fn) => docs.forEach(fn) }; },
-    onSnapshot: (cb, err) => {
-      const f = () => { const docs = Object.keys(store).filter(k => k.startsWith(p + '/') && !k.slice(p.length + 1).includes('/') && (filters || []).every(([ff, v]) => store[k][ff] === v)).map(snap); cb({ docs, forEach: (fn) => docs.forEach(fn) }); };
-      listeners.add(f); f(); return () => listeners.delete(f);
-    }
-  });
+  const col = (p, filters, o) => {
+    const lista = () => { let ks = Object.keys(store).filter(k => k.startsWith(p + '/') && !k.slice(p.length + 1).includes('/') && (filters || []).every(([ff, v]) => store[k][ff] === v)).sort(); if (o && o.desc) ks.reverse(); if (o && o.lim) ks = ks.slice(0, o.lim); return ks.map(snap); };
+    return {
+      doc: (id) => doc(p + '/' + id),
+      where: (f, op, v) => col(p, [...(filters || []), [f, v]], o),
+      orderBy: (f, dir) => col(p, filters, Object.assign({}, o, { desc: dir === 'desc' })),
+      limit: (n) => col(p, filters, Object.assign({}, o, { lim: n })),
+      get: async () => { const docs = lista(); return { docs, size: docs.length, forEach: (fn) => docs.forEach(fn) }; },
+      onSnapshot: (cb, err) => {
+        const f = () => { const docs = lista(); cb({ docs, forEach: (fn) => docs.forEach(fn) }); };
+        listeners.add(f); f(); return () => listeners.delete(f);
+      }
+    };
+  };
   const db = {
     doc, collection: (p) => col(p),
     batch: () => { const q = []; return { set: (r, d, o) => q.push(() => ops.set(r.path, d, o)), update: (r, d) => q.push(() => ops.update(r.path, d)), delete: (r) => q.push(() => ops.delete(r.path)), commit: async () => { q.forEach(f => f()); window.__writes.push(['batch', q.length]); notify(); } }; }
@@ -157,6 +162,7 @@ const SEED = {
   await p.click('#cxOk'); await p.waitForTimeout(200);
   const st2 = await p.evaluate(() => ({ cupo: window.__store['cupos/parana-terminal__2026-10-03__t3'], ped: window.__store['pedidos/parana-terminal__2026-10-03__t3__u-ana'] }));
   check('cancelar libera el lugar y borra sus datos', !st2.ped && st2.cupo && !('u-ana' in st2.cupo.ocupados), st2);
+  check('la cancelación queda en el historial (firmada por quien canceló)', await p.evaluate(() => Object.values(window.__store).some(d => d && d.tipo === 'cancelo' && d.por === 'ana@x.com' && d.cid === 'parana-terminal' && /canceló su turno: Ana Paz · Sáb 3\/10 16–18 · Hall central/.test(d.texto))));
   check('sin botón "Coordinación" para un publicador', await p.evaluate(() => document.getElementById('coordBtn').classList.contains('hidden')));
   check('sin errores', p.errs.length === 0, p.errs);
   // Vuelve a pedir para que el coordinador lo vea
@@ -312,6 +318,20 @@ const SEED = {
   c.once('dialog', d => d.accept());
   await c.click(`[data-turno="${dupId}"]`); await c.waitForTimeout(80); await c.click('#tuDel'); await c.waitForTimeout(150);
   check('al borrar el repetido desaparece el aviso', !(await c.$('#avRep')), await text(c, '#app'));
+  await c.click('[data-aj="hist"]'); await c.waitForTimeout(150);
+  const hi = await text(c, '.card.hist');
+  check('Historial: quién borró el turno, qué y cuándo', /coord@x\.com borró el turno 14–16 del Salida Av\. Ramírez \(Lun, Mar, Mié, Jue, Vie, Sáb\)\s*(recién|hace \d+ min)\s*Restaurar/.test(hi) && /coord@x\.com creó 3 turnos 14–16, 16–18, 18–20 del Salida Av\. Ramírez/.test(hi) && /coord@x\.com creó el punto Salida Av\. Ramírez/.test(hi), hi.slice(0, 500));
+  const lin = await c.evaluate(() => Object.values(window.__store).filter(d => d && d.tipo === 'borro_turno').map(d => ({ por: d.por, uid: d.uid, cid: d.cid, ref: d.ref, antes: !!d.antes, at: typeof d.at })));
+  check('la línea queda firmada, con la campaña y lo que había antes', lin.length === 1 && lin[0].por === 'coord@x.com' && lin[0].cid === 'parana-terminal' && /^turno:/.test(lin[0].ref) && lin[0].antes, lin);
+  await c.click('[data-hf="borr"]'); await c.waitForTimeout(80);
+  check('filtro "Solo borrados y quitados"', /borró el turno/.test(await text(c, '.card.hist')) && !/creó/.test(await text(c, '.card.hist')));
+  await c.click('[data-hf="todo"]'); await c.waitForTimeout(50);
+  await c.click('.card.hist [data-restaurar]'); await c.waitForTimeout(250);
+  const rest = await c.evaluate((id) => !!window.__store['campanas/parana-terminal'].turnos[id], dupId);
+  check('"Restaurar" devuelve el turno borrado y queda anotado', rest && /coord@x\.com restauró el turno 14–16 del Salida Av\. Ramírez/.test(await text(c, '.card.hist')) && /restaurado/.test(await text(c, '.card.hist')) && !(await c.$('.card.hist [data-restaurar]')), await text(c, '.card.hist'));
+  await c.click('[data-aj="puntos"]'); await c.waitForTimeout(100);
+  c.once('dialog', d => d.accept());
+  await c.click(`[data-turno="${dupId}"]`); await c.waitForTimeout(80); await c.click('#tuDel'); await c.waitForTimeout(150);
   const salida = await c.evaluate(() => { const cp = window.__store['campanas/parana-terminal']; return Object.keys(cp.puntos).find(k => cp.puntos[k].nombre === 'Salida Av. Ramírez'); });
   await c.click(`[data-tpto="${salida}"]`); await c.waitForTimeout(80);
   check('"+ Turno" de un punto: viene elegido y sigue al último (20 a 22, mismos días)', await c.evaluate((pid) => document.querySelector('#tuPto').value === pid && document.querySelector('#tuDes').value === '20:00' && document.querySelector('#tuHas').value === '22:00' && [...document.querySelectorAll('.wd input:checked')].map(x => x.value).join() === '1,2,3,4,5,6', salida));
@@ -452,6 +472,12 @@ const SEED = {
   check('nombra coordinadores (email en minúscula, descarta lo que no es email) y les da el rol', JSON.stringify(r.co.emails) === '["coord@x.com","nuevo@x.com"]' && JSON.stringify(r.rol.campanas) === '["parana-terminal"]', r);
   await a.fill('#adCongs', 'San Agustín (Paraná)\nVilla Urquiza (Paraná)\n\nSan Agustín (Paraná)'); await a.click('#adCongsOk'); await a.waitForTimeout(150);
   check('guarda la lista de congregaciones sin repetidos', JSON.stringify(await a.evaluate(() => window.__store['config/publico'].congregaciones)) === '["San Agustín (Paraná)","Villa Urquiza (Paraná)"]');
+  await a.click('[data-histgen]'); await a.waitForTimeout(250);
+  const hg = await text(a, '.hgov');
+  check('Administración: historial de todo, con campaña o "Configuración general"', /admin@x\.com cambió la lista de congregaciones: agregó Villa Urquiza \(Paraná\)[\s\S]*Configuración general/.test(hg) && /admin@x\.com cambió los coordinadores: agregó nuevo@x\.com\s*\S.*Terminal de ómnibus/.test(hg) && /admin@x\.com creó la campaña Plaza San Martín \(Gualeguaychú\)/.test(hg), hg.slice(0, 700));
+  await a.selectOption('#hgCamp', '__gen'); await a.waitForTimeout(100);
+  check('filtro por campaña: solo la configuración general', /congregaciones/.test(await text(a, '.hgov .card.hist')) && !/coordinadores/.test(await text(a, '.hgov .card.hist')));
+  await a.click('.hgov [data-cerrar]'); await a.waitForTimeout(80);
   check('sin errores (admin)', a.errs.length === 0, a.errs);
   console.log('\nMis turnos: hoy, próximos y realizados');
   {

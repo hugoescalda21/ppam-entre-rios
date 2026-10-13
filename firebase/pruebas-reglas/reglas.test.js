@@ -144,6 +144,26 @@ const section = (t) => console.log('\n' + t);
   await check('el coordinador la ve y la puede quitar', assertSucceeds(db(CO).doc(ped('t2', MU)).update({ estado: 'rechazado', actualizado: '2026-10-02T10:00:00Z', por: CO })));
   await check('un publicador NO ve ese pedido', assertFails(db(A).doc(ped('t2', MU)).get()));
 
+  section('Historial (auditoría)');
+  const TS = () => require('firebase/compat/app').default.firestore.FieldValue.serverTimestamp();
+  const linea = (email, extra) => Object.assign({ cid: CID, tipo: 'borro_turno', texto: 'borró el turno 8–10 del Andén 1', por: email, uid: uidOf(email), at: TS() }, extra || {});
+  await check('el coordinador anota una línea en su campaña', assertSucceeds(db(CO).doc('auditoria/a1').set(linea(CO, { antes: { punto: 'p1', desde: '08:00', hasta: '10:00', dias: [1] }, ref: 'turno:t9' }))));
+  await check('NO con una hora inventada', assertFails(db(CO).doc('auditoria/a2').set(linea(CO, { at: '2020-01-01T00:00:00Z' }))));
+  await check('NO firmada con el email de otro', assertFails(db(CO).doc('auditoria/a3').set(linea(CO, { por: 'otro@x.com' }))));
+  await check('NO en una campaña que no coordina', assertFails(db(CO2).doc('auditoria/a4').set(linea(CO2))));
+  await check('NO con campos de más', assertFails(db(CO).doc('auditoria/a5').set(linea(CO, { ip: '1.2.3.4' }))));
+  await check('un publicador anota que canceló su turno', assertSucceeds(db(A).doc('auditoria/a6').set(linea(A, { tipo: 'cancelo', texto: 'canceló su turno' }))));
+  await check('un publicador NO anota otra cosa', assertFails(db(A).doc('auditoria/a7').set(linea(A))));
+  await check('el administrador anota cambios generales', assertSucceeds(db(ADM).doc('auditoria/a8').set(linea(ADM, { cid: '', tipo: 'config', texto: 'cambió los administradores' }))));
+  await check('un coordinador NO anota cambios generales', assertFails(db(CO).doc('auditoria/a9').set(linea(CO, { cid: '', tipo: 'config', texto: 'x' }))));
+  await check('el coordinador ve el historial de su campaña', assertSucceeds(db(CO).collection('auditoria').where('cid', '==', CID).get()));
+  await check('otro coordinador NO lo ve', assertFails(db(CO2).collection('auditoria').where('cid', '==', CID).get()));
+  await check('un publicador NO ve el historial', assertFails(db(A).doc('auditoria/a6').get()));
+  await check('el administrador ve todo el historial', assertSucceeds(db(ADM).collection('auditoria').get()));
+  await check('nadie edita una línea', assertFails(db(ADM).doc('auditoria/a1').update({ texto: 'otra cosa' })));
+  await check('el coordinador NO borra líneas', assertFails(db(CO).doc('auditoria/a1').delete()));
+  await check('el administrador NO borra líneas recientes', assertFails(db(ADM).doc('auditoria/a1').delete()));
+
   section('Reportes y errores (soporte)');
   const SOP = 'sop@x.com';
   await env.withSecurityRulesDisabled(async (ctx) => { await ctx.firestore().doc('config/soporte').set({ emails: [SOP] }); });
