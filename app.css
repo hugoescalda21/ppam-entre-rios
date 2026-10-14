@@ -791,3 +791,10 @@ a.btn { display: flex; align-items: center; justify-content: center; gap: 8px; t
   .login, .sbtn.go, .sbtn.pri, .btn:not(.alt):not(.danger), .btn.p, .go, .grid4 > .pr, .grid4 > .pr .ic, .mf-top, .cal small, .inst .go, .mcc .go { color: #0B1A17 !important; }
   .day.on small, .day.on i { color: #4A5561; }
 }
+
+/* D1: sub-pestañas de Ajustes con otro estilo (subrayado) para que se lean como un nivel inferior */
+.seg2.aj { background: none; border-radius: 0; padding: 0; gap: 0; border-bottom: 1px solid var(--line); margin: 14px 0 4px; }
+.seg2.aj button { border-radius: 0; padding: 10px 6px 9px; color: var(--ink3); box-shadow: none; border-bottom: 2.5px solid transparent; margin-bottom: -1px; }
+.seg2.aj button.on { background: none; box-shadow: none; color: var(--ink); border-bottom-color: var(--pri); }
+/* D6: campaña sin foto */
+.cc .th.sinf { display: inline-flex; align-items: center; justify-content: center; color: rgba(255,255,255,.92); }

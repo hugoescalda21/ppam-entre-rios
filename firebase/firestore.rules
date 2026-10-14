@@ -17,7 +17,8 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function conSesion() { return request.auth != null && request.auth.token.email is string; }
+    // Solo cuentas de Google (si algún día se habilita otro método de ingreso, no hereda permisos por el email).
+    function conSesion() { return request.auth != null && request.auth.token.email is string && request.auth.token.firebase.sign_in_provider == 'google.com'; }
     function mail() { return request.auth.token.email.lower(); }
     function docAdmins() { return /databases/$(database)/documents/config/admins; }
     function esAdmin() {

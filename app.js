@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '36';
+  const VERSION = '37';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -74,6 +74,8 @@
     else {
       if (!window.PPAM_FIREBASE || !window.PPAM_FIREBASE.apiKey) { $('app').innerHTML = '<div class="empty">Falta configurar Firebase (firebase-config.js).</div>'; return; }
       firebase.initializeApp(window.PPAM_FIREBASE);
+      // App Check: solo la app de verdad puede escribir (se activa cuando firebase-config.js trae appCheckKey)
+      if (window.PPAM_FIREBASE.appCheckKey && firebase.appCheck) { try { firebase.appCheck().activate(new firebase.appCheck.ReCaptchaEnterpriseProvider(window.PPAM_FIREBASE.appCheckKey), true); } catch (e) { console.error('App Check', e); } }
       S.db = firebase.firestore(); S.auth = firebase.auth();
     }
     // Copia local de lo leído: abre más rápido, se ve sin señal y al volver pide solo lo que cambió (menos lecturas)
@@ -84,7 +86,7 @@
     S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin' || (S.route.name === 'home' && S.loaded)) render(); }, () => {});
     S.auth.onAuthStateChanged(onUser);
     setInterval(() => { if (S.route.name === 'home') renderHome(); }, 60000);
-    window.addEventListener('hashchange', () => { S.sucio = false; S.pendRender = false; readRoute(); render(); });
+    window.addEventListener('hashchange', () => { S.sucio = false; S.pendRender = false; readRoute(); if (S.route.name !== 'coord' && S.coord.unsub.length) { S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = null; S.coord.pedidos = {}; S.coord.cupos = {}; S.coord.aud = {}; } render(); });
     readRoute();
   }
   async function onUser(u) {
@@ -96,7 +98,7 @@
     Object.keys(S.pendUnsub).forEach(k => { if (typeof S.pendUnsub[k] === 'function') S.pendUnsub[k](); }); S.pendUnsub = {}; S.pend = {};
     S.bus = { t: 0, peds: {}, cupos: {}, cargando: null };
     if (u) {
-      S.misUnsub = S.db.collection('pedidos').where('uid', '==', u.uid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.mis = o; refrescar(render); }, () => {});
+      S.misUnsub = S.db.collection('pedidos').where('uid', '==', u.uid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.mis = o; S.misErr = false; refrescar(render); }, (e) => { console.error(e); registrarError('aviso', 'Mis turnos: ' + (e.code || e.message || e)); S.misErr = true; if (S.route.name === 'mis' || S.route.name === 'home') render(); });
       try { const r = await S.db.doc('roles/' + u.email.toLowerCase()).get(); S.coordDe = (r.exists && r.data().campanas) || []; } catch (e) { /* sin rol */ }
       try { const a = await S.db.doc('config/admins').get(); S.isAdmin = true; S.admins = (a.exists && a.data().emails) || []; } catch (e) { S.isAdmin = false; }
       try { const so = await S.db.doc('config/soporte').get(); S.soporteEmails = (so.exists && so.data().emails) || []; S.isSoporte = S.soporteEmails.includes(u.email.toLowerCase()); } catch (e) { S.isSoporte = false; }
@@ -162,7 +164,8 @@
   function campRango(c) {
     if (!c.desde || !c.hasta) return c.lugar || '';
     const a = parseIso(c.desde), b = parseIso(c.hasta);
-    return `Del ${a.getDate()} de ${MES[a.getMonth()]} al ${b.getDate()} de ${MES[b.getMonth()]}${c.lugar ? ' · ' + c.lugar : ''}`;
+    const r = a.getMonth() === b.getMonth() ? `${a.getDate()} al ${b.getDate()} de ${MES[b.getMonth()]}` : `${a.getDate()} de ${MES[a.getMonth()]} al ${b.getDate()} de ${MES[b.getMonth()]}`;
+    return r + (c.lugar ? ' · ' + c.lugar : '');
   }
   function rangoCorto(c) {
     if (!c.desde || !c.hasta) return '';
@@ -226,7 +229,7 @@
   const tieneLugar = (p) => tieneUbic(p) || !!(p.fotos || []).length || !!p.indicaciones || !!p.retiro;
   function comoLlegarUrl(p, c) {
     if (p.lat != null && p.lng != null) return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
-    if (p.mapsUrl) return p.mapsUrl;
+    if (p.mapsUrl && /^https:\/\/[^\s"'<>]+$/.test(p.mapsUrl)) return p.mapsUrl;
     if (p.direccion) return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(p.direccion + (c && c.ciudad ? ', ' + c.ciudad : '') + ', Entre Ríos');
     return '';
   }
@@ -318,7 +321,7 @@
     S.pendUnsub[cid] = S.db.collection('pedidos').where('cid', '==', cid).onSnapshot((qs) => {
       let n = 0; qs.forEach(d => { const x = d.data(); if (x.estado === 'pendiente' && x.fecha >= hoy()) n++; });
       S.pend[cid] = n; if (S.route.name === 'home') luego();
-    }, () => {});
+    }, (e) => { console.error(e); S.pendUnsub[cid] = null; });
   }
 
   /* ---------- Inicio ---------- */
@@ -414,7 +417,7 @@
       const cuando = dias[0] <= addDays(hoy(), 6) ? 'en los próximos 7 días' : 'la primera semana';
       cob = `<span class="meter"><i style="--w:${pct}%"></i><span class="num">${pct}%</span></span><small class="falt">${k.faltan > 0 ? `Faltan ${k.faltan} ${k.faltan === 1 ? 'lugar' : 'lugares'} ${cuando}` : `Todo cubierto ${cuando}`}</small>`;
     }
-    return `<button type="button" class="cc camp" data-go="#/c/${esc(c.id)}"><span class="th"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), pts.length + (pts.length === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small>${cob}</span>${I('chev')}</button>`;
+    return `<button type="button" class="cc camp" data-go="#/c/${esc(c.id)}"><span class="th${c.portada ? '' : ' sinf'}"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}>${c.portada ? '' : I(pts.some(p => p.tipo === 'carrito') ? 'cart' : pts.some(p => p.tipo === 'stand') ? 'stand' : 'pin', 'width:26px;height:26px')}</span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), pts.length + (pts.length === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small>${cob}</span>${I('chev')}</button>`;
   }
   const ESTADOS = { pendiente: 'Esperando confirmación', confirmado: 'Confirmado', rechazado: 'No confirmado' };
   function pedidoRow(p) {
@@ -632,16 +635,20 @@
       guardarPerfil({ nombre, apellido, congregacion, celular, acepto: true });
       const b = q('#pGo'); b.disabled = true; b.textContent = 'Enviando…';
       try {
-        await enviarPedido(c, t, S.dia, { nombre, apellido, congregacion, celular, nota });
+        await conTiempo(enviarPedido(c, t, S.dia, { nombre, apellido, congregacion, celular, nota }));
         ov.remove();
         const pid = cupoId(c.id, S.dia, t.id) + '__' + S.user.uid;
         sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>¡Listo! Te anotaste</h3><p>${esc(cap(fmtDia(S.dia)))} · ${esc(t.desde)} a ${esc(t.hasta)} · ${esc(p.nombre)}</p><p><span class="tag pendiente">Esperando confirmación</span><br>Cuando un coordinador lo confirme lo vas a ver en el inicio y en Mis turnos.</p></div><div class="okacts"><button type="button" class="sbtn" data-ics="${esc(pid)}">${I('cal', 'width:16px;height:16px')}Agendar</button><button type="button" class="sbtn" data-comp="${esc(pid)}">${I('share', 'width:16px;height:16px')}Compartir</button><button type="button" class="sbtn" data-invitar="${esc(pid)}">${I('chat', 'width:16px;height:16px')}Invitar</button></div><button type="button" class="btn" data-go="#/t/${esc(pid)}" data-cerrar>Ver mi turno</button><button type="button" class="btn alt" data-cerrar>Listo</button>`);
       } catch (e) {
+        if (e && e.code === 'sin-respuesta') { ov.remove(); sheet(`<h3>Todavía no hay respuesta</h3><p class="hint">Parece que hay poca señal. Tu pedido queda guardado en este celular y se manda solo cuando vuelva la conexión.</p><p class="hint">Fijate en <b>Mis turnos</b> en un rato: si aparece "Esperando confirmación", llegó bien.</p><button type="button" class="btn" data-cerrar>Entendido</button>`); return; }
         console.error(e); b.disabled = false; b.textContent = 'Anotarme en este turno';
         err(/permission|insufficient/i.test(e && (e.code || e.message) || '') ? 'Ese turno se acaba de completar. Elegí otro.' : 'No se pudo enviar. Revisá la conexión y probá de nuevo.');
       }
     });
   }
+  // Sin señal, Firebase guarda el envío y lo manda solo cuando vuelve la conexión: no esperamos para siempre
+  const SIN_RESPUESTA = 15000;
+  const conTiempo = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('sin respuesta'), { code: 'sin-respuesta' })), SIN_RESPUESTA))]);
   async function enviarPedido(c, t, fecha, datos) {
     const u = S.user, id = cupoId(c.id, fecha, t.id);
     const batch = S.db.batch();
@@ -666,8 +673,8 @@
       batch.delete(S.db.doc('pedidos/' + pid));
       // la línea del historial va en el mismo envío: las reglas solo la aceptan si de verdad se borra el pedido
       batch.set(S.db.collection('auditoria').doc(Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), { cid: p.cid, tipo: 'cancelo', texto: ('canceló su turno: ' + pTxt(c, p)).slice(0, 400), por: S.user.email.toLowerCase(), uid: S.user.uid, at: S.ahora(), ref: pid });
-      try { await batch.commit(); ov.remove(); toast('Turno cancelado'); if (S.route.name === 'turno') go('#/mis'); }
-      catch (e) { console.error(e); b.disabled = false; b.textContent = 'Sí, cancelar el turno'; toast('No se pudo cancelar. Probá de nuevo.'); }
+      try { await conTiempo(batch.commit()); ov.remove(); toast('Turno cancelado'); if (S.route.name === 'turno') go('#/mis'); }
+      catch (e) { if (e && e.code === 'sin-respuesta') { ov.remove(); toast('Hay poca señal: la cancelación se manda sola cuando vuelva la conexión.'); return; } console.error(e); b.disabled = false; b.textContent = 'Sí, cancelar el turno'; toast('No se pudo cancelar. Probá de nuevo.'); }
     });
   }
   S.del = () => (window.__ppamMock ? window.__ppamMock.del() : firebase.firestore.FieldValue.delete());
@@ -687,6 +694,7 @@
   /* ---------- Mis turnos ---------- */
   function renderMis() {
     if (!S.user) { $('app').innerHTML = '<div class="welcome"><h4>Tus turnos</h4><p>Ingresá con tu cuenta de Google para ver los turnos que pediste.</p><button type="button" class="btn p" data-login>Ingresar con Google</button></div>'; return; }
+    if (S.misErr && !Object.keys(S.mis).length) { $('app').innerHTML = '<div class="empty carga-err"><b>No pudimos cargar tus turnos.</b><br>Revisá la conexión y probá de nuevo.</div><button type="button" class="btn" id="misRe">Reintentar</button>'; $('misRe').addEventListener('click', () => { S.misErr = false; onUser(S.user); }); return; }
     const ahora = new Date(), m = ahora.getHours() * 60 + ahora.getMinutes(), h0 = hoy(), mes = h0.slice(0, 7);
     const hecho = (p) => p.fecha < h0 || (p.fecha === h0 && minutos(p.hasta) <= m);
     const all = Object.keys(S.mis).map(id => Object.assign({ id }, S.mis[id])).sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
@@ -812,7 +820,7 @@
     let total = 0, ocup = 0;
     dias.forEach(d => turnosDelDia(c, d).forEach(t => { total += cupoDe(c, t); ocup += Math.min(cupoDe(c, t), Object.values((S.coord.cupos[cupoId(c.id, d, t.id)] || {}).ocupados || {}).filter(v => v === 'c').length); }));
     const personas = new Set(peds.filter(p => p.estado === 'confirmado').map(p => p.uid)).size;
-    let h = `<div class="kpis"><div class="kpi hl"><b class="num">${pend.length}</b><span>por confirmar</span></div><div class="kpi"><b class="num">${total ? Math.round(ocup * 100 / total) : 0}%</b><span>cubierto</span></div><div class="kpi"><b class="num">${personas}</b><span>publicadores</span></div></div>`;
+    let h = `<div class="kpis"><div class="kpi hl"><b class="num">${pend.length}</b><span>por confirmar</span></div><div class="kpi"><b class="num">${total ? Math.round(ocup * 100 / total) : 0}%</b><span>cubierto de hoy al ${esc(c.hasta ? parseIso(c.hasta).getDate() + ' ' + MES[parseIso(c.hasta).getMonth()].slice(0, 3) : 'final')}</span></div><div class="kpi"><b class="num">${personas}</b><span>${personas === 1 ? 'hermano confirmado' : 'hermanos confirmados'}</span></div></div>`;
     const tabs = [['pedidos', 'Pedidos'], ['cobertura', 'Cobertura'], ['dia', 'Del día'], ['config', 'Ajustes']];
     h += `<div id="cTab"><div class="tabs">${tabs.map(([k, l]) => `<button type="button" class="${S.coord.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
     if (S.coord.tab === 'pedidos') h += coordPedidos(c, pend, peds);
@@ -896,10 +904,11 @@
     const cs = misCampanas().filter(c => !c.hasta || c.hasta >= isoOf(new Date(Date.now() - 30 * 864e5)));
     if (S.bus.cargando) return S.bus.cargando;
     if (Date.now() - S.bus.t < 5 * 60e3) return Promise.resolve();
+    S.bus.err = false;
     S.bus.cargando = Promise.all(cs.map(c => Promise.all([S.db.collection('pedidos').where('cid', '==', c.id).get(), S.db.collection('cupos').where('cid', '==', c.id).get()]).then(([qp, qc]) => {
       const a = []; qp.forEach(d => a.push(Object.assign({ id: d.id }, d.data()))); S.bus.peds[c.id] = a;
       const o = {}; qc.forEach(d => { o[d.id] = d.data(); }); S.bus.cupos[c.id] = o;
-    }).catch(e => console.error(e)))).then(() => { S.bus.t = Date.now(); S.bus.cargando = null; });
+    }).catch(e => { console.error(e); S.bus.err = true; }))).then(() => { if (!S.bus.err) S.bus.t = Date.now(); S.bus.cargando = null; });
     return S.bus.cargando;
   }
   const busPeds = (cid) => S.coord.cid === cid && Object.keys(S.coord.pedidos).length ? Object.keys(S.coord.pedidos).map(id => Object.assign({ id }, S.coord.pedidos[id])) : (S.bus.peds[cid] || []);
@@ -980,7 +989,7 @@
       const q = inp.value;
       if (q.trim().length >= 2) { atajo = null; res.innerHTML = busResultados(q); return; }
       const pend = misCampanas().reduce((a, c) => a + busPeds(c.id).filter(p => p.estado === 'pendiente' && p.fecha >= hoy()).length, 0), rec = busRecientes();
-      res.innerHTML = `<div class="bsch"><button type="button" data-bsat="pend" class="${atajo === 'pend' ? 'on' : ''}">Por confirmar${pend ? ` <b>${pend}</b>` : ''}</button><button type="button" data-bsat="hoy" class="${atajo === 'hoy' ? 'on' : ''}">Faltan hoy</button><button type="button" data-bsat="man" class="${atajo === 'man' ? 'on' : ''}">Faltan mañana</button></div>` +
+      res.innerHTML = `<div class="bsch"><button type="button" data-bsat="pend" class="${atajo === 'pend' ? 'on' : ''}">Por confirmar${pend ? ` <b>${pend}</b>` : ''}</button><button type="button" data-bsat="hoy" class="${atajo === 'hoy' ? 'on' : ''}">Faltan hoy</button><button type="button" data-bsat="man" class="${atajo === 'man' ? 'on' : ''}">Faltan mañana</button></div>` + (S.bus.err ? '<div class="bs0 err">No se pudo cargar todo: algunos resultados pueden faltar. Cerrá y abrí la lupa para reintentar.</div>' : '') +
         (atajo ? busAtajo(atajo) : (rec.length ? `<div class="bsg">Búsquedas recientes</div>${rec.map(r => `<button type="button" class="bsrec" data-bsrec="${esc(r)}">${I('clock', 'width:15px;height:15px')}${esc(r)}</button>`).join('')}` : '<div class="bs0">Escribí un nombre, un celular, un punto, una ciudad, un horario (8:30) o un día (sábado).</div>'));
     };
     pinta(); setTimeout(() => inp.focus(), 50);
@@ -2250,5 +2259,11 @@
       intentar();
     });
   }
-  init();
+  // Si hay clave de App Check, primero se carga su parte del SDK (si falla la carga, la app sigue igual)
+  (function arrancar() {
+    const k = window.PPAM_FIREBASE && window.PPAM_FIREBASE.appCheckKey;
+    if (!k || window.__ppamMock || !window.firebase) return init();
+    const sc = document.createElement('script'); sc.src = 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check-compat.js';
+    sc.onload = sc.onerror = () => init(); document.head.appendChild(sc);
+  })();
 })();

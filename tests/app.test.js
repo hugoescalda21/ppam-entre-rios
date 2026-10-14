@@ -130,7 +130,7 @@ const SEED = {
   check('el contador de campañas sigue al filtro por ciudad', /1\s*campaña activa en Concordia/.test(await text(p, '#app')), await text(p, '#app'));
   await p.selectOption('#fCiudad', 'todas'); await p.waitForTimeout(50);
   await p.click('[data-go="#/c/parana-terminal"]'); await p.waitForTimeout(150);
-  check('encabezado con la campaña', /Terminal de ómnibus/.test(await text(p, '#tbTitle')) && /Del 1 de octubre al 31 de octubre/.test(await text(p, '#tbSub')));
+  check('encabezado con la campaña', /Terminal de ómnibus/.test(await text(p, '#tbTitle')) && /^1 al 31 de octubre/.test(await text(p, '#tbSub')));
   let camp = await text(p, '#app');
   check('turnos agrupados por punto, con detalle y lugares libres (el stand no tiene turnos el jueves)', /Andén 1\s*Frente a boleterías\s*1 libre\s*08:00/.test(camp) && !/Hall central/.test(camp), camp);
   check('resumen del día: puntos y lugares libres', /Jueves 1 de octubre\s*1 carrito · 1 lugar libre\s*Todos\s*Con lugar/.test(camp), camp);
@@ -839,7 +839,7 @@ const SEED = {
     check('los carritos van en orden por número (1, 2, 10)', await q.evaluate(() => [...document.querySelectorAll('.pc .pt .tx b')].map(x => x.textContent).join() === 'Carrito 1,Carrito 2,Carrito 10'));
     delete SEED['campanas/orden'];
   }
-  check('el service worker solo borra sus propias copias (ppam-…) y conserva las fotos', /ks\.filter\(k => k\.startsWith\('ppam-'\) && !k\.startsWith\('ppam-fotos'\) && k !== CACHE\)/.test(require('fs').readFileSync(path.resolve(__dirname, '..', 'service-worker.js'), 'utf8')));
+  check('el service worker solo borra sus propias copias (ppam-…) y conserva las fotos', /ks\.filter\(k => k\.startsWith\('ppam-'\) && !k\.startsWith\('ppam-fotos'\) && k !== SDK && k !== CACHE\)/.test(require('fs').readFileSync(path.resolve(__dirname, '..', 'service-worker.js'), 'utf8')));
   console.log('\nAccesibilidad (WCAG 2.2 AA) y ayudas');
   {
     const AXE = path.resolve(__dirname, '..', '..', 'axe', 'node_modules', 'axe-core', 'axe.min.js');
@@ -933,6 +933,48 @@ const SEED = {
     check('"Copiar horarios" con doble toque no duplica turnos', despT - antesT === 2, { antesT, despT });
     check('sin errores (tanda 1)', k.errs.length === 0, k.errs);
     delete SEED['campanas/terminada'];
+  }
+  console.log('\nTanda 2: diseño del coordinador, sin señal y avisos de error');
+  {
+    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '');
+    check('campaña sin foto: muestra el ícono del tipo de punto', await k.evaluate(() => [...document.querySelectorAll('.cc .th.sinf')].some(x => !!x.querySelector('svg'))));
+    await k.click('#userBtn'); await k.waitForTimeout(300); await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(300);
+    const kt = await text(k, '#app');
+    check('números del coordinador dicen el período y "hermanos confirmados"', /cubierto de hoy al 31 oct/i.test(kt) && /hermanos? confirmados?/i.test(kt) && !/publicadores/i.test(kt), kt.slice(0, 200));
+    await k.click('[data-tab="config"]'); await k.waitForTimeout(150);
+    check('las sub-pestañas de Ajustes se ven subrayadas (otro nivel)', await k.evaluate(() => { const b = document.querySelector('.seg2.aj button.on'); const cs = getComputedStyle(b); return cs.borderBottomStyle === 'solid' && parseFloat(cs.borderBottomWidth) >= 2 && getComputedStyle(document.querySelector('.seg2.aj')).backgroundColor === 'rgba(0, 0, 0, 0)'; }));
+    await k.evaluate(() => { location.hash = '#/'; }); await k.waitForTimeout(200);
+    check('al salir de Coordinación se cierran sus conexiones', await k.evaluate(() => window.__ppam.coord.unsub.length === 0 && window.__ppam.coord.cid === null));
+    check('sin errores (tanda 2, coordinador)', k.errs.length === 0, k.errs);
+
+    const u = await open([{ uid: 'u-beto', email: 'beto@x.com', displayName: 'Beto Ruiz' }], '');
+    await u.click('#userBtn'); await u.waitForTimeout(300); await u.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await u.waitForTimeout(300);
+    await u.click('[data-dia="2026-10-03"]'); await u.waitForTimeout(80); await u.click('[data-pedir="t3"]'); await u.waitForTimeout(100);
+    await u.selectOption('#pCong', 'San Agustín (Paraná)'); await u.fill('#pCel', '343 555-0000'); await u.check('#pOk');
+    await u.evaluate(() => { const db = window.__ppamMock.db, b0 = db.batch; db.batch = () => { const x = b0(); x.commit = () => new Promise(() => {}); return x; }; });
+    await u.click('#pGo'); await u.waitForTimeout(100);
+    await u.context().clock.fastForward(16000); await u.waitForTimeout(150);
+    const ut = await text(u, '.sheet');
+    check('sin señal: no queda colgado en "Enviando…", explica que se manda solo', /Todavía no hay respuesta[\s\S]*se manda solo[\s\S]*Mis turnos/.test(ut), ut);
+    check('sin errores (sin señal)', u.errs.length === 0, u.errs);
+
+    const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    await ctx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+    await ctx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await ctx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, ${JSON.stringify([{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }])})`);
+    await ctx.addInitScript(() => { const db = window.__ppamMock.db, c0 = db.collection; db.collection = (x) => { const c = c0(x); if (x !== 'pedidos') return c; const w0 = c.where; return Object.assign({}, c, { where: (f, op, v) => f === 'uid' ? { onSnapshot: (a, bb, cc) => { setTimeout(() => (typeof a === 'function' ? bb : cc)(Object.assign(new Error('x'), { code: 'unavailable' })), 0); return () => {}; } } : w0(f, op, v) }); }; });
+    const m = await ctx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
+    await m.goto(FILE); await m.waitForTimeout(200); await m.click('#userBtn'); await m.waitForTimeout(300);
+    await m.evaluate(() => { location.hash = '#/mis'; }); await m.waitForTimeout(200);
+    const mt = await text(m, '#app');
+    check('si no cargan Mis turnos, avisa y ofrece Reintentar (no dice "no tenés turnos")', /No pudimos cargar tus turnos/.test(mt) && !!(await m.$('#misRe')), mt.slice(0, 200));
+    check('sin errores (aviso de Mis turnos)', m.errs.length === 0, m.errs);
+  }
+  {
+    const src = require('fs').readFileSync(path.resolve(__dirname, '..', 'service-worker.js'), 'utf8');
+    check('el service worker guarda Firebase para abrir sin señal', /ppam-sdk-10\.13\.2/.test(src) && /firebasejs\/10\.13\.2/.test(src));
+    const appSrc = require('fs').readFileSync(path.resolve(__dirname, '..', 'app.js'), 'utf8');
+    check('el enlace de Maps solo se usa si empieza con https://', /p\.mapsUrl && \/\^https:/.test(appSrc));
   }
   console.log('\nCampaña corta: solo sus días');
   {

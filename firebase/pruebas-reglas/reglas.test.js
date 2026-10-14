@@ -23,7 +23,7 @@ const section = (t) => console.log('\n' + t);
 
 (async () => {
   const env = await initializeTestEnvironment({ projectId: 'demo-ppam', firestore: { rules: fs.readFileSync(path.join(__dirname, '..', 'firestore.rules'), 'utf8') } });
-  const db = (email) => email ? env.authenticatedContext(uidOf(email), { email }).firestore() : env.unauthenticatedContext().firestore();
+  const db = (email) => email ? env.authenticatedContext(uidOf(email), { email, firebase: { sign_in_provider: 'google.com' } }).firestore() : env.unauthenticatedContext().firestore();
   const TUR = { t1: { punto: 'p1', desde: '08:00', hasta: '10:00' }, t2: { punto: 'p2', desde: '10:00', hasta: '12:00' } };
   const datos = (email, tid, extra) => Object.assign({ cid: CID, fecha: F, tid, punto: TUR[tid].punto, desde: TUR[tid].desde, hasta: TUR[tid].hasta, uid: uidOf(email), email, nombre: 'Ana', apellido: 'Paz', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', estado: 'pendiente', creado: '2026-10-01T10:00:00Z' }, extra || {});
   async function pedir(email, tid, extra) {
@@ -44,6 +44,11 @@ const section = (t) => console.log('\n' + t);
       turnos: { t1: { punto: 'p1', desde: '08:00', hasta: '10:00', dias: [1] }, t2: { punto: 'p2', desde: '10:00', hasta: '12:00', dias: [1] } } });
     await f.doc('campanas/otra').set({ nombre: 'Otra', activa: true, puntos: {}, turnos: {} });
   });
+
+  section('0) Solo cuentas de Google');
+  const otroIngreso = env.authenticatedContext(uidOf(ADM), { email: ADM, firebase: { sign_in_provider: 'password' } }).firestore();
+  await check('con email y contraseña NO hereda permisos de administrador', assertFails(otroIngreso.doc('config/admins').get()));
+  await check('con email y contraseña NO pide turnos', assertFails(otroIngreso.doc('campanas/x').set({ nombre: 'X' })));
 
   section('1) Lo público');
   await check('sin sesión se ven las campañas', assertSucceeds(db(null).doc('campanas/' + CID).get()));

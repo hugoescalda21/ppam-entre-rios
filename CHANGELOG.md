@@ -2,6 +2,16 @@
 
 
 
+
+## Versión 37 — auditoría, tanda 2
+- Coordinación: las sub-pestañas de Ajustes (Campaña · Puntos y turnos · Historial) se ven subrayadas, como un nivel dentro de Ajustes.
+- Los números de arriba dicen "cubierto de hoy al 31 oct" y "hermanos confirmados".
+- Fechas más cortas: "1 al 31 de octubre".
+- Las campañas sin foto muestran el ícono del carrito o del stand.
+- Sin señal: la app guarda Firebase en el celular y abre igual; si un pedido o una cancelación no tiene respuesta en 15 segundos, avisa que se manda solo cuando vuelva la conexión.
+- Si no cargan Mis turnos, aparece "No pudimos cargar tus turnos" con Reintentar; la lupa avisa si faltan resultados.
+- Al salir de Coordinación se cierran sus conexiones a Firebase (menos lecturas).
+- Seguridad: las reglas aceptan solo cuentas de Google; el enlace de Google Maps se usa solo si empieza con https://; App Check listo para activar (falta la clave en firebase-config.js).
 ## Versión 36 — auditoría, tanda 1
 - Reglas: nadie puede ocupar un lugar sin dejar su pedido (antes se podía bloquear una campaña con cuentas descartables), ni pedir fuera de las fechas de la campaña.
 - Reglas: el punto y el horario del pedido tienen que ser los del turno; "creado" es una fecha corta.
