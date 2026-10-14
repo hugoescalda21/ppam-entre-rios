@@ -9,6 +9,12 @@
 
 
 
+## Versión 46 — nueva dirección
+
+- La página ahora está en **https://ppam-entre-rios.web.app** (Firebase Hosting). Se publica sola cada vez que se sube un cambio.
+- La dirección vieja (hugoescalda21.github.io/ppam-entre-rios) manda automáticamente a la nueva, con el mismo link: los enlaces ya compartidos siguen funcionando.
+- La vista previa al compartir por WhatsApp usa la dirección nueva.
+
 ## Versión 45 — "lugares libres" en vez de "faltan"
 
 - Tarjeta de campaña y ficha del mapa: "24 lugares libres en los próximos 7 días" (antes "Faltan 24 lugares…").

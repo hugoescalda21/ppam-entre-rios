@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- La página se mudó: la dirección vieja de GitHub manda a la nueva, con el mismo link. -->
+<script>if (/github\.io$/.test(location.hostname)) location.replace('https://ppam-entre-rios.web.app/' + location.search + location.hash);</script>
+<link rel="canonical" href="https://ppam-entre-rios.web.app/">
 <title>PPAM Entre Ríos</title>
 <meta name="description" content="Campañas de predicación pública metropolitana en Entre Ríos: horarios, puntos y turnos.">
 <!-- Vista previa al compartir el enlace (WhatsApp, Facebook, Telegram…) -->
@@ -10,8 +13,8 @@
 <meta property="og:site_name" content="PPAM Entre Ríos">
 <meta property="og:title" content="PPAM Entre Ríos · Sumate a un turno">
 <meta property="og:description" content="Campañas, puntos y horarios de predicación pública en toda la provincia. Elegí el tuyo y un coordinador te confirma.">
-<meta property="og:url" content="https://hugoescalda21.github.io/ppam-entre-rios/">
-<meta property="og:image" content="https://hugoescalda21.github.io/ppam-entre-rios/og-image.jpg">
+<meta property="og:url" content="https://ppam-entre-rios.web.app/">
+<meta property="og:image" content="https://ppam-entre-rios.web.app/og-image.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="PPAM Entre Ríos · Predicación pública">
@@ -26,11 +29,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@600;700&display=swap">
-<link rel="stylesheet" href="./app.css?v=45">
+<link rel="stylesheet" href="./app.css?v=46">
 <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
-<script defer src="./firebase-config.js?v=45"></script>
+<script defer src="./firebase-config.js?v=46"></script>
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -94,7 +97,7 @@
 
   <footer class="foot">
     <div class="foot-links"><button type="button" class="linkish" id="repBtn"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>Reportar un problema</button><span class="dot">·</span><button type="button" class="linkish" id="privBtn">Cómo se usan tus datos</button></div>
-    <div class="foot-ver" id="verTxt">Versión 45</div>
+    <div class="foot-ver" id="verTxt">Versión 46</div>
   </footer>
 
   <nav class="tabbar" id="tabbar" aria-label="Secciones">
@@ -105,6 +108,6 @@
   </nav>
 
   <div class="toast" id="toast" role="status"></div>
-  <script defer src="./app.js?v=45"></script>
+  <script defer src="./app.js?v=46"></script>
 </body>
 </html>
