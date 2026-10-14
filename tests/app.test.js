@@ -11,6 +11,8 @@ let ok = 0, bad = 0; const check = (l, c, x) => { if (c) { ok++; console.log('  
 
 // Firestore y Auth en memoria (lo mínimo que usa la app).
 function mock(seed, users) {
+  // la bienvenida y la guía del coordinador ya vistas (salvo en las pruebas que las revisan)
+  try { if (!window.__bvNueva) { localStorage.setItem('ppam-bienvenida', '1'); localStorage.setItem('ppam-guia-coord', '1'); } } catch (e) { /* nada */ }
   const store = JSON.parse(JSON.stringify(seed));
   const listeners = new Set();
   const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -95,10 +97,11 @@ const SEED = {
 
 (async () => {
   const b = await chromium.launch();
-  async function open(users, hash) {
+  async function open(users, hash, opts) {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
     await ctx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });   // miércoles 30 de septiembre
     await ctx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    if (opts && opts.nuevo) await ctx.addInitScript(() => { window.__bvNueva = true; });   // ver la bienvenida como alguien nuevo
     await ctx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, ${JSON.stringify(users)})`);
     const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
     await p.goto(FILE + (hash || '')); await p.waitForTimeout(300);
@@ -605,7 +608,7 @@ const SEED = {
       return { cx, m };
     };
     let { cx, m } = await abrir(seed, [], '#/c/parana-terminal');
-    check('al pie: "Reportar un problema" y la versión', /Reportar un problema\s*·\s*Cómo se usan tus datos\s*Versión \d+/.test(await text(m, '.foot')), await text(m, '.foot'));
+    check('al pie: "Reportar un problema", "¿Cómo funciona?" y la versión', /Reportar un problema\s*·\s*¿Cómo funciona\?\s*·\s*Cómo se usan tus datos\s*Versión \d+/.test(await text(m, '.foot')), await text(m, '.foot'));
     await m.evaluate(() => { window.dispatchEvent(new ErrorEvent('error', { message: 'Prueba de error', filename: 'https://x/app.js', lineno: 12 })); }); await m.waitForTimeout(150);
     let err = await m.evaluate(() => Object.entries(window.__store).filter(([k]) => k.startsWith('errores/') && k !== 'errores/viejo').map(([, v]) => v));
     check('un error de la página queda anotado solo, con pantalla, celular y versión (sin datos personales)', err.length === 1 && /Prueba de error/.test(err[0].msg) && err[0].pantalla === '#/c/parana-terminal' && /^\d+$/.test(err[0].ver) && err[0].disp && err[0].tipo === 'js' && Object.keys(err[0]).sort().join() === 'creado,disp,msg,pantalla,tipo,ver', err);
@@ -975,6 +978,35 @@ const SEED = {
     check('el service worker guarda Firebase para abrir sin señal', /ppam-sdk-10\.13\.2/.test(src) && /firebasejs\/10\.13\.2/.test(src));
     const appSrc = require('fs').readFileSync(path.resolve(__dirname, '..', 'app.js'), 'utf8');
     check('el enlace de Maps solo se usa si empieza con https://', /p\.mapsUrl && \/\^https:/.test(appSrc));
+  }
+  console.log('\nBienvenida (4 pasos con animación) y guía del coordinador');
+  {
+    const w = await open([], '', { nuevo: true }); await w.waitForTimeout(600);
+    const st = () => w.evaluate(() => { const o = document.querySelector('.ovbv'); return o ? { t: o.innerText, img: (o.querySelector('.bvan img') || {}).getAttribute ? o.querySelector('.bvan img').getAttribute('src') : '', fijo: (o.querySelector('.bvan source') || { getAttribute: () => '' }).getAttribute('srcset'), sal: !o.querySelector('#bvSal').classList.contains('oculto'), dlg: !!o.querySelector('[role="dialog"]') } : null; });
+    let s1 = await st();
+    check('la primera vez aparece la bienvenida: paso 1 de 4, elegir campaña, con animación', s1 && /Paso 1 de 4/i.test(s1.t) && /Elegí una campaña/.test(s1.t) && s1.img === 'img/bienvenida/paso1.webp' && s1.fijo === 'img/bienvenida/paso1-fijo.webp' && s1.dlg, s1);
+    for (let k = 0; k < 3; k++) { await w.click('#bvSig'); await w.waitForTimeout(80); }
+    const s4 = await st();
+    check('el último paso: el coordinador confirma, "Empezar" y sin "Saltear"', s4 && /Paso 4 de 4/i.test(s4.t) && /Un coordinador te confirma/.test(s4.t) && /Empezar/.test(s4.t) && !s4.sal && s4.img === 'img/bienvenida/paso4.webp', s4);
+    await w.click('#bvSig'); await w.waitForTimeout(100);
+    check('"Empezar" la cierra y queda marcada como vista', !(await st()) && await w.evaluate(() => localStorage.getItem('ppam-bienvenida') === '1'));
+    await w.reload(); await w.waitForTimeout(700);
+    check('no vuelve a aparecer', !(await st()));
+    await w.click('#comoBtn'); await w.waitForTimeout(150);
+    check('"¿Cómo funciona?" la vuelve a abrir', /Paso 1 de 4/i.test(((await st()) || {}).t || ''));
+    await w.click('#bvSal'); await w.waitForTimeout(100);
+    check('"Saltear" la cierra', !(await st()));
+    check('las 4 animaciones y sus imágenes fijas existen y pesan poco', [1, 2, 3, 4].every(k => ['', '-fijo'].every(x => { try { return fs.statSync(path.resolve(__dirname, '..', 'img/bienvenida/paso' + k + x + '.webp')).size < 70000; } catch (e) { return false; } })));
+    check('sin errores (bienvenida)', w.errs.length === 0, w.errs);
+    const dl = await open([], '#/c/parana-terminal', { nuevo: true }); await dl.waitForTimeout(600);
+    check('si entra por un enlace a una campaña, no aparece', !(await dl.$('.ovbv')));
+    const g = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal', { nuevo: true });
+    await g.evaluate(() => { try { localStorage.setItem('ppam-bienvenida', '1'); } catch (e) {} document.querySelectorAll('.ov').forEach(x => x.remove()); });
+    await g.click('#userBtn'); await g.waitForTimeout(300); await g.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await g.waitForTimeout(300);
+    check('la primera vez en Coordinación: tarjeta "Cómo se usa Coordinación"', /Cómo se usa Coordinación[\s\S]*Pedidos:[\s\S]*Del día:[\s\S]*lupa/i.test(await text(g, '#app')));
+    await g.click('[data-cguia]'); await g.waitForTimeout(150);
+    check('"Entendido" la cierra para siempre', !(await g.$('.cguia')) && await g.evaluate(() => localStorage.getItem('ppam-guia-coord') === '1'));
+    check('sin errores (guía del coordinador)', g.errs.length === 0, g.errs);
   }
   console.log('\nCampaña corta: solo sus días');
   {

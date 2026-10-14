@@ -5,6 +5,12 @@
 
 
 
+
+## Versión 40 — bienvenida
+- La primera vez que alguien abre el inicio aparece una bienvenida de 4 pasos (elegir campaña, día y horario, anotarse con Google, la confirmación), cada uno con una animación corta hecha con capturas reales. Se puede saltear y se vuelve a ver con "¿Cómo funciona?" al pie. No aparece si se entra por un enlace a una campaña o un turno.
+- Con "reducir movimiento" activado se ven imágenes fijas. Las animaciones (unos 140 KB en total) se cargan solo al abrir la bienvenida.
+- La primera vez en Coordinación, una tarjeta explica Pedidos, Del día y la lupa ("Entendido" la cierra).
+- Las animaciones se regeneran con tests/bienvenida/capturar.js y armar.py.
 ## Versión 39 — clave de App Check corregida
 - La clave de reCAPTCHA de la versión 38 tenía una letra de menos; ahora es la registrada en Firebase.
 ## Versión 38 — App Check activo (sin aplicar)

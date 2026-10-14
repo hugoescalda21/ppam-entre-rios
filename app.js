@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '39';
+  const VERSION = '40';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -81,7 +81,7 @@
     // Copia local de lo leído: abre más rápido, se ve sin señal y al volver pide solo lo que cambió (menos lecturas)
     try { if (S.db.enablePersistence) S.db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch (e) { /* navegador sin soporte */ }
     S.db.collection('campanas').onSnapshot((qs) => {
-      const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; const primera = !S.loaded; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); if (primera) render(); else refrescar(render);
+      const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; const primera = !S.loaded; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); if (primera) { render(); setTimeout(() => { if (S.route.name === 'home') bienvenida(); }, 400); } else refrescar(render);
     }, (e) => { console.error(e); if (S.loaded) return; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); $('app').innerHTML = '<div class="empty carga-err"><b>No pudimos cargar las campañas.</b><br>Revisá la conexión y probá de nuevo.</div><button type="button" class="btn" id="reintentar">Reintentar</button>'; $('reintentar').addEventListener('click', () => location.reload()); });
     S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin' || (S.route.name === 'home' && S.loaded)) render(); }, () => {});
     S.auth.onAuthStateChanged(onUser);
@@ -361,6 +361,41 @@
     let n = 0, mejor = null, max = 0;
     cs.forEach(c => { const ds = diasDe(c).filter(d => d <= addDays(hoy(), 6)); if (!ds.length) return; listenCC(c.id); const k = cobertura(c, ds); n += k.faltan; if (k.faltan > max) { max = k.faltan; mejor = c; } });
     return { n, mejor };
+  }
+  /* ---------- Bienvenida: 3 pasos, solo la primera vez (se vuelve a ver con "¿Cómo funciona?") ---------- */
+  const PASOS = [
+    { t: 'Elegí una campaña', d: 'En el inicio están las campañas de toda la provincia. Tocá la de tu ciudad.' },
+    { t: 'Elegí día y horario', d: 'Tocá un día y después un horario que tenga lugar.' },
+    { t: 'Anotate con tu cuenta de Google', d: 'Dejás tu nombre, congregación y celular. Solo los ven los coordinadores de esa campaña.' },
+    { t: 'Un coordinador te confirma', d: 'Lo ves en Mis turnos. Desde ahí lo agendás, ves cómo llegar o lo cancelás si no podés ir.' }
+  ];
+  function bienvenida(forzar) {
+    if (!forzar) { try { if (localStorage.getItem('ppam-bienvenida')) return; } catch (e) { return; } }
+    let i = 0;
+    const ov = sheet(`<div class="bv"><h3 class="sr">Cómo funciona</h3><div class="bvs" aria-live="polite"></div><div class="bvd" aria-hidden="true">${PASOS.map(() => '<i></i>').join('')}</div><button type="button" class="btn" id="bvSig">Siguiente</button><button type="button" class="btn alt" id="bvSal">Saltear</button></div>`);
+    ov.classList.add('ovbv');
+    const marcar = () => { try { localStorage.setItem('ppam-bienvenida', '1'); } catch (e) { /* nada */ } };
+    const pintar = () => {
+      const p = PASOS[i];
+      // animación corta hecha con capturas reales de la app; con "reducir movimiento" se muestra la imagen fija
+      ov.querySelector('.bvs').innerHTML = `<picture class="bvan"><source media="(prefers-reduced-motion: reduce)" srcset="img/bienvenida/paso${i + 1}-fijo.webp"><img src="img/bienvenida/paso${i + 1}.webp" width="390" height="560" alt=""></picture><small>Paso ${i + 1} de ${PASOS.length}</small><b>${esc(p.t)}</b><p>${esc(p.d)}</p>`;
+      ov.querySelectorAll('.bvd i').forEach((d, k) => d.classList.toggle('on', k === i));
+      ov.querySelector('#bvSig').textContent = i === PASOS.length - 1 ? 'Empezar' : 'Siguiente';
+      ov.querySelector('#bvSal').classList.toggle('oculto', i === PASOS.length - 1);
+    };
+    const cerrar = () => { marcar(); ov.remove(); };
+    ov.querySelector('#bvSig').addEventListener('click', () => { if (i < PASOS.length - 1) { i++; pintar(); } else cerrar(); });
+    ov.querySelector('#bvSal').addEventListener('click', cerrar);
+    let x0 = null; const box = ov.querySelector('.bv');
+    box.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+    box.addEventListener('touchend', (e) => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (dx < -40 && i < PASOS.length - 1) { i++; pintar(); } else if (dx > 40 && i > 0) { i--; pintar(); } });
+    ov.addEventListener('click', (e) => { if (e.target === ov) marcar(); });
+    pintar();
+    PASOS.forEach((_, k) => { if (k) { const im = new Image(); im.src = `img/bienvenida/paso${k + 1}.webp`; } });   // precarga los pasos siguientes
+  }
+  function guiaCoord() {
+    try { if (localStorage.getItem('ppam-guia-coord')) return ''; } catch (e) { return ''; }
+    return `<div class="cguia"><b>${I('star', 'width:16px;height:16px')}Cómo se usa Coordinación</b><ul><li><b>Pedidos:</b> confirmá o no a quien se anotó. Con el botón verde le escribís por WhatsApp.</li><li><b>Del día:</b> quién va a cada punto, y la lista para compartir con el grupo.</li><li><b>La lupa</b> (arriba): buscá un hermano, un punto o un turno, y anotá a alguien que no usa la app.</li></ul><button type="button" class="sbtn" data-cguia>Entendido</button></div>`;
   }
   function renderHome() {
     const list = Object.values(S.campanas).filter(c => c.activa !== false && (!c.hasta || c.hasta >= hoy()))
@@ -823,7 +858,7 @@
     let h = `<div class="kpis"><div class="kpi hl"><b class="num">${pend.length}</b><span>por confirmar</span></div><div class="kpi"><b class="num">${total ? Math.round(ocup * 100 / total) : 0}%</b><span>cubierto de hoy al ${esc(c.hasta ? parseIso(c.hasta).getDate() + ' ' + MES[parseIso(c.hasta).getMonth()].slice(0, 3) : 'final')}</span></div><div class="kpi"><b class="num">${personas}</b><span>${personas === 1 ? 'hermano confirmado' : 'hermanos confirmados'}</span></div></div>`;
     const tabs = [['pedidos', 'Pedidos'], ['cobertura', 'Cobertura'], ['dia', 'Del día'], ['config', 'Ajustes']];
     h += `<div id="cTab"><div class="tabs">${tabs.map(([k, l]) => `<button type="button" class="${S.coord.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
-    if (S.coord.tab === 'pedidos') h += coordPedidos(c, pend, peds);
+    if (S.coord.tab === 'pedidos') h += guiaCoord() + coordPedidos(c, pend, peds);
     else if (S.coord.tab === 'cobertura') h += coordCobertura(c, dias);
     else if (S.coord.tab === 'dia') h += coordDia(c, dias, peds);
     else h += coordConfig(c);
@@ -2192,6 +2227,8 @@
     }
     if (t.id === 'coordBtn') { go('#/coord'); return; }
     if (t.id === 'privBtn') { privacidad(); return; }
+    if (t.id === 'comoBtn') { bienvenida(true); return; }
+    if (t.closest('[data-cguia]')) { try { localStorage.setItem('ppam-guia-coord', '1'); } catch (e) { /* nada */ } renderCoord(); return; }
     if (ds.instalar !== undefined) { instalar(); return; }
     if (ds.vista) { S.vista = ds.vista; S.mapa.sel = null; try { localStorage.setItem('ppam-vista', ds.vista); } catch (er) { /* nada */ } renderHome(); return; }
     if (ds.cerca !== undefined) { cercaMio(); return; }
