@@ -8,5 +8,5 @@ window.PPAM_FIREBASE = {
   messagingSenderId: '156516840698',
   appId: '1:156516840698:web:f872386f6af9f98251c543',
   // App Check (reCAPTCHA Enterprise / Fraud Defense): clave pública del sitio, no es secreta
-  appCheckKey: '6Lc48e4tAAAAAiPb1QRh0_7VdfEo_AsNyxuiGaA'
+  appCheckKey: '6Lc48e4tAAAAAAiPb1QRh0_7VdfEo_AsNyxuiGaA'
 };

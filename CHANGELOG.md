@@ -4,6 +4,9 @@
 
 
 
+
+## Versión 39 — clave de App Check corregida
+- La clave de reCAPTCHA de la versión 38 tenía una letra de menos; ahora es la registrada en Firebase.
 ## Versión 38 — App Check activo (sin aplicar)
 - La app pide un token de App Check (reCAPTCHA Enterprise, invisible para el usuario) en cada sesión. Firebase todavía no lo exige: primero se miran las métricas unos días.
 ## Versión 37 — auditoría, tanda 2
