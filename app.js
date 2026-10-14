@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '35';
+  const VERSION = '36';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -58,6 +58,14 @@
   try { localStorage.removeItem('ppam-perfil'); } catch (e) { /* el formato viejo no sabía de quién era: se descarta */ }
   function perfil() { const k = perfilKey(); if (!k) return {}; try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } }
   function guardarPerfil(p) { const k = perfilKey(); if (!k) return; try { localStorage.setItem(k, JSON.stringify(p)); } catch (e) { /* nada */ } }
+  // Cerrar sesión también borra la copia local de Firebase (pedidos con nombres y celulares que vio un coordinador).
+  async function cerrarSesion() {
+    try { localStorage.removeItem('ppam-bus-rec'); } catch (e) { /* nada */ }
+    await S.auth.signOut();
+    if (window.__ppamMock) { go('#/'); return; }
+    try { await S.db.terminate(); await S.db.clearPersistence(); } catch (e) { /* otra pestaña abierta: se borra la próxima vez */ }
+    location.replace(location.pathname + '#/'); location.reload();
+  }
   function borrarDatosLocales() { try { Object.keys(localStorage).filter(k => k.startsWith('ppam-perfil') || k === 'ppam-bus-rec').forEach(k => localStorage.removeItem(k)); } catch (e) { /* nada */ } }
 
   /* ---------- Firebase ---------- */
@@ -71,20 +79,24 @@
     // Copia local de lo leído: abre más rápido, se ve sin señal y al volver pide solo lo que cambió (menos lecturas)
     try { if (S.db.enablePersistence) S.db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch (e) { /* navegador sin soporte */ }
     S.db.collection('campanas').onSnapshot((qs) => {
-      const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); render();
+      const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; const primera = !S.loaded; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); if (primera) render(); else refrescar(render);
     }, (e) => { console.error(e); if (S.loaded) return; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); $('app').innerHTML = '<div class="empty carga-err"><b>No pudimos cargar las campañas.</b><br>Revisá la conexión y probá de nuevo.</div><button type="button" class="btn" id="reintentar">Reintentar</button>'; $('reintentar').addEventListener('click', () => location.reload()); });
     S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin' || (S.route.name === 'home' && S.loaded)) render(); }, () => {});
     S.auth.onAuthStateChanged(onUser);
     setInterval(() => { if (S.route.name === 'home') renderHome(); }, 60000);
-    window.addEventListener('hashchange', () => { readRoute(); render(); });
+    window.addEventListener('hashchange', () => { S.sucio = false; S.pendRender = false; readRoute(); render(); });
     readRoute();
   }
   async function onUser(u) {
     S.user = u || null; S.isAdmin = false; S.coordDe = []; S.isSoporte = false;
     S.sop.unsub.forEach(f => f()); S.sop.unsub = []; S.sop.on = false; S.sop.okR = S.sop.okE = false; S.sop.reportes = {}; S.sop.errores = {};
     if (S.misUnsub) { S.misUnsub(); S.misUnsub = null; } S.mis = {};
+    // lo que vio la cuenta anterior no queda en memoria
+    S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = null; S.coord.pedidos = {}; S.coord.cupos = {}; S.coord.aud = {};
+    Object.keys(S.pendUnsub).forEach(k => { if (typeof S.pendUnsub[k] === 'function') S.pendUnsub[k](); }); S.pendUnsub = {}; S.pend = {};
+    S.bus = { t: 0, peds: {}, cupos: {}, cargando: null };
     if (u) {
-      S.misUnsub = S.db.collection('pedidos').where('uid', '==', u.uid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.mis = o; render(); }, () => {});
+      S.misUnsub = S.db.collection('pedidos').where('uid', '==', u.uid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.mis = o; refrescar(render); }, () => {});
       try { const r = await S.db.doc('roles/' + u.email.toLowerCase()).get(); S.coordDe = (r.exists && r.data().campanas) || []; } catch (e) { /* sin rol */ }
       try { const a = await S.db.doc('config/admins').get(); S.isAdmin = true; S.admins = (a.exists && a.data().emails) || []; } catch (e) { S.isAdmin = false; }
       try { const so = await S.db.doc('config/soporte').get(); S.soporteEmails = (so.exists && so.data().emails) || []; S.isSoporte = S.soporteEmails.includes(u.email.toLowerCase()); } catch (e) { S.isSoporte = false; }
@@ -229,7 +241,14 @@
   const retiroLabel = (p) => 'Retiro del ' + (p.tipo === 'stand' ? 'stand' : p.tipo === 'carrito' ? 'carrito' : 'material');
 
   // Varias novedades juntas (por ejemplo, los lugares de cada campaña) se dibujan una sola vez.
-  function luego() { if (luego.t) return; luego.t = setTimeout(() => { luego.t = 0; render(); }, 0); }
+  // Mientras alguien escribe en un formulario de la pantalla (p. ej. Datos de la campaña), los cambios que llegan
+  // no redibujan: se guardan para después, así no se pierde lo escrito.
+  function ocupado() { const f = document.querySelector('#app [data-editable]'); if (!f) { S.sucio = false; return false; } const a = document.activeElement; return !!S.sucio || (f.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'file'); }
+  function refrescar(fn) { if (ocupado()) { S.pendRender = true; return; } fn(); }
+  function refrescarPend() { if (S.pendRender && !ocupado()) { S.pendRender = false; render(); } }
+  document.addEventListener('input', (e) => { if (e.target.type !== 'file' && e.target.closest && e.target.closest('#app [data-editable]')) S.sucio = true; });
+  document.addEventListener('focusout', () => setTimeout(refrescarPend, 0));
+  function luego() { if (luego.t) return; luego.t = setTimeout(() => { luego.t = 0; refrescar(render); }, 0); }
   function render() {
     renderTop();
     const r = S.route;
@@ -637,7 +656,7 @@
   function cancelarPedido(pid) {
     const p = S.mis[pid]; if (!p) return;
     const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {};
-    const ov = sheet(`<h3>¿Cancelar este turno?</h3><p class="hint">Se libera el lugar para otro publicador y se borran tus datos de ese turno.</p>
+    const ov = sheet(`<h3>¿Cancelar este turno?</h3><p class="hint">Se libera el lugar para otro publicador y se borran tus datos de contacto de ese turno. En el historial de la campaña queda que cancelaste.</p>
       <div class="sum"><div><b>${esc(cap(fmtDia(p.fecha)))} · ${esc(p.desde)} a ${esc(p.hasta)}</b></div><div style="color:var(--ink3)">${esc([c.nombre, pt.nombre, c.ciudad].filter(Boolean).join(' · '))}</div></div>
       <button type="button" class="btn danger" id="cxOk">Sí, cancelar el turno</button><button type="button" class="btn alt" data-cerrar>No, mantenerlo</button>`);
     ov.querySelector('#cxOk').addEventListener('click', async () => {
@@ -645,7 +664,9 @@
       const batch = S.db.batch();
       batch.update(S.db.doc('cupos/' + cupoId(p.cid, p.fecha, p.tid)), { ['ocupados.' + p.uid]: S.del() });
       batch.delete(S.db.doc('pedidos/' + pid));
-      try { await batch.commit(); auditar(p.cid, 'cancelo', 'canceló su turno: ' + pTxt(c, p)); ov.remove(); toast('Turno cancelado'); if (S.route.name === 'turno') go('#/mis'); }
+      // la línea del historial va en el mismo envío: las reglas solo la aceptan si de verdad se borra el pedido
+      batch.set(S.db.collection('auditoria').doc(Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), { cid: p.cid, tipo: 'cancelo', texto: ('canceló su turno: ' + pTxt(c, p)).slice(0, 400), por: S.user.email.toLowerCase(), uid: S.user.uid, at: S.ahora(), ref: pid });
+      try { await batch.commit(); ov.remove(); toast('Turno cancelado'); if (S.route.name === 'turno') go('#/mis'); }
       catch (e) { console.error(e); b.disabled = false; b.textContent = 'Sí, cancelar el turno'; toast('No se pudo cancelar. Probá de nuevo.'); }
     });
   }
@@ -766,10 +787,10 @@
   function listenCoord(cid) {
     if (S.coord.cid === cid) return;
     S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = cid; S.coord.pedidos = {}; S.coord.cupos = {};
-    S.coord.unsub.push(S.db.collection('pedidos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.pedidos = o; if (S.route.name === 'coord') renderCoord(); }, (e) => console.error(e)));
+    S.coord.unsub.push(S.db.collection('pedidos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.pedidos = o; if (S.route.name === 'coord') refrescar(renderCoord); }, (e) => console.error(e)));
     S.coord.aud = {};
-    S.coord.unsub.push(S.db.collection('auditoria').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.aud = o; if (S.route.name === 'coord' && S.coord.tab === 'config' && S.coord.aj === 'hist') renderCoord(); }, () => {}));
-    S.coord.unsub.push(S.db.collection('cupos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.cupos = o; if (S.route.name === 'coord') renderCoord(); }, (e) => console.error(e)));
+    S.coord.unsub.push(S.db.collection('auditoria').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.aud = o; if (S.route.name === 'coord' && S.coord.tab === 'config' && S.coord.aj === 'hist') refrescar(renderCoord); }, () => {}));
+    S.coord.unsub.push(S.db.collection('cupos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.cupos = o; if (S.route.name === 'coord') refrescar(renderCoord); }, (e) => console.error(e)));
   }
   function renderCoord() {
     if (!S.user) { $('app').innerHTML = '<div class="empty">Iniciá sesión para coordinar.</div><button type="button" class="btn" data-login>Iniciar sesión con Google</button>'; return; }
@@ -898,7 +919,7 @@
       return `<div class="bsg">Por confirmar (${ps.length})</div>` + (ps.length ? ps.map(([c, p]) => busTurnoFila(c, p.fecha, Object.assign({ id: p.tid }, (c.turnos || {})[p.tid] || { punto: p.punto, desde: p.desde, hasta: p.hasta }), esc(p.nombre + ' ' + p.apellido))).join('') : '<div class="bs0">No hay pedidos por confirmar.</div>');
     }
     const d = k === 'hoy' ? hoyS : sumarDias(hoyS, 1), filas = [];
-    cs.forEach(c => turnosDelDia(c, d).forEach(t => { const oc = Object.values((busCupos(c.id)[cupoId(c.id, d, t.id)] || {}).ocupados || {}); if (oc.length < cupoDe(c, t)) filas.push([c, t]); }));
+    cs.forEach(c => { if (diasDe(c).includes(d)) turnosDelDia(c, d).filter(t => !yaEmpezo(d, t)).forEach(t => { const oc = Object.values((busCupos(c.id)[cupoId(c.id, d, t.id)] || {}).ocupados || {}); if (oc.length < cupoDe(c, t)) filas.push([c, t]); }); });
     filas.sort((a, b) => a[1].desde.localeCompare(b[1].desde));
     return `<div class="bsg">Faltan ${k === 'hoy' ? 'hoy' : 'mañana'} · ${esc(cap(fmtDia(d)))}</div>` + (filas.length ? filas.map(([c, t]) => `<div class="bsrw">${busTurnoFila(c, d, t)}<button type="button" class="sbtn anot" data-banot="${esc(c.id)}|${d}|${esc(t.id)}">${I('plus', 'width:14px;height:14px')}Anotar</button></div>`).join('') : '<div class="bs0">Todo cubierto.</div>');
   }
@@ -1297,8 +1318,10 @@
     h += `<div class="acts"><button type="button" class="sbtn pri" data-listadia>${I('share')}Compartir la lista por WhatsApp</button></div>`;
     return h;
   }
+  const enCurso = new Set();   // evita el doble toque: la misma acción no se manda dos veces mientras se guarda
   async function cambiarEstado(pid, estado) {
-    const p = S.coord.pedidos[pid]; if (!p) return;
+    const p = S.coord.pedidos[pid]; if (!p || enCurso.has(pid)) return;
+    enCurso.add(pid); setTimeout(() => enCurso.delete(pid), 4000);
     const batch = S.db.batch();
     const cref = S.db.doc('cupos/' + cupoId(p.cid, p.fecha, p.tid));
     if (estado === 'confirmado') batch.set(cref, { cid: p.cid, fecha: p.fecha, tid: p.tid, ocupados: { [p.uid]: 'c' } }, { merge: true });
@@ -1336,7 +1359,7 @@
     let h = `<div class="seg2 aj"><button type="button" data-aj="campana" class="${aj === 'campana' ? 'on' : ''}">Campaña</button><button type="button" data-aj="puntos" class="${aj === 'puntos' ? 'on' : ''}">Puntos y turnos</button><button type="button" data-aj="hist" class="${aj === 'hist' ? 'on' : ''}">Historial</button></div>`;
     if (aj === 'hist') return h + `<p class="note hnote">Quién cambió o borró algo en esta campaña, y cuándo. Nadie puede editar ni borrar estas líneas. Se guardan 6 meses.</p>` + historialHTML(Object.keys(S.coord.aud || {}).map(id => Object.assign({ id }, S.coord.aud[id])), { cam: false });
     if (aj === 'campana') {
-      h += `<div class="sec">Datos de la campaña</div><div class="card" style="padding:12px 13px 4px;">
+      h += `<div class="sec">Datos de la campaña</div><div class="card" data-editable style="padding:12px 13px 4px;">
       <div class="lbl">Foto de portada</div><div class="portada"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></div>
       <div class="pills"><label class="sbtn">${I('camera')}${c.portada ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" id="cfFoto" hidden></label>${c.portada ? '<button type="button" class="sbtn bad" id="cfFotoDel">Quitar foto</button>' : ''}</div>
       <p class="small-hint">Una foto apaisada del lugar, sin personas reconocibles. Se achica sola antes de subirse. Sin foto se usa el color de la campaña.</p>
@@ -1375,10 +1398,12 @@
     const otros = Object.keys(c.puntos || {}).filter(k => k !== pid && Object.values(c.turnos || {}).some(t => t.punto === k));
     const ov = sheet(`<h3>Copiar horarios</h3><p class="hint">Se cargan en <b>${esc(c.puntos[pid].nombre)}</b> los mismos turnos (horario y días) del punto que elijas. Después los podés cambiar uno por uno.</p>${otros.map(k => { const ts = Object.values(c.turnos).filter(t => t.punto === k).sort((a, b) => a.desde.localeCompare(b.desde)); return `<button type="button" class="btn alt cphb" data-de="${esc(k)}" style="text-align:left;display:block;"><b>${esc(c.puntos[k].nombre)}</b><small style="display:block;font-weight:500;color:var(--ink3);">${ts.map(t => esc(t.desde)).join(' · ')}</small></button>`; }).join('')}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
     ov.querySelectorAll('[data-de]').forEach(bt => bt.addEventListener('click', async () => {
+      if (ov.dataset.enviando) return;
       const upd = {};
       const corta = diasCorta(c); Object.values(c.turnos).filter(t => t.punto === bt.dataset.de).forEach(t => { const dias = (t.dias || []).filter(d => !corta || corta.some(x => x.d === d)); if (dias.length) upd['turnos.t' + uidGen()] = { punto: pid, desde: t.desde, hasta: t.hasta, dias }; });
       if (!Object.keys(upd).length) { toast('Ese punto no tiene turnos en los días de esta campaña.'); return; }
-      try { await S.db.doc('campanas/' + c.id).update(upd); auditar(c.id, 'creo_turno', `copió ${Object.keys(upd).length} turno(s) de ${c.puntos[bt.dataset.de].nombre} a ${c.puntos[pid].nombre}`); ov.remove(); toast(Object.keys(upd).length === 1 ? '1 turno copiado' : Object.keys(upd).length + ' turnos copiados'); } catch (e) { console.error(e); toast('No se pudo copiar.'); }
+      ov.dataset.enviando = '1'; ov.querySelectorAll('[data-de]').forEach(x => { x.disabled = true; });
+      try { await S.db.doc('campanas/' + c.id).update(upd); auditar(c.id, 'creo_turno', `copió ${Object.keys(upd).length} turno(s) de ${c.puntos[bt.dataset.de].nombre} a ${c.puntos[pid].nombre}`); ov.remove(); toast(Object.keys(upd).length === 1 ? '1 turno copiado' : Object.keys(upd).length + ' turnos copiados'); } catch (e) { delete ov.dataset.enviando; ov.querySelectorAll('[data-de]').forEach(x => { x.disabled = false; }); console.error(e); toast('No se pudo copiar.'); }
     }));
   }
   const uidGen = () => Math.random().toString(36).slice(2, 9);
@@ -1395,11 +1420,14 @@
       try { await b.commit(); auditar(c.id, 'borro_foto', 'quitó la foto de portada'); toast('Foto quitada'); } catch (e) { console.error(e); toast('No se pudo quitar.'); }
     });
     $('cfSave').addEventListener('click', async () => {
+      const bs = $('cfSave'); if (bs.disabled) return;
       const d = { nombre: $('cfNom').value.trim(), ciudad: $('cfCiu').value.trim(), lugar: $('cfLug').value.trim(), desde: $('cfDes').value, hasta: $('cfHas').value, activa: $('cfAct').checked };
       if (!d.nombre || !d.desde || !d.hasta) { toast('Completá el nombre y las fechas.'); return; }
       if (d.hasta < d.desde) { toast('La fecha "hasta" es anterior a "desde".'); return; }
       const cam = []; if (d.nombre !== c.nombre) cam.push(`nombre ("${c.nombre}" → "${d.nombre}")`); if (d.ciudad !== (c.ciudad || '')) cam.push(`ciudad (${c.ciudad || '—'} → ${d.ciudad})`); if (d.lugar !== (c.lugar || '')) cam.push('lugar'); if (d.desde !== c.desde || d.hasta !== c.hasta) cam.push(`fechas (${c.desde} a ${c.hasta} → ${d.desde} a ${d.hasta})`); if (d.activa !== (c.activa !== false)) cam.push(d.activa ? 'la hizo visible' : 'la ocultó');
-      try { await S.db.doc('campanas/' + c.id).update(d); if (cam.length) auditar(c.id, 'cambio_campana', 'cambió los datos de la campaña: ' + cam.join(', ')); toast('Guardado'); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
+      bs.disabled = true;
+      try { await S.db.doc('campanas/' + c.id).update(d); if (cam.length) auditar(c.id, 'cambio_campana', 'cambió los datos de la campaña: ' + cam.join(', ')); S.sucio = false; S.pendRender = false; toast('Guardado'); render(); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
+      if (bs.isConnected) bs.disabled = false;
     });
   }
   /* ---------- Mapa para marcar un punto (Leaflet + OpenStreetMap; buscador y direcciones: Nominatim) ---------- */
@@ -2149,7 +2177,7 @@
       const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(S.user.displayName || S.user.email))}</span><div><h3>${esc(S.user.displayName || 'Mi cuenta')}</h3><p class="hint">${esc(S.user.email)}</p></div></div><button type="button" class="btn" id="uMis">Mis turnos</button>${puedeInstalar() ? '<button type="button" class="btn alt" id="uInst">Instalar la app</button>' : ''}<button type="button" class="btn alt" id="uOut">Cerrar sesión</button><button type="button" class="linkish ubor" id="uBor">Borrar mis datos de este celular</button>`);
       if (ov.querySelector('#uInst')) ov.querySelector('#uInst').addEventListener('click', () => { ov.remove(); instalar(); });
       ov.querySelector('#uMis').addEventListener('click', () => { ov.remove(); go('#/mis'); });
-      ov.querySelector('#uOut').addEventListener('click', async () => { ov.remove(); try { localStorage.removeItem('ppam-bus-rec'); } catch (e) { /* nada */ } await S.auth.signOut(); go('#/'); });
+      ov.querySelector('#uOut').addEventListener('click', async () => { ov.remove(); await cerrarSesion(); });
       ov.querySelector('#uBor').addEventListener('click', () => { if (!confirm('¿Borrar de este celular tus datos guardados (nombre, celular, congregación) y tus búsquedas? Tus turnos no se tocan.')) return; borrarDatosLocales(); ov.remove(); toast('Listo: se borraron tus datos de este celular'); });
       return;
     }
@@ -2181,7 +2209,7 @@
     if (ds.invitar) { invitarTurno(ds.invitar); return; }
     if (ds.nota) { editarNota(ds.nota); return; }
     if (ds.cancelar) { cancelarPedido(ds.cancelar); return; }
-    if (ds.tab) { S.coord.tab = ds.tab; renderCoord(); return; }
+    if (ds.tab) { S.sucio = false; S.coord.tab = ds.tab; renderCoord(); return; }
     if (ds.confirmar) { cambiarEstado(ds.confirmar, 'confirmado'); return; }
     if (ds.rechazar) { if (confirm('¿No confirmar este pedido? Se libera el lugar.')) cambiarEstado(ds.rechazar, 'rechazado'); return; }
     if (ds.quitar) { if (confirm('¿Quitar a esta persona del turno? Se libera el lugar.')) cambiarEstado(ds.quitar, 'rechazado'); return; }
@@ -2196,7 +2224,7 @@
     if (ds.punto !== undefined) { editarPunto(S.campanas[S.route.cid], ds.punto || null); return; }
     if (ds.turno !== undefined) { editarTurno(S.campanas[S.route.cid], ds.turno || null, ds.tpto); return; }
     if (ds.cph) { copiarHorarios(S.campanas[S.route.cid], ds.cph); return; }
-    if (ds.aj) { S.coord.aj = ds.aj; renderCoord(); return; }
+    if (ds.aj) { S.sucio = false; S.coord.aj = ds.aj; renderCoord(); return; }
     if (ds.hf && !t.closest('.hgov')) { S.audF = ds.hf; renderCoord(); return; }
     if (ds.restaurar && !t.closest('.hgov')) { restaurar(ds.restaurar); return; }
     if (ds.histgen !== undefined) { S.audF = 'todo'; abrirHistorialGeneral(); return; }

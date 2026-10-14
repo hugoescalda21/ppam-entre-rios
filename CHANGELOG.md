@@ -1,6 +1,16 @@
 # Registro de cambios — PPAM Entre Ríos
 
 
+
+## Versión 36 — auditoría, tanda 1
+- Reglas: nadie puede ocupar un lugar sin dejar su pedido (antes se podía bloquear una campaña con cuentas descartables), ni pedir fuera de las fechas de la campaña.
+- Reglas: el punto y el horario del pedido tienen que ser los del turno; "creado" es una fecha corta.
+- Reglas: "canceló su turno" solo se anota en el historial en el mismo envío en que se borra el pedido propio.
+- Si llega un pedido mientras el coordinador edita los datos de la campaña, ya no se borra lo que estaba escribiendo.
+- "Copiar horarios", "Guardar datos" y "Confirmar" no se mandan dos veces con un doble toque.
+- La lupa del coordinador ("Faltan hoy/mañana") ya no muestra campañas fuera de fecha ni turnos que ya empezaron.
+- Cerrar sesión borra la copia local de Firebase y lo que vio la cuenta anterior.
+- El aviso de cancelar dice que en el historial queda que cancelaste.
 ## Versión 35 — lista para muchos usuarios
 - La app guarda en el celular una copia de lo que ya leyó: abre más rápido, se ve con mala señal y al volver solo pide lo que cambió (menos lecturas a Firebase).
 - Los lugares libres se consultan solo desde hoy: los días pasados ya no se leen.

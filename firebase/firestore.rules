@@ -94,10 +94,14 @@ service cloud.firestore {
       function idOk(d) { return id == d.cid + '__' + d.fecha + '__' + d.tid; }
       function forma(d) { return d.keys().hasOnly(['cid', 'fecha', 'tid', 'ocupados']) && d.fecha is string && d.fecha.size() == 10 && d.ocupados is map; }
       // Un publicador solo se agrega a sí mismo como "pedido" o se saca (cancelar), y sin pasarse del cupo.
+      // Al agregarse tiene que crear su pedido en el mismo envío; al sacarse, borrarlo. Así nadie ocupa lugares sin dejar sus datos.
+      function miPedido() { return /databases/$(database)/documents/pedidos/$(id + '__' + request.auth.uid); }
+      function enFecha(d) { let c = campana(d.cid); return d.fecha >= c.get('desde', '') && d.fecha <= c.get('hasta', '9999-12-31'); }
       function publicador(antes, despues) {
         let yo = request.auth.uid;
         return conSesion() && despues.diff(antes).affectedKeys().hasOnly([yo]) &&
-               (!(yo in despues) || (despues[yo] == 'p' && !(yo in antes))) &&
+               ((yo in despues) ? (despues[yo] == 'p' && !(yo in antes) && existsAfter(miPedido()) && enFecha(request.resource.data))
+                               : !existsAfter(miPedido())) &&
                campana(request.resource.data.cid).get('activa', true) == true;
       }
       allow read: if true;
@@ -136,9 +140,16 @@ service cloud.firestore {
                (!('ref' in d) || (d.ref is string && d.ref.size() <= 120)) &&
                (!('de' in d) || (d.de is string && d.de.size() <= 60));
       }
+      // Un publicador solo anota que canceló SU turno, en el mismo envío en que lo borra (ref = id de su pedido).
+      function cancelePropio(d) {
+        let ped = /databases/$(database)/documents/pedidos/$(d.ref);
+        return d.tipo == 'cancelo' && d.keys().hasOnly(['cid', 'tipo', 'texto', 'por', 'uid', 'at', 'ref']) &&
+               'ref' in d && d.ref.matches(d.cid + '__.+__' + request.auth.uid) &&
+               exists(ped) && get(ped).data.uid == request.auth.uid && !existsAfter(ped);
+      }
       allow create: if conSesion() && lineaOk(request.resource.data) && (
                      (request.resource.data.cid == '' && esAdmin()) ||
-                     (request.resource.data.cid != '' && (gestiona(request.resource.data.cid) || request.resource.data.tipo == 'cancelo')));
+                     (request.resource.data.cid != '' && (gestiona(request.resource.data.cid) || cancelePropio(request.resource.data))));
       allow read: if conSesion() && (esAdmin() || (resource.data.cid != '' && esCoord(resource.data.cid)));
       // Nadie la cambia; solo el administrador borra líneas de más de 6 meses.
       allow update: if false;
@@ -149,10 +160,15 @@ service cloud.firestore {
     match /pedidos/{id} {
       // Nota para el coordinador: opcional, texto de hasta 200 letras.
       function notaOk(d) { return !('nota' in d) || (d.nota is string && d.nota.size() > 0 && d.nota.size() <= 200); }
+      // Punto y horario tienen que ser los del turno en la campaña; "creado" es una fecha corta.
+      function turnoOk(d) {
+        let t = get(/databases/$(database)/documents/campanas/$(d.cid)).data.turnos[d.tid];
+        return d.punto == t.punto && d.desde == t.desde && d.hasta == t.hasta && d.creado is string && d.creado.size() <= 30;
+      }
       function pedidoValido(d) {
         let cupo = /databases/$(database)/documents/cupos/$(d.cid + '__' + d.fecha + '__' + d.tid);
         return d.keys().hasOnly(['cid', 'fecha', 'tid', 'punto', 'desde', 'hasta', 'uid', 'email', 'nombre', 'apellido', 'congregacion', 'celular', 'estado', 'creado', 'nota']) &&
-               notaOk(d) &&
+               notaOk(d) && turnoOk(d) &&
                d.uid == request.auth.uid && d.email == mail() && d.estado == 'pendiente' &&
                id == d.cid + '__' + d.fecha + '__' + d.tid + '__' + request.auth.uid &&
                d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 60 &&
@@ -165,7 +181,7 @@ service cloud.firestore {
       function pedidoManual(d) {
         let cupo = /databases/$(database)/documents/cupos/$(d.cid + '__' + d.fecha + '__' + d.tid);
         return d.keys().hasOnly(['cid', 'fecha', 'tid', 'punto', 'desde', 'hasta', 'uid', 'nombre', 'apellido', 'congregacion', 'celular', 'estado', 'creado', 'nota', 'manual', 'por']) &&
-               gestiona(d.cid) && notaOk(d) &&
+               gestiona(d.cid) && notaOk(d) && turnoOk(d) &&
                d.manual == true && d.por == mail() && d.estado == 'confirmado' &&
                d.uid is string && d.uid.matches('m-[a-z0-9]{6,24}') &&
                id == d.cid + '__' + d.fecha + '__' + d.tid + '__' + d.uid &&
@@ -181,11 +197,17 @@ service cloud.firestore {
       allow update: if conSesion() && (
                      (gestiona(resource.data.cid) &&
                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'actualizado', 'por']) &&
-                      request.resource.data.estado in ['pendiente', 'confirmado', 'rechazado']) ||
+                      request.resource.data.estado in ['pendiente', 'confirmado', 'rechazado'] &&
+                      texto(request.resource.data, 'actualizado', 30) && (!('por' in request.resource.data) || request.resource.data.por == mail() || request.resource.data.por == resource.data.get('por', ''))) ||
                      (resource.data.uid == request.auth.uid && resource.data.estado == 'rechazado' && pedidoValido(request.resource.data)) ||
                      // quien pidió puede cambiar o borrar su nota
                      (resource.data.uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nota']) && request.resource.data.diff(resource.data).affectedKeys().size() == 1 && notaOk(request.resource.data)));
-      allow delete: if conSesion() && (resource.data.uid == request.auth.uid || gestiona(resource.data.cid));
+      // Quien pidió lo borra liberando su lugar en el mismo envío.
+      function libero(d) {
+        let cupo = /databases/$(database)/documents/cupos/$(d.cid + '__' + d.fecha + '__' + d.tid);
+        return !existsAfter(cupo) || !(d.uid in getAfter(cupo).data.ocupados);
+      }
+      allow delete: if conSesion() && ((resource.data.uid == request.auth.uid && libero(resource.data)) || gestiona(resource.data.cid));
     }
   }
 }

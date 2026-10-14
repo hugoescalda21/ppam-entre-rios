@@ -185,6 +185,7 @@ const SEED = {
   const st2 = await p.evaluate(() => ({ cupo: window.__store['cupos/parana-terminal__2026-10-03__t3'], ped: window.__store['pedidos/parana-terminal__2026-10-03__t3__u-ana'] }));
   check('cancelar libera el lugar y borra sus datos', !st2.ped && st2.cupo && !('u-ana' in st2.cupo.ocupados), st2);
   check('la cancelación queda en el historial (firmada por quien canceló)', await p.evaluate(() => Object.values(window.__store).some(d => d && d.tipo === 'cancelo' && d.por === 'ana@x.com' && d.cid === 'parana-terminal' && /canceló su turno: Ana Paz · Sáb 3\/10 16–18 · Hall central/.test(d.texto))));
+  check('la línea de cancelar lleva el id del pedido (las reglas la validan)', await p.evaluate(() => Object.values(window.__store).some(d => d && d.tipo === 'cancelo' && /^parana-terminal__.+__u-ana$/.test(d.ref || ''))));
   check('sin botón "Coordinación" para un publicador', await p.evaluate(() => document.getElementById('coordBtn').classList.contains('hidden')));
   check('sin errores', p.errs.length === 0, p.errs);
   // Vuelve a pedir para que el coordinador lo vea
@@ -904,6 +905,34 @@ const SEED = {
     check('la portada se baja una vez y queda guardada en el celular', enCache === 'sin-api' || (enCache === true && n2 === 0 && /base64/.test(bg)), { enCache, n2, bg: bg.slice(0, 40) });
     check('sin errores (fotos)', f.errs.length === 0, f.errs);
     delete SEED['fotos/parana-terminal__fport']; delete SEED['campanas/parana-terminal'].portada;
+  }
+  console.log('\nTanda 1 de la auditoría: no perder lo escrito, doble toque, lupa y cancelar');
+  {
+    SEED['campanas/terminada'] = { nombre: 'Feria vieja', ciudad: 'Paraná', desde: '2026-08-01', hasta: '2026-08-31', activa: true, puntos: { p1: { nombre: 'Stand feria', tipo: 'stand', cupo: 2 } }, turnos: { t1: { punto: 'p1', desde: '09:00', hasta: '11:00', dias: [0, 1, 2, 3, 4, 5, 6] } } };
+    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal');
+    await k.click('#userBtn'); await k.waitForTimeout(300); await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(300);
+    await k.click('#busBtn'); await k.waitForTimeout(200); await k.click('[data-bsat="man"]'); await k.waitForTimeout(150);
+    const lt = await text(k, '.bsov');
+    check('lupa "Faltan mañana": no muestra campañas que ya terminaron', /Faltan mañana/.test(lt) && !/Feria vieja|Stand feria/.test(lt), lt.slice(0, 300));
+    await k.keyboard.press('Escape'); await k.waitForTimeout(100);
+    await k.click('[data-tab="config"]'); await k.waitForTimeout(150); await k.click('[data-aj="campana"]'); await k.waitForTimeout(150);
+    await k.fill('#cfNom', 'Terminal nueva'); await k.fill('#cfLug', 'Andén central');
+    await k.evaluate(() => window.__ppamMock.db.doc('pedidos/parana-terminal__2026-10-02__t1__u-zz').set({ cid: 'parana-terminal', fecha: '2026-10-02', tid: 't1', punto: 'p1', desde: '08:00', hasta: '10:00', uid: 'u-zz', nombre: 'Zoe', apellido: 'Paz', congregacion: 'X', celular: '343 555-1111', estado: 'pendiente', creado: 'x' }));
+    await k.waitForTimeout(250);
+    check('si llega un pedido mientras edita la campaña, no se borra lo escrito', await k.evaluate(() => document.getElementById('cfNom').value === 'Terminal nueva' && document.getElementById('cfLug').value === 'Andén central'));
+    await k.evaluate(() => { const b = document.getElementById('cfSave'); b.click(); b.click(); }); await k.waitForTimeout(300);
+    const audC = await k.evaluate(() => Object.values(window.__store).filter(d => d && d.tipo === 'cambio_campana' && /Terminal nueva/.test(d.texto)).length);
+    check('guarda una sola vez aunque toque dos veces', audC === 1 && (await k.evaluate(() => window.__store['campanas/parana-terminal'].nombre)) === 'Terminal nueva', audC);
+    check('después de guardar se ve lo que llegó (1 por confirmar)', /1\s*por confirmar/i.test(await text(k, '#app')), (await text(k, '#app')).slice(0, 200));
+    await k.evaluate(() => window.__ppamMock.db.doc('campanas/parana-terminal').update({ 'puntos.p3': { nombre: 'Andén 3', tipo: 'carrito', cupo: 2 } }));
+    await k.click('[data-aj="puntos"]'); await k.waitForTimeout(150);
+    const antesT = await k.evaluate(() => Object.values(window.__store['campanas/parana-terminal'].turnos).filter(t => t.punto === 'p3').length);
+    await k.click('[data-cph="p3"]'); await k.waitForTimeout(150);
+    await k.evaluate(() => { const b = document.querySelector('[data-de="p1"]'); b.click(); b.click(); }); await k.waitForTimeout(300);
+    const despT = await k.evaluate(() => Object.values(window.__store['campanas/parana-terminal'].turnos).filter(t => t.punto === 'p3').length);
+    check('"Copiar horarios" con doble toque no duplica turnos', despT - antesT === 2, { antesT, despT });
+    check('sin errores (tanda 1)', k.errs.length === 0, k.errs);
+    delete SEED['campanas/terminada'];
   }
   console.log('\nCampaña corta: solo sus días');
   {
