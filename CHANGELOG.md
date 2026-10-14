@@ -3,6 +3,9 @@
 
 
 
+
+## Versión 38 — App Check activo (sin aplicar)
+- La app pide un token de App Check (reCAPTCHA Enterprise, invisible para el usuario) en cada sesión. Firebase todavía no lo exige: primero se miran las métricas unos días.
 ## Versión 37 — auditoría, tanda 2
 - Coordinación: las sub-pestañas de Ajustes (Campaña · Puntos y turnos · Historial) se ven subrayadas, como un nivel dentro de Ajustes.
 - Los números de arriba dicen "cubierto de hoy al 31 oct" y "hermanos confirmados".
