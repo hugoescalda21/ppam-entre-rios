@@ -14,7 +14,7 @@ let ok = 0, bad = 0; const check = (l, c, x) => { if (c) { ok++; console.log('  
 // Firestore y Auth en memoria (lo mínimo que usa la app).
 function mock(seed, users) {
   // la bienvenida y la guía del coordinador ya vistas (salvo en las pruebas que las revisan)
-  try { if (!window.__bvNueva) { localStorage.setItem('ppam-bienvenida', '1'); localStorage.setItem('ppam-guia-coord', '1'); } if (!window.__avisoWa) localStorage.setItem('ppam-avisar-wa', 'no'); } catch (e) { /* nada */ }
+  try { if (!window.__bvNueva) { localStorage.setItem('ppam-bienvenida', '1'); localStorage.setItem('ppam-guia-coord', '1'); } if (!window.__avisoWa) localStorage.setItem('ppam-avisar-wa', 'no'); if (!window.__introNueva) Object.keys(seed).filter(k => k.startsWith('campanas/')).forEach(k => localStorage.setItem('ppam-vista:' + k.slice(9), '1')); } catch (e) { /* nada */ }
   const store = JSON.parse(JSON.stringify(seed));
   const listeners = new Set();
   const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -1077,6 +1077,43 @@ const SEED = {
     await k.click('#avNo'); await k.click('.sheet [data-cerrar]'); await k.waitForTimeout(150);
     check('"No volver a preguntar" queda guardado', await k.evaluate(() => localStorage.getItem('ppam-avisar-wa') === 'no' && !document.querySelector('.sheet')));
     check('sin errores (aviso por WhatsApp)', k.errs.length === 0, k.errs);
+  }
+  console.log('\nMovimiento, cuenta regresiva y presentación de la campaña');
+  {
+    SEED['campanas/futura'] = { nombre: 'Feria del libro', ciudad: 'Paraná', desde: '2026-10-12', hasta: '2026-10-18', activa: true, puntos: { p1: { nombre: 'Stand 1', tipo: 'stand', cupo: 2 } }, turnos: { t1: { punto: 'p1', desde: '09:00', hasta: '11:00', dias: [0, 1, 2, 3, 4, 5, 6] } } };
+    const h = await open([], '');
+    check('lista: la campaña que todavía no empezó dice "Empieza en 12 días"', await h.evaluate(() => /Empieza en 12 días/.test(document.querySelector('.cc.camp[data-go="#/c/futura"] .pronto').textContent)));
+    check('lista: "Empieza mañana" y "Empieza en 3 días" según la fecha', await h.evaluate(() => /Empieza mañana/.test((document.querySelector('.cc.camp[data-go="#/c/parana-terminal"] .pronto') || {}).textContent || '') && /Empieza en 3 días/.test((document.querySelector('.cc.camp[data-go="#/c/concordia-costanera"] .pronto') || {}).textContent || '')));
+    await h.evaluate(() => { window.__vts = 0; const o = document.startViewTransition && document.startViewTransition.bind(document); if (o) document.startViewTransition = (f) => { window.__vts++; return o(f); }; });
+    await h.click('.cc.camp[data-go="#/c/futura"]'); await h.waitForTimeout(600);
+    check('campaña futura: recuadro "Faltan 12 días para que empiece · Ya podés anotarte"', /Faltan 12 días para que empiece[\s\S]*Ya podés anotarte/.test(await text(h, '.cuenta')));
+    check('al navegar se usa la transición del navegador (si la tiene)', await h.evaluate(() => !document.startViewTransition || window.__vts >= 1));
+    check('sin errores (cuenta regresiva)', h.errs.length === 0, h.errs);
+    const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    await ctx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+    await ctx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await ctx.addInitScript(() => { window.__introNueva = true; });
+    await ctx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, [])`);
+    const i = await ctx.newPage(); i.errs = []; i.on('pageerror', e => i.errs.push(e.message));
+    await i.goto(FILE); await i.waitForTimeout(400);
+    await i.click('.cc.camp[data-go="#/c/futura"]'); await i.waitForTimeout(700);
+    const it = await i.evaluate(() => { const x = document.querySelector('.intro'); return x && x.innerText; });
+    check('primera vez: la presentación en grande con nombre, fechas, "Empieza en 12 días" y lugares libres', !!it && /Feria del libro[\s\S]*12 al 18 de octubre[\s\S]*Empieza en 12 días[\s\S]*1 punto/.test(it), it);
+    await i.waitForTimeout(2600);
+    check('a los 2 segundos se achica sola y queda la campaña', !(await i.$('.intro')) && /Faltan 12 días/.test(await text(i, '#app')));
+    await i.click('#backBtn'); await i.waitForTimeout(500); await i.click('.cc.camp[data-go="#/c/futura"]'); await i.waitForTimeout(700);
+    check('la segunda vez no se repite', !(await i.$('.intro')));
+    await i.click('#backBtn'); await i.waitForTimeout(500); await i.click('.cc.camp[data-go="#/c/parana-terminal"]'); await i.waitForTimeout(700);
+    await i.click('.intro'); await i.waitForTimeout(900);
+    check('tocando la presentación se saltea', !(await i.$('.intro')));
+    check('sin errores (presentación)', i.errs.length === 0, i.errs);
+    const ctx2 = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires', reducedMotion: 'reduce' });
+    await ctx2.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await ctx2.addInitScript(() => { window.__introNueva = true; });
+    await ctx2.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, [])`);
+    const r = await ctx2.newPage(); await r.goto(FILE + '#/c/futura'); await r.waitForTimeout(700);
+    check('con "reducir movimiento" no hay presentación', !(await r.$('.intro')));
+    delete SEED['campanas/futura'];
   }
   console.log('\nCampaña corta: solo sus días');
   {

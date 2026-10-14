@@ -9,6 +9,15 @@
 
 
 
+## Versión 44 — movimiento y cuenta regresiva
+
+- Transiciones suaves al cambiar de pantalla: avanzar desliza desde la derecha, volver desde la izquierda y las pestañas se funden. La barra de abajo queda quieta.
+- Al abrir una campaña, su foto o color “vuela” desde la tarjeta hasta el encabezado.
+- La primera vez que se abre cada campaña aparece una presentación en grande (foto, ciudad, fechas, puntos y lugares libres) que se achica sola a los 2 segundos o al tocarla.
+- Campañas que todavía no empezaron: etiqueta “Empieza en N días / mañana” en la lista y recuadro “Faltan N días… Ya podés anotarte” adentro.
+- Las hojas (ventanas de abajo) suben con animación y el fondo se oscurece de a poco.
+- Con “reducir movimiento” activado en el teléfono no hay animaciones ni presentación.
+
 ## Versión 43 — primera visita y espera de confirmación
 - Mientras cargan las campañas se ve la forma de la pantalla en gris (en vez de "Cargando…").
 - Sin sesión, "Ingresar" es un botón con borde: lo principal es "Ver turnos libres". "Predicación pública" ya no se repite en el inicio. La bienvenida aparece sin salto.

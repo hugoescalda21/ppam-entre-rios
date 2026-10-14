@@ -853,3 +853,53 @@ a.btn { display: flex; align-items: center; justify-content: center; gap: 8px; t
 .est.rj { background: var(--bad-bg); color: var(--bad); } .est.dn { background: var(--line2); color: var(--ink3); }
 .espera { display: flex; gap: 8px; background: var(--gold-bg); color: var(--ink); border-radius: 14px; padding: 10px 12px; font-size: 13.5px; line-height: 1.45; margin: 10px 0 4px; }
 .espera svg { color: var(--gold-t); }
+
+/* ---------- Movimiento: transiciones al navegar y ventanas que suben ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .26s; animation-timing-function: cubic-bezier(.2, .7, .2, 1); }
+  html[data-vt="adelante"]::view-transition-old(root) { animation-name: vt-sale-izq; }
+  html[data-vt="adelante"]::view-transition-new(root) { animation-name: vt-entra-der; }
+  html[data-vt="atras"]::view-transition-old(root) { animation-name: vt-sale-der; }
+  html[data-vt="atras"]::view-transition-new(root) { animation-name: vt-entra-izq; }
+  html[data-vt="tab"]::view-transition-old(root) { animation-name: vt-fuera; animation-duration: .16s; }
+  html[data-vt="tab"]::view-transition-new(root) { animation-name: vt-dentro; animation-duration: .2s; }
+  .tabbar { view-transition-name: barra; }
+  .entra > * { animation: entra .32s cubic-bezier(.2, .7, .2, 1) both; }
+  .entra > *:nth-child(2) { animation-delay: .04s; } .entra > *:nth-child(3) { animation-delay: .08s; } .entra > *:nth-child(n+4) { animation-delay: .12s; }
+  .ov { animation: vt-dentro .18s ease-out; }
+  .ov .sheet { animation: sube .28s cubic-bezier(.2, .8, .2, 1); }
+}
+@keyframes vt-sale-izq { to { transform: translateX(-22%); opacity: 0; } }
+@keyframes vt-entra-der { from { transform: translateX(30%); opacity: 0; } }
+@keyframes vt-sale-der { to { transform: translateX(22%); opacity: 0; } }
+@keyframes vt-entra-izq { from { transform: translateX(-30%); opacity: 0; } }
+@keyframes vt-fuera { to { opacity: 0; } }
+@keyframes vt-dentro { from { opacity: 0; } }
+@keyframes entra { from { opacity: 0; transform: translateY(10px); } }
+@keyframes sube { from { transform: translateY(100%); } }
+/* ---------- Campañas que todavía no empezaron ---------- */
+.pronto { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700; color: var(--gold-t); background: var(--gold-bg); border-radius: 999px; padding: 2px 8px; margin: 0 0 4px; width: fit-content; }
+.cuenta { display: flex; gap: 14px; align-items: center; background: var(--gold-bg); border-radius: 18px; padding: 12px 14px; margin: 0 0 14px; }
+.cuenta .cn { min-width: 58px; height: 58px; border-radius: 14px; background: var(--card); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.cuenta .cn b { font-family: var(--tt); font-size: 26px; line-height: 1; color: var(--ink); }
+.cuenta .cn small { font-size: 11px; font-weight: 600; color: var(--gold-t); text-transform: uppercase; letter-spacing: .06em; }
+.cuenta > div:last-child b { display: block; font-size: 15px; color: var(--ink); }
+.cuenta > div:last-child span { font-size: 13.5px; color: var(--ink2); }
+
+/* Presentación de la campaña (primera vez) */
+.intro { position: fixed; inset: 0; z-index: 70; background-size: cover; background-position: center; color: #fff; display: flex; align-items: flex-end; cursor: pointer; }
+.intro::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,0) 30%, rgba(8,20,24,.85) 100%); }
+.intro .ii { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); width: 128px; height: 128px; border-radius: 32px; background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; }
+.intro .itx { position: relative; padding: 24px 22px calc(40px + env(safe-area-inset-bottom)); width: 100%; }
+.intro small { display: block; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #E9D9A8; }
+.intro h2 { font-family: var(--tt); font-size: 34px; line-height: 1.08; letter-spacing: -.02em; margin: 6px 0 8px; }
+.intro p { margin: 0 0 10px; font-size: 15px; color: rgba(255,255,255,.88); }
+.intro .ist { display: inline-block; background: rgba(255,255,255,.18); border-radius: 999px; padding: 5px 12px; font-weight: 700; font-size: 13.5px; margin-bottom: 10px; }
+.intro .idat b { color: #fff; }
+.intro .isal { margin-top: 14px; font-size: 11.5px; letter-spacing: .08em; color: rgba(255,255,255,.7); }
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-group(portada) { animation-duration: .45s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+  html[data-vt="intro"]::view-transition-group(portada) { animation-duration: .6s; }
+  .intro .itx > * { animation: entra .4s cubic-bezier(.2, .7, .2, 1) both; animation-delay: .25s; }
+  .intro.sale { transition: opacity .3s; opacity: 0; }
+}

@@ -48,7 +48,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '43';
+  const VERSION = '44';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -80,12 +80,12 @@
     // Copia local de lo leído: abre más rápido, se ve sin señal y al volver pide solo lo que cambió (menos lecturas)
     try { if (S.db.enablePersistence) S.db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch (e) { /* navegador sin soporte */ }
     S.db.collection('campanas').onSnapshot((qs) => {
-      const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; const primera = !S.loaded; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); if (primera) { render(); setTimeout(() => { if (S.route.name === 'home') bienvenida(); }, 60); } else refrescar(render);
+      const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; const primera = !S.loaded; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); if (primera) { render(); setTimeout(() => { if (S.route.name === 'home') bienvenida(); else if (S.route.name === 'camp' && S.campanas[S.route.cid]) introCampana(S.campanas[S.route.cid]); }, 60); } else refrescar(render);
     }, (e) => { console.error(e); if (S.loaded) return; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); $('app').innerHTML = '<div class="empty carga-err"><b>No pudimos cargar las campañas.</b><br>Revisá la conexión y probá de nuevo.</div><button type="button" class="btn" id="reintentar">Reintentar</button>'; $('reintentar').addEventListener('click', () => location.reload()); });
     S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin' || (S.route.name === 'home' && S.loaded)) render(); }, () => {});
     S.auth.onAuthStateChanged(onUser);
     setInterval(() => { if (S.route.name === 'home') renderHome(); }, 60000);
-    window.addEventListener('hashchange', () => { S.sucio = false; S.pendRender = false; readRoute(); if (S.route.name !== 'coord' && S.coord.unsub.length) { S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = null; S.coord.pedidos = {}; S.coord.cupos = {}; S.coord.aud = {}; } render(); });
+    window.addEventListener('hashchange', () => { S.sucio = false; S.pendRender = false; const antes = S.route; readRoute(); transicion(antes, S.route); if (S.route.name !== 'coord' && S.coord.unsub.length) { S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = null; S.coord.pedidos = {}; S.coord.cupos = {}; S.coord.aud = {}; } render(); });
     readRoute();
   }
   async function onUser(u) {
@@ -232,7 +232,54 @@
   function luego() { if (luego.t) return; luego.t = setTimeout(() => { luego.t = 0; refrescar(render); }, 0); }
   // Mientras cargan las campañas: la forma de la pantalla en gris (se nota que está cargando, no que no anda)
   const esqueleto = () => `<div class="sk" aria-hidden="true"><div class="skw"><i style="width:55%;height:22px"></i><i style="width:85%"></i><i style="width:70%"></i><i class="skb"></i></div><div class="skt"><i style="width:35%;height:18px"></i></div>${[1, 2].map(() => '<div class="skc"><span class="skth"></span><span><i style="width:60%;height:15px"></i><i style="width:80%"></i><i style="width:45%"></i></span></div>').join('')}</div><p class="sr-only" role="status">Cargando las campañas…</p>`;
+  // Transiciones al navegar (no en las actualizaciones de datos): deslizar al avanzar/volver, fundido entre pestañas
+  const PROF = { home: 0, mis: 0, ayuda: 0, admin: 0, soporte: 0, coord: 0, camp: 1, turno: 2 };
+  const prof = (r) => (PROF[r.name] || 0) + (r.name === 'coord' && r.cid ? 1 : 0);
+  S.anim = '';
+  function transicion(a, b) {
+    if (!a || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    S.anim = prof(b) > prof(a) ? 'adelante' : prof(b) < prof(a) ? 'atras' : 'tab';
+  }
+  // Presentación de la campaña: la primera vez que se abre (en este celular), la portada en grande con sus datos; después se achica sola
+  document.addEventListener('click', (e) => { const card = e.target.closest && e.target.closest('.cc.camp'); S.desdeThumb = card ? card.querySelector('.th') : null; }, true);
+  function introCampana(c, enTransicion) {
+    const k = 'ppam-vista:' + c.id;
+    try { if (localStorage.getItem(k) || matchMedia('(prefers-reduced-motion: reduce)').matches) return false; localStorage.setItem(k, '1'); } catch (e) { return false; }
+    const n = faltanDias(c), pts = Object.values(c.puntos || {}).length, dias = diasDe(c), lib = dias.length ? cobertura(c, dias.filter(d => d <= addDays(dias[0], 6))).faltan : 0;
+    const fk = c.portada ? fotoKey(c.id, c.portada) : '', foto = fk && S.fotos[fk];
+    const pts1 = pts === 1 ? '1 punto' : pts + ' puntos';
+    const it = document.createElement('div'); it.className = 'intro' + (foto ? ' foto' : ''); it.setAttribute('role', 'button'); it.setAttribute('aria-label', 'Ver la campaña');
+    it.style.backgroundImage = foto ? `url("${foto}")` : colorDe(c);
+    it.innerHTML = `${foto ? '' : `<span class="ii">${I(Object.values(c.puntos || {}).some(p => p.tipo === 'carrito') ? 'cart' : 'stand', 'width:64px;height:64px')}</span>`}<div class="itx"><small>${esc(c.ciudad || '')}</small><h2>${esc(c.nombre)}</h2><p>${esc(campRango(c))}</p><span class="ist">${n ? empiezaTxt(n) : 'En curso'}</span><p class="idat">${esc(pts1)}${lib ? ` · <b>${lib} ${lib === 1 ? 'lugar libre' : 'lugares libres'}</b> esta semana` : ''}</p><small class="isal">Tocá para seguir</small></div>`;
+    if (enTransicion) it.style.viewTransitionName = 'portada';
+    document.body.appendChild(it);
+    let listo = false;
+    const cerrar = () => {
+      if (listo) return; listo = true;
+      if (!document.startViewTransition) { it.classList.add('sale'); setTimeout(() => it.remove(), 300); return; }
+      it.style.viewTransitionName = 'portada'; document.documentElement.dataset.vt = 'intro';
+      const t = document.startViewTransition(() => { it.remove(); $('tb').style.viewTransitionName = 'portada'; });
+      t.finished.finally(() => { $('tb').style.viewTransitionName = ''; delete document.documentElement.dataset.vt; });
+    };
+    it.addEventListener('click', cerrar);
+    const prog = () => setTimeout(cerrar, 1900);
+    if (enTransicion) S.introPend = prog; else prog();
+    return true;
+  }
   function render() {
+    if (S.anim) {
+      const dir = S.anim; S.anim = '';
+      if (document.startViewTransition) {
+        // Al abrir una campaña desde su tarjeta, la foto chica "crece" hasta la portada (o hasta la presentación, la primera vez)
+        const th = dir === 'adelante' && S.route.name === 'camp' ? S.desdeThumb : null; S.desdeThumb = null;
+        if (th && th.isConnected) th.style.viewTransitionName = 'portada';
+        document.documentElement.dataset.vt = dir;
+        const t = document.startViewTransition(() => { render(); if (th) { const c = S.campanas[S.route.cid]; if (!(c && introCampana(c, true))) $('tb').style.viewTransitionName = 'portada'; } });
+        t.finished.finally(() => { delete document.documentElement.dataset.vt; $('tb').style.viewTransitionName = ''; if (th) th.style.viewTransitionName = ''; if (S.introPend) { const f = S.introPend; S.introPend = null; f(); } });
+        return;
+      }
+      const app = $('app'); app.classList.remove('entra'); void app.offsetWidth; app.classList.add('entra'); setTimeout(() => app.classList.remove('entra'), 600);
+    }
     renderTop();
     const r = S.route;
     if (!S.loaded) { $('app').innerHTML = esqueleto(); return; }
@@ -450,6 +497,10 @@
     $('app').innerHTML = h;
     if (vis.length && S.vista === 'mapa') dibujarMapa(vis);
   }
+  // Campañas que todavía no empezaron: cuánto falta (días; "mañana")
+  const faltanDias = (c) => c.desde && c.desde > hoy() ? Math.round((parseIso(c.desde) - parseIso(hoy())) / 864e5) : 0;
+  const empiezaTxt = (n) => n === 1 ? 'Empieza mañana' : `Empieza en ${n} días`;
+  const empiezaTag = (c) => { const n = faltanDias(c); return n ? `<span class="pronto">${I('clock', 'width:12px;height:12px')}${empiezaTxt(n)}</span>` : ''; };
   function campCard(c) {
     listenCC(c.id);
     const dias = diasDe(c), pts = Object.values(c.puntos || {});
@@ -460,7 +511,7 @@
       const cuando = dias[0] <= addDays(hoy(), 6) ? 'en los próximos 7 días' : 'la primera semana';
       cob = `<span class="meter"><i style="--w:${pct}%"></i><span class="num">${pct}%</span></span><small class="falt">${k.faltan > 0 ? `Faltan ${k.faltan} ${k.faltan === 1 ? 'lugar' : 'lugares'} ${cuando}` : `Todo cubierto ${cuando}`}</small>`;
     }
-    return `<button type="button" class="cc camp" data-go="#/c/${esc(c.id)}"><span class="th${c.portada ? '' : ' sinf'}"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}>${c.portada ? '' : I(pts.some(p => p.tipo === 'carrito') ? 'cart' : pts.some(p => p.tipo === 'stand') ? 'stand' : 'pin', 'width:26px;height:26px')}</span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), pts.length + (pts.length === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small>${cob}</span>${I('chev')}</button>`;
+    return `<button type="button" class="cc camp" data-go="#/c/${esc(c.id)}"><span class="th${c.portada ? '' : ' sinf'}"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}>${c.portada ? '' : I(pts.some(p => p.tipo === 'carrito') ? 'cart' : pts.some(p => p.tipo === 'stand') ? 'stand' : 'pin', 'width:26px;height:26px')}</span><span class="tx">${empiezaTag(c)}<b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), pts.length + (pts.length === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small>${cob}</span>${I('chev')}</button>`;
   }
   const ESTADOS = { pendiente: 'Esperando confirmación', confirmado: 'Confirmado', rechazado: 'No confirmado' };
 
@@ -476,7 +527,9 @@
     if (S.diaCid !== c.id || !dias.includes(S.dia)) { S.dia = dias[0]; S.diaCid = c.id; }
     if (!dias.length) { $('app').innerHTML = '<div class="card"><div class="empty">No hay días con turnos por delante.</div></div>'; return; }
     const md = parseIso(S.dia);
-    let h = `<div class="month"><b>${cap(MES[md.getMonth()])}</b><span class="leyenda"><i class="c"></i>confirmado<i class="p"></i>pedido<i></i>libre</span></div>`;
+    const fd = faltanDias(c);
+    let h = fd ? `<div class="cuenta" role="note"><div class="cn"><b class="num">${fd}</b><small>${fd === 1 ? 'día' : 'días'}</small></div><div><b>${fd === 1 ? 'La campaña empieza mañana' : `Faltan ${fd} días para que empiece`}</b><span>Ya podés anotarte: elegí un día y un horario.</span></div></div>` : '';
+    h += `<div class="month"><b>${cap(MES[md.getMonth()])}</b><span class="leyenda"><i class="c"></i>confirmado<i class="p"></i>pedido<i></i>libre</span></div>`;
     h += `<div class="days">${dias.map(d => {
       const x = parseIso(d), k = cobertura(c, [d]);
       const nivel = k.faltan <= 0 ? 'lleno' : k.faltan / k.total <= 0.34 ? 'poco' : 'libre';

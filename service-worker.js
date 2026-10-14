@@ -1,8 +1,8 @@
 // Service worker de PPAM Entre Ríos: guarda la página y Firebase para que abra rápido y también sin señal.
-const CACHE = 'ppam-v45';
+const CACHE = 'ppam-v46';
 const SDK = 'ppam-sdk-10.13.2';   // Firebase (gstatic): misma versión = mismo archivo, se guarda una vez para abrir sin señal
 const SDK_URLS = ['app', 'auth', 'firestore'].map(n => `https://www.gstatic.com/firebasejs/10.13.2/firebase-${n}-compat.js`);
-const ASSETS = ['./', './index.html', './app.js?v=43', './coord.js?v=43', './app.css?v=43', './firebase-config.js?v=43', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png', './icon-64.png'];
+const ASSETS = ['./', './index.html', './app.js?v=44', './coord.js?v=44', './app.css?v=44', './firebase-config.js?v=44', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png', './icon-64.png'];
 self.addEventListener('install', (e) => { e.waitUntil(Promise.all([caches.open(CACHE).then(c => c.addAll(ASSETS)), caches.open(SDK).then(c => Promise.all(SDK_URLS.map(u => c.match(u).then(r => r || fetch(u, { mode: 'no-cors' }).then(n => c.put(u, n)))))).catch(() => {})])); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('ppam-') && !k.startsWith('ppam-fotos') && k !== SDK && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
