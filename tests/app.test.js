@@ -116,7 +116,7 @@ const SEED = {
   let p = await open([pub]);
   let home = await text(p, '#app');
   check('inicio: las campañas vigentes (no la que ya terminó)', /Terminal de ómnibus/.test(home) && /Costanera/.test(home) && !/Campaña vieja/.test(home), home);
-  check('cobertura de la primera semana en la tarjeta', /Terminal de ómnibus[\s\S]*11%\s*Faltan 24 lugares en los próximos 7 días/.test(home) && /Costanera[\s\S]*0%\s*Faltan 6 lugares en los próximos 7 días/.test(home), home);
+  check('cobertura de la primera semana en la tarjeta', /Terminal de ómnibus[\s\S]*11%\s*24 lugares libres en los próximos 7 días/.test(home) && /Costanera[\s\S]*0%\s*6 lugares libres en los próximos 7 días/.test(home), home);
   check('sin sesión: bienvenida con campañas activas y lugares libres de la semana', /Sumate a un turno[\s\S]*2\s*campañas activas\s*\d+\s*lugares libres esta semana\s*Ver turnos libres/.test(home) && await p.evaluate(() => document.getElementById('userBtn').textContent === 'Ingresar'), home.slice(0, 300));
   check('accesibilidad: la pantalla no se relee entera en cada cambio (sin aria-live en <main>)', await p.evaluate(() => !document.getElementById('app').hasAttribute('aria-live') && !document.getElementById('app').hasAttribute('aria-busy') && window.__ppamOk === true && document.getElementById('toast').getAttribute('role') === 'status'));
   {
@@ -141,7 +141,7 @@ const SEED = {
   check('resumen del día: puntos y lugares libres', /Jueves 1 de octubre\s*1 carrito · 1 lugar libre\s*Todos\s*Con lugar/.test(camp), camp);
   check('los días marcan cuánto lugar queda (jueves 1: quedan pocos; viernes 2: hay lugar)', await p.evaluate(() => document.querySelector('[data-dia="2026-10-01"]').classList.contains('poco') && document.querySelector('[data-dia="2026-10-02"]').classList.contains('libre')));
   check('días desde el 1 de octubre (no antes), sin domingos', await p.evaluate(() => { const d = [...document.querySelectorAll('.day')].map(x => x.dataset.dia); return d[0] === '2026-10-01' && !d.includes('2026-10-04'); }));
-  check('turnos del jueves 1 como botones: completo, falta 1 (uno pedido)', /08:00\s*a 10:00\s*Completo\s*10:00\s*a 12:00\s*Falta 1/.test(camp) && await p.evaluate(() => document.querySelector('[data-pedir="t1"]').disabled && !document.querySelector('[data-pedir="t2"]').disabled && document.querySelectorAll('[data-pedir="t2"] .cs i.p').length === 1), camp);
+  check('turnos del jueves 1 como botones: completo, 1 libre (uno pedido)', /08:00\s*a 10:00\s*Completo\s*10:00\s*a 12:00\s*1 libre/.test(camp) && await p.evaluate(() => document.querySelector('[data-pedir="t1"]').disabled && !document.querySelector('[data-pedir="t2"]').disabled && document.querySelectorAll('[data-pedir="t2"] .cs i.p').length === 1), camp);
   await p.click('[data-cf="libres"]'); await p.waitForTimeout(50);
   check('filtro "Con lugar": oculta el horario completo', !(await p.$('[data-pedir="t1"]')) && !!(await p.$('[data-pedir="t2"]')));
   await p.click('[data-cf="todos"]'); await p.click('[data-plegar="p1"]'); await p.waitForTimeout(50);
@@ -150,7 +150,7 @@ const SEED = {
   check('sin ubicación cargada no aparece "Ver lugar"', !(await p.$('[data-lugar]')));
   await p.click('[data-dia="2026-10-03"]'); await p.waitForTimeout(80);
   camp = await text(p, '#app');
-  check('el sábado aparece también el stand (3 lugares)', /Hall central\s*3 libres\s*16:00\s*a 18:00\s*Faltan 3/.test(camp), camp);
+  check('el sábado aparece también el stand (3 lugares)', /Hall central\s*3 libres\s*16:00\s*a 18:00\s*3 libres/.test(camp), camp);
   await p.screenshot({ path: SHOTS + '/campana.png' });
   await p.click('[data-pedir="t3"]'); await p.waitForTimeout(80);
   check('sin sesión: pide iniciar sesión primero', /Ingresá para anotarte/.test(await text(p, '.sheet')));
@@ -760,7 +760,7 @@ const SEED = {
     await (await pin('Terminal de ómnibus')).click(); await m.waitForTimeout(1000);
     const ab = await m.evaluate(() => ({ sel: !!document.querySelector('.pp.sel'), dim: document.querySelector('.mapin').classList.contains('dim'), on: document.getElementById('msheet').classList.contains('on'), t: document.getElementById('msBody').innerText.replace(/\s+/g, ' ') }));
     check('la campaña elegida muestra sus puntos con su nombre (Hall central)', await m.evaluate(() => [...document.querySelectorAll('.pso .lab')].map(x => x.textContent).join() === 'Hall central' || [...document.querySelectorAll('.pso .lab')].map(x => x.textContent).sort().join() === 'Andén 1,Hall central'));
-    check('tocar una campaña: se vuelve su foto y sube la tarjeta con los lugares que faltan', ab.sel && ab.dim && ab.on && /Terminal de ómnibus/.test(ab.t) && /2 puntos/.test(ab.t) && /Faltan \d+ lugares|Falta 1 lugar/.test(ab.t), ab);
+    check('tocar una campaña: se vuelve su foto y sube la tarjeta con los lugares que faltan', ab.sel && ab.dim && ab.on && /Terminal de ómnibus/.test(ab.t) && /2 puntos/.test(ab.t) && /\d+ lugares libres|1 lugar libre/.test(ab.t), ab);
     await m.screenshot({ path: SHOTS + '/mapa-terminal.png' });
     await m.evaluate(() => [...document.querySelectorAll('.pso')].find(x => /Hall central/.test(x.textContent)).querySelector('.pin').dispatchEvent(new MouseEvent('click', { bubbles: true }))); await m.waitForTimeout(900);
     const hp = await m.evaluate(() => ({ t: document.getElementById('msBody').innerText.replace(/\s+/g, ' '), foto: (document.querySelector('#msBody .im') || {}).dataset && document.querySelector('#msBody .im').dataset.foto, pin: !!document.querySelector('.pso.sel [data-foto="parana-terminal__fhall"]'), lugar: !!document.querySelector('#msBody [data-lugar="parana-terminal|p2"]') }));

@@ -48,7 +48,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '44';
+  const VERSION = '45';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -418,7 +418,7 @@
     { g: 'Anotarme', qs: [
       ['google', '¿Por qué tengo que entrar con Google?', 'Para saber que sos vos: así nadie puede anotarse a tu nombre y podés ver tus turnos desde cualquier celular. Usamos tu cuenta solo para eso; no vemos tus correos ni tus contactos.'],
       ['espera', 'Mi turno dice "Esperando confirmación", ¿qué significa?', 'Que tu pedido llegó bien y un coordinador de la campaña lo tiene que confirmar. Mientras tanto el lugar queda guardado para vos. Cuando lo confirme, en Mis turnos va a decir "Confirmado".'],
-      ['completo', 'Un horario dice "Completo", ¿qué hago?', 'Elegí otro horario u otro día: los que tienen lugar dicen "Faltan" y cuántos. Con el filtro "Con lugar" ves solo esos, y con la lupa de arriba buscás lugares libres para hoy o mañana en toda la provincia.'],
+      ['completo', 'Un horario dice "Completo", ¿qué hago?', 'Elegí otro horario u otro día: los que tienen lugar dicen cuántos quedan libres. Con el filtro "Con lugar" ves solo esos, y con la lupa de arriba buscás lugares libres para hoy o mañana en toda la provincia.'],
       ['acompanado', '¿Puedo anotarme con mi esposa o con otro hermano?', 'Sí. Cada uno se anota con su propia cuenta en el mismo horario. Al anotarte podés dejar una nota para el coordinador, por ejemplo "Voy con mi esposa". Desde tu turno, "Invitar a alguien a este turno" le manda el enlace por WhatsApp.'],
       ['varios', '¿Puedo anotarme en más de un turno?', 'Sí, en los que quieras. Si dos turnos se superponen en el horario, la app te avisa antes de confirmar.']
     ] },
@@ -470,7 +470,7 @@
       const { n, mejor } = libresSemana(vis);
       const donde = S.ciudad !== 'todas' ? 'En ' + S.ciudad : 'En Entre Ríos';
       h += `${S.user ? '<div class="lbl">Todavía no tenés turnos</div>' : '<div style="height:6px"></div>'}<div class="welcome">`;
-      h += S.user ? `<h4>¿Te sumás esta semana?</h4><p>${esc(donde)} ${n === 1 ? 'falta <b>1 lugar</b>' : `faltan <b>${n} lugares</b>`} en los próximos 7 días.</p>`
+      h += S.user ? `<h4>¿Te sumás esta semana?</h4><p>${esc(donde)} ${n === 1 ? 'hay <b>1 lugar libre</b>' : `hay <b>${n} lugares libres</b>`} en los próximos 7 días.</p>`
         : `<h4>Sumate a un turno</h4><p>Elegí una campaña, un día y un horario. Un coordinador te confirma.</p><div class="stats"><div><b class="num">${vis.length}</b><small>${vis.length === 1 ? 'campaña activa' : 'campañas activas'}${S.ciudad !== 'todas' ? ' en ' + esc(S.ciudad) : ''}</small></div><div><b class="num">${n}</b><small>lugares libres esta semana</small></div></div>`;
       if (mejor) h += `<button type="button" class="btn p" data-go="#/c/${esc(mejor.id)}">Ver turnos libres</button>`;
       h += '</div>';
@@ -509,7 +509,7 @@
       const k = cobertura(c, dias.filter(d => d <= addDays(dias[0], 6)));
       const pct = k.total ? Math.round(k.ocup * 100 / k.total) : 0;
       const cuando = dias[0] <= addDays(hoy(), 6) ? 'en los próximos 7 días' : 'la primera semana';
-      cob = `<span class="meter"><i style="--w:${pct}%"></i><span class="num">${pct}%</span></span><small class="falt">${k.faltan > 0 ? `Faltan ${k.faltan} ${k.faltan === 1 ? 'lugar' : 'lugares'} ${cuando}` : `Todo cubierto ${cuando}`}</small>`;
+      cob = `<span class="meter"><i style="--w:${pct}%"></i><span class="num">${pct}%</span></span><small class="falt">${k.faltan > 0 ? `${k.faltan} ${k.faltan === 1 ? 'lugar libre' : 'lugares libres'} ${cuando}` : `Todo cubierto ${cuando}`}</small>`;
     }
     return `<button type="button" class="cc camp" data-go="#/c/${esc(c.id)}"><span class="th${c.portada ? '' : ' sinf'}"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}>${c.portada ? '' : I(pts.some(p => p.tipo === 'carrito') ? 'cart' : pts.some(p => p.tipo === 'stand') ? 'stand' : 'pin', 'width:26px;height:26px')}</span><span class="tx">${empiezaTag(c)}<b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), pts.length + (pts.length === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small>${cob}</span>${I('chev')}</button>`;
   }
@@ -563,7 +563,7 @@
       h += `<div class="pc${pleg ? ' pleg' : ''}"><div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}</div><button type="button" class="tx" data-plegar="${esc(pid)}" aria-expanded="${!pleg}"><b>${esc(p.nombre)}</b>${p.detalle ? `<small>${esc(p.detalle)}</small>` : ''}<span class="pl ${libres ? 'ok' : ''}">${cargando ? '…' : errCupos ? 'Sin datos' : libres ? (libres === 1 ? '1 libre' : libres + ' libres') : items.every(y => y.paso) ? 'Ya empezó' : 'Completo'}${I('chev')}</span></button>${tieneLugar(p) ? `<button type="button" class="loc" data-lugar="${esc(c.id)}|${esc(pid)}" aria-label="Ver lugar">${I('pin', 'width:15px;height:15px')}<span>Ver lugar</span></button>` : ''}</div>`;
       if (!pleg) h += `<div class="chips">${vis.map(x => {
         const est = x.mio ? 'mio' : x.paso ? 'lleno paso' : cargando || errCupos ? 'carg' : x.falta <= 0 ? 'lleno' : x.falta < x.n ? 'poco' : 'libre';
-        const txt = x.mio ? (x.mio === 'c' ? 'Tu turno' : 'Pedido') : x.paso ? 'Ya empezó' : cargando ? 'Cargando' : errCupos ? 'Sin datos' : x.falta <= 0 ? 'Completo' : x.falta === 1 ? 'Falta 1' : 'Faltan ' + x.falta;
+        const txt = x.mio ? (x.mio === 'c' ? 'Tu turno' : 'Pedido') : x.paso ? 'Ya empezó' : cargando ? 'Cargando' : errCupos ? 'Sin datos' : x.falta <= 0 ? 'Completo' : x.falta === 1 ? '1 libre' : x.falta + ' libres';
         const seats = Array.from({ length: Math.max(x.n, x.conf + x.pend) }, (_, k) => `<i class="${k < x.conf ? 'c' : k < x.conf + x.pend ? 'p' : ''}"></i>`).join('');
         return `<button type="button" class="chip ${est}" ${x.mio ? `data-mio="${esc(x.t.id)}"` : `data-pedir="${esc(x.t.id)}"`}${!x.mio && x.falta <= 0 ? ' disabled' : ''}><b class="num">${esc(x.t.desde)}</b><span class="cs"><small>a ${esc(x.t.hasta)}</small>${seats}</span><em>${txt}</em></button>`;
       }).join('')}</div>`;
@@ -1116,7 +1116,7 @@
     const k = cobertura(c, dias.filter(d => d <= addDays(dias[0], 6)));
     const est = k.faltan <= 0 ? 'full' : (k.faltan <= 3 || k.ocup / Math.max(1, k.total) >= .75) ? 'poco' : 'ok';
     const cuando = dias[0] <= addDays(hoy(), 6) ? 'esta semana' : 'la primera semana';
-    return { est, faltan: k.faltan, txt: k.faltan > 0 ? `${k.faltan === 1 ? 'Falta 1 lugar' : 'Faltan ' + k.faltan + ' lugares'} ${cuando}` : `Completo ${cuando}` };
+    return { est, faltan: k.faltan, txt: k.faltan > 0 ? `${k.faltan === 1 ? '1 lugar libre' : k.faltan + ' lugares libres'} ${cuando}` : `Completo ${cuando}` };
   }
   // Campañas con ubicación: sus puntos marcados o, si no hay, el centro de su localidad.
   function campsMapa(cs) {

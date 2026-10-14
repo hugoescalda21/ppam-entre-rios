@@ -9,6 +9,13 @@
 
 
 
+## Versión 45 — "lugares libres" en vez de "faltan"
+
+- Tarjeta de campaña y ficha del mapa: "24 lugares libres en los próximos 7 días" (antes "Faltan 24 lugares…").
+- Horarios dentro de la campaña: "3 libres" / "1 libre" (antes "Faltan 3" / "Falta 1").
+- Aviso del inicio: "En Paraná hay 5 lugares libres en los próximos 7 días".
+- Las pantallas de coordinadores siguen diciendo "Faltan", porque ahí se busca gente para cubrir.
+
 ## Versión 44 — movimiento y cuenta regresiva
 
 - Transiciones suaves al cambiar de pantalla: avanzar desliza desde la derecha, volver desde la izquierda y las pestañas se funden. La barra de abajo queda quieta.
