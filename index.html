@@ -26,11 +26,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@600;700&display=swap">
-<link rel="stylesheet" href="./app.css?v=42">
+<link rel="stylesheet" href="./app.css?v=43">
 <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
-<script defer src="./firebase-config.js?v=42"></script>
+<script defer src="./firebase-config.js?v=43"></script>
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -79,7 +79,7 @@
   </header>
 
   <main class="ct" id="app" aria-busy="true">
-    <div class="empty">Cargando las campañas…</div>
+    <div class="sk" aria-hidden="true"><div class="skw"><i style="width:55%;height:22px"></i><i style="width:85%"></i><i style="width:70%"></i><i class="skb"></i></div><div class="skt"><i style="width:35%;height:18px"></i></div><div class="skc"><span class="skth"></span><span><i style="width:60%;height:15px"></i><i style="width:80%"></i><i style="width:45%"></i></span></div><div class="skc"><span class="skth"></span><span><i style="width:60%;height:15px"></i><i style="width:80%"></i><i style="width:45%"></i></span></div></div><p class="sr-only" role="status">Cargando las campañas…</p>
   </main>
   <script>
     // Si con mala señal no termina de cargar, avisar y ofrecer reintentar (en vez de "Cargando…" para siempre)
@@ -94,7 +94,7 @@
 
   <footer class="foot">
     <div class="foot-links"><button type="button" class="linkish" id="repBtn"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>Reportar un problema</button><span class="dot">·</span><button type="button" class="linkish" id="privBtn">Cómo se usan tus datos</button></div>
-    <div class="foot-ver" id="verTxt">Versión 42</div>
+    <div class="foot-ver" id="verTxt">Versión 43</div>
   </footer>
 
   <nav class="tabbar" id="tabbar" aria-label="Secciones">
@@ -105,6 +105,6 @@
   </nav>
 
   <div class="toast" id="toast" role="status"></div>
-  <script defer src="./app.js?v=42"></script>
+  <script defer src="./app.js?v=43"></script>
 </body>
 </html>

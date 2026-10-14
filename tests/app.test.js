@@ -14,7 +14,7 @@ let ok = 0, bad = 0; const check = (l, c, x) => { if (c) { ok++; console.log('  
 // Firestore y Auth en memoria (lo mínimo que usa la app).
 function mock(seed, users) {
   // la bienvenida y la guía del coordinador ya vistas (salvo en las pruebas que las revisan)
-  try { if (!window.__bvNueva) { localStorage.setItem('ppam-bienvenida', '1'); localStorage.setItem('ppam-guia-coord', '1'); } } catch (e) { /* nada */ }
+  try { if (!window.__bvNueva) { localStorage.setItem('ppam-bienvenida', '1'); localStorage.setItem('ppam-guia-coord', '1'); } if (!window.__avisoWa) localStorage.setItem('ppam-avisar-wa', 'no'); } catch (e) { /* nada */ }
   const store = JSON.parse(JSON.stringify(seed));
   const listeners = new Set();
   const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -1038,6 +1038,45 @@ const SEED = {
     await u.click('.qhelp'); await u.waitForTimeout(300);
     check('lleva a la Ayuda con esa respuesta abierta', await u.evaluate(() => location.hash === '#/ayuda/espera' && document.getElementById('faq-espera').open));
     check('sin errores (enlaces de ayuda)', k.errs.length === 0 && u.errs.length === 0, [k.errs, u.errs]);
+  }
+  console.log('\nPrimera visita y espera de confirmación');
+  {
+    const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    await ctx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+    await ctx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await ctx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, [])`);
+    await ctx.addInitScript(() => { const db = window.__ppamMock.db, c0 = db.collection; db.collection = (x) => x === 'campanas' ? { onSnapshot: () => () => {} } : c0(x); });
+    const l = await ctx.newPage(); await l.goto(FILE); await l.waitForTimeout(300);
+    check('mientras cargan las campañas se ve la forma de la pantalla (no un "Cargando…" suelto)', await l.evaluate(() => !!document.querySelector('#app .sk .skc') && /Cargando las campañas/.test(document.querySelector('#app [role="status"]').textContent)));
+    const h = await open([], '');
+    check('sin sesión, "Ingresar" es un botón con borde (lo principal es "Ver turnos libres")', await h.evaluate(() => { const b = document.getElementById('userBtn'), cs = getComputedStyle(b); return b.classList.contains('login') && cs.backgroundColor !== getComputedStyle(document.querySelector('.welcome .btn, .welcome button')).backgroundColor && parseFloat(cs.borderTopWidth) > 0; }));
+    check('"Predicación pública" no se repite en el inicio', !/Predicación pública/i.test(await text(h, '#app')));
+    const u = await open([{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }], '');
+    await u.click('#userBtn'); await u.waitForTimeout(300);
+    await u.evaluate(() => window.__ppamMock.db.doc('pedidos/parana-terminal__2026-10-01__t2__u-ana').set({ cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-ana', email: 'ana@x.com', nombre: 'Ana', apellido: 'Paz', congregacion: 'X', celular: '343 555-0000', estado: 'pendiente', creado: 'x' }));
+    await u.waitForTimeout(300);
+    check('inicio: si el turno es mañana y sigue sin confirmar, sugiere avisar al coordinador', /Si falta poco y todavía no te confirmaron, avisale al coordinador de tu congregación/.test(await text(u, '#app')));
+    await u.evaluate(() => { location.hash = '#/mis'; }); await u.waitForTimeout(300);
+    check('Mis turnos: "Esperando confirmación" es una etiqueta chica, no parece un botón', await u.evaluate(() => { const e = document.querySelector('.tc .est.pe'); return !!e && e.getBoundingClientRect().height < 32 && getComputedStyle(e).cursor !== 'pointer'; }));
+    await u.evaluate(() => { location.hash = '#/t/parana-terminal__2026-10-01__t2__u-ana'; }); await u.waitForTimeout(300);
+    check('detalle: explica la espera y qué hacer si falta poco', /Un coordinador lo revisa y te confirma\. Si falta poco para el turno/.test(await text(u, '.espera')));
+    check('sin errores (espera)', u.errs.length === 0 && h.errs.length === 0, [u.errs, h.errs]);
+    const ctx2 = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    await ctx2.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+    await ctx2.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await ctx2.addInitScript(() => { window.__avisoWa = true; });
+    const S2 = JSON.parse(JSON.stringify(SEED)); S2['pedidos/parana-terminal__2026-10-02__t1__u-luis'] = { cid: 'parana-terminal', fecha: '2026-10-02', tid: 't1', punto: 'p1', desde: '08:00', hasta: '10:00', uid: 'u-luis', email: 'luis@x.com', nombre: 'Luis', apellido: 'Sosa', congregacion: 'X', celular: '343 444-1234', estado: 'pendiente', creado: 'x' };
+    S2['cupos/parana-terminal__2026-10-02__t1'] = { cid: 'parana-terminal', fecha: '2026-10-02', tid: 't1', ocupados: { 'u-luis': 'p' } };
+    await ctx2.addInitScript(`(${mock.toString()})(${JSON.stringify(S2)}, ${JSON.stringify([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }])})`);
+    const k = await ctx2.newPage(); k.errs = []; k.on('pageerror', e => k.errs.push(e.message));
+    await k.goto(FILE); await k.waitForTimeout(300); await k.click('#userBtn'); await k.waitForTimeout(300);
+    await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(500);
+    await k.click('[data-confirmar="parana-terminal__2026-10-02__t1__u-luis"]'); await k.waitForTimeout(400);
+    const av = await k.evaluate(() => { const a = document.getElementById('avWa'); return a && { t: document.querySelector('.sheet').innerText, href: a.getAttribute('href') }; });
+    check('al confirmar, ofrece avisarle por WhatsApp con el mensaje armado', av && /¿Le avisás a Luis\?/.test(av.t) && av.href.startsWith('https://wa.me/5493434441234?text=') && /confirmado/.test(decodeURIComponent(av.href)), av);
+    await k.click('#avNo'); await k.click('.sheet [data-cerrar]'); await k.waitForTimeout(150);
+    check('"No volver a preguntar" queda guardado', await k.evaluate(() => localStorage.getItem('ppam-avisar-wa') === 'no' && !document.querySelector('.sheet')));
+    check('sin errores (aviso por WhatsApp)', k.errs.length === 0, k.errs);
   }
   console.log('\nCampaña corta: solo sus días');
   {

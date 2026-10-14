@@ -525,6 +525,19 @@ window.PPAM_COORD = function (K) {
     return h;
   }
   const enCurso = new Set();
+  // Después de confirmar: ofrecer avisarle al hermano por WhatsApp, con el mensaje armado (se puede desactivar)
+  function avisarConfirmado(p, c) {
+    if (!p.celular || p.manual) return false;
+    try { if (localStorage.getItem('ppam-avisar-wa') === 'no') return false; } catch (e) { /* nada */ }
+    const pt = ((c.puntos || {})[p.punto] || {}).nombre || '';
+    const msg = `Hola ${p.nombre}, tu turno del ${fmtDia(p.fecha)} de ${p.desde} a ${p.hasta}${pt ? ' en ' + pt : ''} (${c.nombre || ''}) quedó confirmado. ¡Gracias!`;
+    const ov = sheet(`<h3>¿Le avisás a ${esc(p.nombre)}?</h3><p class="hint">✓ Su turno quedó confirmado. Podés mandarle este mensaje por WhatsApp:</p><div class="sum"><div>${esc(msg)}</div></div><a class="btn" id="avWa" href="${esc(waUrl(p.celular) + '?text=' + encodeURIComponent(msg))}" target="_blank" rel="noopener">${I('chat', 'width:18px;height:18px')}Avisarle por WhatsApp</a><button type="button" class="btn alt" data-cerrar>Ahora no</button><label class="ck" style="margin-top:6px"><input type="checkbox" id="avNo"> <span>No volver a preguntar en este celular</span></label>`);
+    const no = ov.querySelector('#avNo');
+    const guardar = () => { try { if (no.checked) localStorage.setItem('ppam-avisar-wa', 'no'); } catch (e) { /* nada */ } };
+    ov.querySelector('#avWa').addEventListener('click', () => { guardar(); setTimeout(() => ov.remove(), 100); });
+    ov.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('click', guardar));
+    return true;
+  }
   async function cambiarEstado(pid, estado) {
     const p = S.coord.pedidos[pid]; if (!p || enCurso.has(pid)) return;
     enCurso.add(pid); setTimeout(() => enCurso.delete(pid), 4000);
@@ -533,7 +546,7 @@ window.PPAM_COORD = function (K) {
     if (estado === 'confirmado') batch.set(cref, { cid: p.cid, fecha: p.fecha, tid: p.tid, ocupados: { [p.uid]: 'c' } }, { merge: true });
     else batch.update(cref, { ['ocupados.' + p.uid]: S.del() });
     batch.update(S.db.doc('pedidos/' + pid), { estado, actualizado: new Date().toISOString(), por: S.user.email.toLowerCase() });
-    try { await batch.commit(); const c = S.campanas[p.cid] || {}; auditar(p.cid, estado === 'confirmado' ? 'confirmo' : p.estado === 'confirmado' ? 'quito' : 'no_confirmo', (estado === 'confirmado' ? 'confirmó a ' : p.estado === 'confirmado' ? 'quitó del turno a ' : 'no confirmó a ') + pTxt(c, p)); toast(estado === 'confirmado' ? 'Confirmado' : 'Listo'); } catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); }
+    try { await batch.commit(); const c = S.campanas[p.cid] || {}; auditar(p.cid, estado === 'confirmado' ? 'confirmo' : p.estado === 'confirmado' ? 'quito' : 'no_confirmo', (estado === 'confirmado' ? 'confirmó a ' : p.estado === 'confirmado' ? 'quitó del turno a ' : 'no confirmó a ') + pTxt(c, p)); if (!(estado === 'confirmado' && avisarConfirmado(p, c))) toast(estado === 'confirmado' ? 'Confirmado' : 'Listo'); } catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); }
   }
   function textoVoluntarios(c, dias) {
     const i0 = dias.indexOf(S.coord.semana), ds = dias.slice(i0 < 0 ? 0 : i0, (i0 < 0 ? 0 : i0) + 7);

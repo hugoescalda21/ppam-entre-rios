@@ -48,7 +48,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '42';
+  const VERSION = '43';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -80,7 +80,7 @@
     // Copia local de lo leído: abre más rápido, se ve sin señal y al volver pide solo lo que cambió (menos lecturas)
     try { if (S.db.enablePersistence) S.db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch (e) { /* navegador sin soporte */ }
     S.db.collection('campanas').onSnapshot((qs) => {
-      const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; const primera = !S.loaded; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); if (primera) { render(); setTimeout(() => { if (S.route.name === 'home') bienvenida(); }, 400); } else refrescar(render);
+      const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; const primera = !S.loaded; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); if (primera) { render(); setTimeout(() => { if (S.route.name === 'home') bienvenida(); }, 60); } else refrescar(render);
     }, (e) => { console.error(e); if (S.loaded) return; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); $('app').innerHTML = '<div class="empty carga-err"><b>No pudimos cargar las campañas.</b><br>Revisá la conexión y probá de nuevo.</div><button type="button" class="btn" id="reintentar">Reintentar</button>'; $('reintentar').addEventListener('click', () => location.reload()); });
     S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin' || (S.route.name === 'home' && S.loaded)) render(); }, () => {});
     S.auth.onAuthStateChanged(onUser);
@@ -230,10 +230,12 @@
   document.addEventListener('input', (e) => { if (e.target.type !== 'file' && e.target.closest && e.target.closest('#app [data-editable]')) S.sucio = true; });
   document.addEventListener('focusout', () => setTimeout(refrescarPend, 0));
   function luego() { if (luego.t) return; luego.t = setTimeout(() => { luego.t = 0; refrescar(render); }, 0); }
+  // Mientras cargan las campañas: la forma de la pantalla en gris (se nota que está cargando, no que no anda)
+  const esqueleto = () => `<div class="sk" aria-hidden="true"><div class="skw"><i style="width:55%;height:22px"></i><i style="width:85%"></i><i style="width:70%"></i><i class="skb"></i></div><div class="skt"><i style="width:35%;height:18px"></i></div>${[1, 2].map(() => '<div class="skc"><span class="skth"></span><span><i style="width:60%;height:15px"></i><i style="width:80%"></i><i style="width:45%"></i></span></div>').join('')}</div><p class="sr-only" role="status">Cargando las campañas…</p>`;
   function render() {
     renderTop();
     const r = S.route;
-    if (!S.loaded) { $('app').innerHTML = '<div class="empty">Cargando…</div>'; return; }
+    if (!S.loaded) { $('app').innerHTML = esqueleto(); return; }
     if (r.name === 'camp') return renderCamp();
     if (r.name === 'mis') return renderMis();
     if (r.name === 'turno') return renderTurno();
@@ -320,7 +322,7 @@
     const pill = conf ? '<span class="pill g"><i></i>Confirmado</span>' : '<span class="pill w"><i></i>Esperando confirmación</span>';
     const top = esHoy ? `<span class="today">${I('clock', 'width:13px;height:13px')}${esc(cuando)}</span>${pill}` : `<span class="d">${esc(DOW[parseIso(p.fecha).getDay()] + ' ' + parseIso(p.fecha).getDate() + ' de ' + MES[parseIso(p.fecha).getMonth()])}</span>${pill}`;
     let hint = '';
-    if (!conf) hint = '<div class="hint">Un coordinador lo revisa y te confirma. Lo vas a ver acá y en Mis turnos.</div>';
+    if (!conf) hint = '<div class="hint">Un coordinador lo revisa y te confirma. Lo vas a ver acá y en Mis turnos.' + (p.fecha <= addDays(hoy(), 2) ? ' <b>Si falta poco y todavía no te confirmaron, avisale al coordinador de tu congregación.</b>' : '') + '</div>';
     else if (esHoy && pt.retiro) hint = `<div class="hint">${esc(retiroLabel(pt))}: ${esc(pt.retiro)}</div>`;
     let acts;
     if (!conf) acts = `<button type="button" class="btn gh" data-go="#/t/${esc(p.id)}">Ver detalle</button><button type="button" class="btn gh sm" data-cancelar="${esc(p.id)}">Cancelar</button>`;
@@ -420,7 +422,7 @@
     } else if (!(S.vista === 'mapa' && S.publico.mapa !== false && vis.length)) {   // en modo Mapa, el mapa es el protagonista
       const { n, mejor } = libresSemana(vis);
       const donde = S.ciudad !== 'todas' ? 'En ' + S.ciudad : 'En Entre Ríos';
-      h += `<div class="lbl">${S.user ? 'Todavía no tenés turnos' : 'Predicación pública'}</div><div class="welcome">`;
+      h += `${S.user ? '<div class="lbl">Todavía no tenés turnos</div>' : '<div style="height:6px"></div>'}<div class="welcome">`;
       h += S.user ? `<h4>¿Te sumás esta semana?</h4><p>${esc(donde)} ${n === 1 ? 'falta <b>1 lugar</b>' : `faltan <b>${n} lugares</b>`} en los próximos 7 días.</p>`
         : `<h4>Sumate a un turno</h4><p>Elegí una campaña, un día y un horario. Un coordinador te confirma.</p><div class="stats"><div><b class="num">${vis.length}</b><small>${vis.length === 1 ? 'campaña activa' : 'campañas activas'}${S.ciudad !== 'todas' ? ' en ' + esc(S.ciudad) : ''}</small></div><div><b class="num">${n}</b><small>lugares libres esta semana</small></div></div>`;
       if (mejor) h += `<button type="button" class="btn p" data-go="#/c/${esc(mejor.id)}">Ver turnos libres</button>`;
@@ -751,8 +753,8 @@
     const rech = p.estado === 'rechazado', conf = p.estado === 'confirmado', done = modo === 'done';
     const url = !done && !rech && pt.nombre ? comoLlegarUrl(pt, c) : '';
     const foto = (pt.fotos || [])[0];
-    const chip = done ? (conf ? `<span class="chip dn">${I('check')}Hecho</span>` : `<span class="chip dn">${rech ? 'No confirmado' : 'Sin confirmar'}</span>`)
-      : `<span class="chip ${conf ? 'ok' : rech ? 'rj' : 'pe'}"><i></i>${esc(ESTADOS[p.estado] || p.estado)}</span>`;
+    const chip = done ? (conf ? `<span class="est dn">${I('check')}Hecho</span>` : `<span class="est dn">${rech ? 'No confirmado' : 'Sin confirmar'}</span>`)
+      : `<span class="est ${conf ? 'ok' : rech ? 'rj' : 'pe'}"><i></i>${esc(ESTADOS[p.estado] || p.estado)}</span>`;
     let acts = '';
     if (url) acts += `<a class="go" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Cómo llegar</a>`;
     acts += `<button type="button" class="sbtn" data-go="#/t/${esc(p.id)}">Detalle</button>`;
@@ -770,6 +772,7 @@
     h += `<div class="det"><div class="st ${esc(p.estado)}"><i></i>${conf ? 'Confirmado por un coordinador' : rech ? 'No fue confirmado' : 'Esperando confirmación'}${!conf && !rech ? ' <a class="qhelp" href="#/ayuda/espera">¿Qué significa?</a>' : ''}</div>`;
     h += `<h2>${esc(cap(DOW_L[d.getDay()]))} ${d.getDate()} de ${MES[d.getMonth()]} · <span class="num">${esc(p.desde)} a ${esc(p.hasta)}</span></h2>`;
     h += `<div class="m">${esc([c.nombre, pt.nombre, pt.direccion].filter(Boolean).join(' · '))}</div>`;
+    if (!conf && !rech && !pasado) h += `<p class="espera">${I('clock', 'width:15px;height:15px;flex-shrink:0;margin-top:2px')}<span>Un coordinador lo revisa y te confirma. Si falta poco para el turno y todavía no te confirmaron, avisale al coordinador de tu congregación.</span></p>`;
     if (!rech) h += `<div class="tl"><span class="ok"><span class="dot">${I('check')}</span>Pedido</span><span class="ln on"></span><span class="${conf ? 'ok' : ''}"><span class="dot">${conf ? I('check') : ''}</span>Confirmado</span><span class="ln${pasado ? ' on' : ''}"></span><span class="${pasado ? 'ok' : ''}"><span class="dot">${pasado ? I('check') : ''}</span>El día</span></div>`;
     h += '<div class="grid4">';
     h += url ? `<a class="pr" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Llegar</a>` : `<button type="button" disabled>${I('nav')}Llegar</button>`;
