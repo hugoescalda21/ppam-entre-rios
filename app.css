@@ -763,3 +763,11 @@ a.btn { display: flex; align-items: center; justify-content: center; gap: 8px; t
 .celok.mal { color: var(--warn); }
 .okacts { display: flex; gap: 8px; justify-content: center; margin: 4px 0 12px; }
 .okacts .sbtn { flex: 1; padding: 9px 6px; }
+
+/* ---------- Estado de los cupos, turnos que ya empezaron, borrar datos ---------- */
+.dres .carg { color: var(--ink3); font-weight: 600; }
+.chip.carg { background: var(--line2); border-color: transparent; color: var(--ink3); cursor: wait; }
+.chip.carg em { color: var(--ink3); }
+.chip.paso { opacity: .7; }
+.aviso-mapa.ccerr .sbtn { margin-top: 8px; }
+.linkish.ubor { display: block; margin: 14px auto 0; font-size: 13px; }

@@ -1,5 +1,15 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Auditoría de Crespo, primera tanda — 13 oct 2026 (caché ppam-v35)
+
+- C1: mientras llegan los cupos, "Consultando lugares…" y horarios sin poder pedirse; si fallan, aviso con "Reintentar" (y queda en errores automáticos).
+- C2: los datos del formulario se guardan por cuenta (el formato viejo se descarta); "Borrar mis datos de este celular" en el menú de la cuenta; al cerrar sesión se borran las búsquedas recientes.
+- C3: cerrar la ventana de Google deja a la persona donde estaba; el ingreso por redirección solo si la ventana está bloqueada.
+- C4: los turnos de hoy que ya empezaron dicen "Ya empezó" y no se pueden pedir (página, lupa, conteos del Inicio).
+- Carritos ordenados por número; el contador de campañas sigue al filtro por ciudad.
+- Service worker: solo borra sus propias copias (ppam-…). La recarga por versión nueva espera a que se cierre el formulario abierto.
+- Versión 33. 238 pruebas de la página.
+
 ## Historial general sin consulta ordenada — 13 oct 2026 (caché ppam-v34)
 
 - La consulta ordenada por id pedía un índice en Firebase (failed-precondition): ahora se trae el historial y se ordena en la página, sin anotar errores. Versión 32.

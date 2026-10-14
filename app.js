@@ -49,12 +49,16 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '32';
+  const VERSION = '33';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
-  function perfil() { try { return JSON.parse(localStorage.getItem('ppam-perfil') || '{}'); } catch (e) { return {}; } }
-  function guardarPerfil(p) { try { localStorage.setItem('ppam-perfil', JSON.stringify(p)); } catch (e) { /* nada */ } }
+  // Datos del formulario recordados en este celular, separados por cuenta (en un celular compartido nadie ve los del otro)
+  const perfilKey = () => (S.user ? 'ppam-perfil:' + S.user.uid : '');
+  try { localStorage.removeItem('ppam-perfil'); } catch (e) { /* el formato viejo no sabía de quién era: se descarta */ }
+  function perfil() { const k = perfilKey(); if (!k) return {}; try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } }
+  function guardarPerfil(p) { const k = perfilKey(); if (!k) return; try { localStorage.setItem(k, JSON.stringify(p)); } catch (e) { /* nada */ } }
+  function borrarDatosLocales() { try { Object.keys(localStorage).filter(k => k.startsWith('ppam-perfil') || k === 'ppam-bus-rec').forEach(k => localStorage.removeItem(k)); } catch (e) { /* nada */ } }
 
   /* ---------- Firebase ---------- */
   function init() {
@@ -90,8 +94,10 @@
     const prov = new firebase.auth.GoogleAuthProvider();
     try { await S.auth.signInWithPopup(prov); }
     catch (e) {
-      if (e && /popup/.test(e.code || '')) { await S.auth.signInWithRedirect(prov); return; }
-      if (e && e.code !== 'auth/cancelled-popup-request') toast('No se pudo iniciar sesión. Probá de nuevo.');
+      const code = (e && e.code) || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' || code === 'auth/user-cancelled') return;   // la persona cerró la ventana: se queda donde estaba
+      if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment' || code === 'auth/web-storage-unsupported') { await S.auth.signInWithRedirect(prov); return; }
+      toast('No se pudo iniciar sesión. Probá de nuevo.');
     }
   }
 
@@ -248,15 +254,16 @@
   function listenCC(cid) {
     if (S.ccUnsub[cid]) return;
     S.cc[cid] = S.cc[cid] || {}; S.ccUnsub[cid] = true;
+    S.ccOk = S.ccOk || {}; S.ccErr = S.ccErr || {};
     S.ccUnsub[cid] = S.db.collection('cupos').where('cid', '==', cid).onSnapshot((qs) => {
-      const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.cc[cid] = o;
+      const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.cc[cid] = o; S.ccOk[cid] = true; S.ccErr[cid] = false;
       if (S.route.name === 'home' || (S.route.name === 'camp' && S.route.cid === cid)) luego();
-    }, () => {});
+    }, (e) => { console.error(e); registrarError('aviso', 'Cupos: ' + (e.code || e.message || e)); S.ccErr[cid] = true; S.ccUnsub[cid] = null; if (S.route.name === 'camp' && S.route.cid === cid) luego(); });
   }
   const ocupDe = (cid, fecha, tid) => ((S.cc[cid] || {})[cupoId(cid, fecha, tid)] || {}).ocupados || {};
   function cobertura(c, dias) {
     let total = 0, ocup = 0;
-    dias.forEach(d => turnosDelDia(c, d).forEach(t => { const n = cupoDe(c, t); total += n; ocup += Math.min(n, Object.keys(ocupDe(c.id, d, t.id)).length); }));
+    dias.forEach(d => turnosDelDia(c, d).filter(t => !yaEmpezo(d, t)).forEach(t => { const n = cupoDe(c, t); total += n; ocup += Math.min(n, Object.keys(ocupDe(c.id, d, t.id)).length); }));
     return { total, ocup, faltan: total - ocup };
   }
 
@@ -271,6 +278,9 @@
   }
 
   /* ---------- Inicio ---------- */
+  // Un turno de hoy que ya empezó no se puede pedir (hora de Argentina, la del celular)
+  const yaEmpezo = (fecha, t) => { if (fecha !== hoy()) return fecha < hoy(); const n = new Date(); return minutos(t.desde) <= n.getHours() * 60 + n.getMinutes(); };
+  const ordenPuntos = (c) => Object.keys(c.puntos || {}).sort((a, b) => String(c.puntos[a].nombre || '').localeCompare(String(c.puntos[b].nombre || ''), 'es', { numeric: true, sensitivity: 'base' }));
   const minutos = (hhmm) => { const [a, b] = String(hhmm || '0:0').split(':'); return (+a) * 60 + (+b || 0); };
   function misProximos() {
     const ahora = new Date(), m = ahora.getHours() * 60 + ahora.getMinutes();
@@ -324,7 +334,7 @@
       const donde = S.ciudad !== 'todas' ? 'En ' + S.ciudad : 'En Entre Ríos';
       h += `<div class="lbl">${S.user ? 'Todavía no tenés turnos' : 'Predicación pública'}</div><div class="welcome">`;
       h += S.user ? `<h4>¿Te sumás esta semana?</h4><p>${esc(donde)} ${n === 1 ? 'falta <b>1 lugar</b>' : `faltan <b>${n} lugares</b>`} en los próximos 7 días.</p>`
-        : `<h4>Sumate a un turno</h4><p>Elegí una campaña, un día y un horario. Un coordinador te confirma.</p><div class="stats"><div><b class="num">${list.length}</b><small>${list.length === 1 ? 'campaña activa' : 'campañas activas'}</small></div><div><b class="num">${n}</b><small>lugares libres esta semana</small></div></div>`;
+        : `<h4>Sumate a un turno</h4><p>Elegí una campaña, un día y un horario. Un coordinador te confirma.</p><div class="stats"><div><b class="num">${vis.length}</b><small>${vis.length === 1 ? 'campaña activa' : 'campañas activas'}${S.ciudad !== 'todas' ? ' en ' + esc(S.ciudad) : ''}</small></div><div><b class="num">${n}</b><small>lugares libres esta semana</small></div></div>`;
       if (mejor) h += `<button type="button" class="btn p" data-go="#/c/${esc(mejor.id)}">Ver turnos libres</button>`;
       h += '</div>';
     }
@@ -373,7 +383,8 @@
     const c = S.campanas[S.route.cid];
     if (!c) { $('app').innerHTML = '<div class="card"><div class="empty">Esa campaña no existe o ya terminó.</div></div>'; return; }
     listenCC(c.id);
-    const dias = diasDe(c);
+    const dias = diasDe(c).filter(d => turnosDelDia(c, d).some(t => !yaEmpezo(d, t)));
+    const cargando = !(S.ccOk || {})[c.id] && !(S.ccErr || {})[c.id], errCupos = !!(S.ccErr || {})[c.id];
     const enlace = S.route.fecha && S.route.tid && !S.route.hecho && dias.includes(S.route.fecha) && c.turnos && c.turnos[S.route.tid] ? S.route : null;
     if (enlace) { S.dia = enlace.fecha; S.diaCid = c.id; }
     if (S.diaCid !== c.id || !dias.includes(S.dia)) { S.dia = dias[0]; S.diaCid = c.id; }
@@ -387,12 +398,12 @@
       return `<button type="button" class="day ${nivel}${d === S.dia ? ' on' : ''}" data-dia="${d}"><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><span class="cap3">${[0, 1, 2].map(i => `<i class="${i < llenos ? 'f' : ''}"></i>`).join('')}</span></button>`;
     }).join('')}</div>`;
     const ts = turnosDelDia(c, S.dia);
-    const orden = Object.keys(c.puntos || {}).filter(pid => ts.some(t => t.punto === pid));
+    const orden = ordenPuntos(c).filter(pid => ts.some(t => t.punto === pid));
     const filas = orden.map(pid => {
       const p = c.puntos[pid], items = ts.filter(t => t.punto === pid).map(t => {
         const oc = ocupDe(c.id, S.dia, t.id), n = cupoDe(c, t), vals = Object.values(oc), conf = vals.filter(v => v === 'c').length;
-        const mio = S.user && oc[S.user.uid], falta = Math.max(0, n - vals.length);
-        return { t, n, conf, pend: vals.length - conf, mio, falta };
+        const mio = S.user && oc[S.user.uid], paso = yaEmpezo(S.dia, t), falta = paso || cargando || errCupos ? 0 : Math.max(0, n - vals.length);
+        return { t, n, conf, pend: vals.length - conf, mio, falta, paso };
       });
       return { pid, p, items, libres: items.reduce((a, x) => a + x.falta, 0) };
     });
@@ -400,18 +411,19 @@
     const tipoN = filas.every(f => f.p.tipo === 'carrito') ? ['carrito', 'carritos'] : ['punto', 'puntos'];
     h += `<div class="sec">${esc(cap(fmtDia(S.dia)))}</div>`;
     if (!filas.length) h += '<div class="card"><div class="empty">No hay turnos ese día.</div></div>';
-    else h += `<div class="dres"><span>${filas.length} ${tipoN[filas.length === 1 ? 0 : 1]} · <b>${libresDia ? (libresDia === 1 ? '1 lugar libre' : libresDia + ' lugares libres') : 'sin lugares libres'}</b></span><div class="seg2 cf"><button type="button" data-cf="todos" class="${conLugar ? '' : 'on'}">Todos</button><button type="button" data-cf="libres" class="${conLugar ? 'on' : ''}">Con lugar</button></div></div>`;
+    else h += `<div class="dres"><span>${filas.length} ${tipoN[filas.length === 1 ? 0 : 1]} · <b>${cargando ? '<span class="carg">Consultando lugares…</span>' : errCupos ? 'lugares sin datos' : libresDia ? (libresDia === 1 ? '1 lugar libre' : libresDia + ' lugares libres') : 'sin lugares libres'}</b></span><div class="seg2 cf"><button type="button" data-cf="todos" class="${conLugar ? '' : 'on'}">Todos</button><button type="button" data-cf="libres" class="${conLugar ? 'on' : ''}">Con lugar</button></div></div>`;
+    if (errCupos) h += `<div class="aviso-mapa ccerr">${I('alert', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>No pudimos consultar los lugares libres</b>Puede ser la señal. Los horarios se ven, pero no sabemos cuántos lugares quedan. <button type="button" class="sbtn" data-ccretry="${esc(c.id)}">Reintentar</button></span></div>`;
     S.plegados = S.plegados || {};
     let vistos = 0;
     filas.forEach(({ pid, p, items, libres }) => {
-      const vis = conLugar ? items.filter(x => x.falta > 0 || x.mio) : items;
+      const vis = conLugar ? items.filter(x => x.falta > 0 || x.mio) : items.filter(x => !x.paso || x.mio || items.every(y => y.paso));
       if (!vis.length) return;
       vistos++;
       const tp = TIPOS[p.tipo] || TIPOS.otro, pleg = !!S.plegados[c.id + '|' + pid];
-      h += `<div class="pc${pleg ? ' pleg' : ''}"><div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}</div><button type="button" class="tx" data-plegar="${esc(pid)}" aria-expanded="${!pleg}"><b>${esc(p.nombre)}</b>${p.detalle ? `<small>${esc(p.detalle)}</small>` : ''}<span class="pl ${libres ? 'ok' : ''}">${libres ? (libres === 1 ? '1 libre' : libres + ' libres') : 'Completo'}${I('chev')}</span></button>${tieneLugar(p) ? `<button type="button" class="loc" data-lugar="${esc(c.id)}|${esc(pid)}" aria-label="Ver lugar">${I('pin', 'width:15px;height:15px')}<span>Ver lugar</span></button>` : ''}</div>`;
+      h += `<div class="pc${pleg ? ' pleg' : ''}"><div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}</div><button type="button" class="tx" data-plegar="${esc(pid)}" aria-expanded="${!pleg}"><b>${esc(p.nombre)}</b>${p.detalle ? `<small>${esc(p.detalle)}</small>` : ''}<span class="pl ${libres ? 'ok' : ''}">${cargando ? '…' : errCupos ? 'Sin datos' : libres ? (libres === 1 ? '1 libre' : libres + ' libres') : items.every(y => y.paso) ? 'Ya empezó' : 'Completo'}${I('chev')}</span></button>${tieneLugar(p) ? `<button type="button" class="loc" data-lugar="${esc(c.id)}|${esc(pid)}" aria-label="Ver lugar">${I('pin', 'width:15px;height:15px')}<span>Ver lugar</span></button>` : ''}</div>`;
       if (!pleg) h += `<div class="chips">${vis.map(x => {
-        const est = x.mio ? 'mio' : x.falta <= 0 ? 'lleno' : x.falta < x.n ? 'poco' : 'libre';
-        const txt = x.mio ? (x.mio === 'c' ? 'Tu turno' : 'Pedido') : x.falta <= 0 ? 'Completo' : x.falta === 1 ? 'Falta 1' : 'Faltan ' + x.falta;
+        const est = x.mio ? 'mio' : x.paso ? 'lleno paso' : cargando || errCupos ? 'carg' : x.falta <= 0 ? 'lleno' : x.falta < x.n ? 'poco' : 'libre';
+        const txt = x.mio ? (x.mio === 'c' ? 'Tu turno' : 'Pedido') : x.paso ? 'Ya empezó' : cargando ? 'Cargando' : errCupos ? 'Sin datos' : x.falta <= 0 ? 'Completo' : x.falta === 1 ? 'Falta 1' : 'Faltan ' + x.falta;
         const seats = Array.from({ length: Math.max(x.n, x.conf + x.pend) }, (_, k) => `<i class="${k < x.conf ? 'c' : k < x.conf + x.pend ? 'p' : ''}"></i>`).join('');
         return `<button type="button" class="chip ${est}" ${x.mio ? `data-mio="${esc(x.t.id)}"` : `data-pedir="${esc(x.t.id)}"`}${!x.mio && x.falta <= 0 ? ' disabled' : ''}><b class="num">${esc(x.t.desde)}</b><span class="cs"><small>a ${esc(x.t.hasta)}</small>${seats}</span><em>${txt}</em></button>`;
       }).join('')}</div>`;
@@ -419,7 +431,7 @@
     });
     if (filas.length && !vistos) h += '<div class="card"><div class="empty">Ese día ya no quedan lugares. Probá con otro día.</div></div>';
     $('app').innerHTML = h;
-    if (enlace) { enlace.hecho = true; setTimeout(() => { const oc = ocupDe(c.id, S.dia, enlace.tid); if (S.user && oc[S.user.uid]) return; if (Object.keys(oc).length >= cupoDe(c, Object.assign({ id: enlace.tid }, c.turnos[enlace.tid]))) { toast('Ese turno ya se completó. Elegí otro horario.'); return; } pedir(enlace.tid); }, 0); }
+    if (enlace && (S.ccOk || {})[c.id]) { enlace.hecho = true; setTimeout(() => { const oc = ocupDe(c.id, S.dia, enlace.tid); if (S.user && oc[S.user.uid]) return; if (Object.keys(oc).length >= cupoDe(c, Object.assign({ id: enlace.tid }, c.turnos[enlace.tid]))) { toast('Ese turno ya se completó. Elegí otro horario.'); return; } pedir(enlace.tid); }, 0); }
   }
   function verLugar(cid, pid) {
     const c = S.campanas[cid], p = c && c.puntos && c.puntos[pid];
@@ -509,6 +521,8 @@
   async function pedir(tid) {
     const c = S.campanas[S.route.cid], t = c && c.turnos[tid] && Object.assign({ id: tid }, c.turnos[tid]);
     if (!t) return;
+    if (yaEmpezo(S.dia, t)) { toast('Ese turno ya empezó. Elegí otro horario.'); return; }
+    if (!(S.ccOk || {})[c.id]) { toast('Esperá un segundo: estamos consultando los lugares libres.'); return; }
     if (!S.user) {
       const ov = sheet(`<h3>Ingresá para anotarte</h3><p class="hint">Usamos tu cuenta de Google solo para saber que sos vos: así nadie puede anotarse a tu nombre y podés ver tus turnos.</p><button type="button" class="btn" id="lgBtn">Ingresar con Google</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
       ov.querySelector('#lgBtn').addEventListener('click', async () => { await login(); ov.remove(); if (S.user) pedir(tid); });
@@ -742,7 +756,7 @@
     const p = (c.puntos || {})[t.punto] || {}, oc = ocupDe(c.id, d, t.id), n = cupoDe(c, t), falta = Math.max(0, n - Object.keys(oc).length), mio = S.user && oc[S.user.uid], x = parseIso(d);
     return `<button type="button" class="bsr" data-bpedir="${esc(c.id)}|${d}|${esc(t.id)}"${!mio && !falta ? ' disabled' : ''}><span class="f"><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><small>${MES[x.getMonth()].slice(0, 3)}</small></span><span class="tx"><b class="num">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc(p.nombre || '')}</b><small>${esc(c.nombre)}${c.ciudad ? ' · ' + esc(c.ciudad) : ''}</small></span><span class="st ${mio ? 'ok' : falta ? 'lib' : ''}">${mio ? 'Tu turno' : falta ? (falta === 1 ? 'Queda 1' : 'Quedan ' + falta) : 'Completo'}</span></button>`;
   }
-  const libre = (c, d, t) => { const oc = ocupDe(c.id, d, t.id); return Object.keys(oc).length < cupoDe(c, t) && !(S.user && oc[S.user.uid]); };
+  const libre = (c, d, t) => { if (yaEmpezo(d, t)) return false; const oc = ocupDe(c.id, d, t.id); return Object.keys(oc).length < cupoDe(c, t) && !(S.user && oc[S.user.uid]); };
   function pubAtajo(k) {
     const d = k === 'hoy' ? hoy() : addDays(hoy(), 1), filas = [];
     campsPub().forEach(c => { listenCC(c.id); if (diasDe(c).includes(d)) turnosDelDia(c, d).filter(t => libre(c, d, t)).forEach(t => filas.push([c, t])); });
@@ -2058,10 +2072,11 @@
     if (t.id === 'shareBtn') { const c = S.campanas[S.route.cid]; if (!c) return; const txt = `PPAM · ${c.nombre} (${c.ciudad || ''}). Anotate en un turno: ${linkCampana(c)}`; if (navigator.share && !window.__ppamMock) navigator.share({ title: c.nombre, text: txt }).catch(() => {}); else compartir(txt); return; }
     if (t.id === 'userBtn') {
       if (!S.user) { login(); return; }
-      const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(S.user.displayName || S.user.email))}</span><div><h3>${esc(S.user.displayName || 'Mi cuenta')}</h3><p class="hint">${esc(S.user.email)}</p></div></div><button type="button" class="btn" id="uMis">Mis turnos</button>${puedeInstalar() ? '<button type="button" class="btn alt" id="uInst">Instalar la app</button>' : ''}<button type="button" class="btn alt" id="uOut">Cerrar sesión</button>`);
+      const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(S.user.displayName || S.user.email))}</span><div><h3>${esc(S.user.displayName || 'Mi cuenta')}</h3><p class="hint">${esc(S.user.email)}</p></div></div><button type="button" class="btn" id="uMis">Mis turnos</button>${puedeInstalar() ? '<button type="button" class="btn alt" id="uInst">Instalar la app</button>' : ''}<button type="button" class="btn alt" id="uOut">Cerrar sesión</button><button type="button" class="linkish ubor" id="uBor">Borrar mis datos de este celular</button>`);
       if (ov.querySelector('#uInst')) ov.querySelector('#uInst').addEventListener('click', () => { ov.remove(); instalar(); });
       ov.querySelector('#uMis').addEventListener('click', () => { ov.remove(); go('#/mis'); });
-      ov.querySelector('#uOut').addEventListener('click', async () => { ov.remove(); await S.auth.signOut(); go('#/'); });
+      ov.querySelector('#uOut').addEventListener('click', async () => { ov.remove(); try { localStorage.removeItem('ppam-bus-rec'); } catch (e) { /* nada */ } await S.auth.signOut(); go('#/'); });
+      ov.querySelector('#uBor').addEventListener('click', () => { if (!confirm('¿Borrar de este celular tus datos guardados (nombre, celular, congregación) y tus búsquedas? Tus turnos no se tocan.')) return; borrarDatosLocales(); ov.remove(); toast('Listo: se borraron tus datos de este celular'); });
       return;
     }
     if (t.id === 'coordBtn') { go('#/coord'); return; }
@@ -2081,6 +2096,7 @@
     if (ds.ciudad) { S.ciudad = ds.ciudad; renderHome(); return; }
     if (ds.dia) { S.dia = ds.dia; renderCamp(); return; }
     if (ds.cf) { S.campFiltro = ds.cf; renderCamp(); return; }
+    if (ds.ccretry) { S.ccErr[ds.ccretry] = false; listenCC(ds.ccretry); renderCamp(); return; }
     if (ds.plegar) { S.plegados = S.plegados || {}; const k = S.route.cid + '|' + ds.plegar; S.plegados[k] = !S.plegados[k]; renderCamp(); return; }
     if (ds.pedir) { pedir(ds.pedir); return; }
     if (ds.mio) { go('#/mis'); return; }
@@ -2124,7 +2140,13 @@
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
     }).catch(() => {});
     let recargo = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (habia && !recargo) { recargo = true; location.reload(); } });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!habia || recargo) return;
+      recargo = true;
+      // si hay un formulario o ventana abierta, se espera a que la cierre para no perder lo escrito
+      const intentar = () => { if (document.querySelector('.ov, .bsov')) { setTimeout(intentar, 2000); return; } location.reload(); };
+      intentar();
+    });
   }
   init();
 })();

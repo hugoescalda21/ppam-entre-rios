@@ -124,6 +124,7 @@ const SEED = {
   check('filtro por ciudad', await p.evaluate(() => [...document.querySelectorAll('#fCiudad option')].map(x => x.textContent).join() === 'Toda la provincia,Concordia,Paraná'));
   await p.selectOption('#fCiudad', 'Concordia'); await p.waitForTimeout(50);
   check('filtrando Concordia queda solo la Costanera', await p.evaluate(() => document.querySelectorAll('.camp').length === 1 && /Costanera/.test(document.querySelector('.camp').innerText)));
+  check('el contador de campañas sigue al filtro por ciudad', /1\s*campaña activa en Concordia/.test(await text(p, '#app')), await text(p, '#app'));
   await p.selectOption('#fCiudad', 'todas'); await p.waitForTimeout(50);
   await p.click('[data-go="#/c/parana-terminal"]'); await p.waitForTimeout(150);
   check('encabezado con la campaña', /Terminal de ómnibus/.test(await text(p, '#tbTitle')) && /Del 1 de octubre al 31 de octubre/.test(await text(p, '#tbSub')));
@@ -789,6 +790,52 @@ const SEED = {
     check('sin errores (mapa)', m.errs.length === 0, m.errs);
     await cx.close();
   }
+  console.log('\nCelular compartido, turnos que ya empezaron y estado de los lugares');
+  {
+    const A1 = { uid: 'u-a1', email: 'a1@x.com', displayName: 'Ana Uno' }, B1 = { uid: 'u-b1', email: 'b1@x.com', displayName: 'Beto Dos' };
+    const cx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    await cx.clock.install({ time: new Date('2026-10-01T09:00:00-03:00') });   // jueves 1, 9 h: el turno de 8 a 10 ya empezó
+    await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, ${JSON.stringify([A1, B1])})`);
+    await cx.addInitScript(() => { try { localStorage.setItem('ppam-perfil', JSON.stringify({ nombre: 'Viejo', celular: '343 111-1111', acepto: true })); } catch (e) {} });
+    const q = await cx.newPage(); q.errs = []; q.on('pageerror', e => q.errs.push(e.message));
+    await q.goto(FILE + '#/c/parana-terminal'); await q.waitForTimeout(300);
+    check('el perfil viejo (sin dueño) se descarta', await q.evaluate(() => localStorage.getItem('ppam-perfil') === null));
+    const camp = await text(q, '#app');
+    check('hoy: el turno que ya empezó (8 a 10) no se ofrece; el de 10 sí', !(await q.$('[data-pedir="t1"]')) && !!(await q.$('[data-pedir="t2"]')), camp.slice(0, 400));
+    await q.click('#userBtn'); await q.waitForTimeout(300); await q.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q.waitForTimeout(200);
+    await q.click('[data-pedir="t2"]'); await q.waitForTimeout(150);
+    await q.selectOption('#pCong', 'San Agustín (Paraná)'); await q.fill('#pCel', '343 555-1234'); await q.check('#pOk'); await q.click('#pGo'); await q.waitForTimeout(250);
+    await q.click('.sheet [data-cerrar]'); await q.waitForTimeout(80);
+    check('los datos quedan guardados para esa cuenta', await q.evaluate(() => /343 555-1234/.test(localStorage.getItem('ppam-perfil:u-a1') || '')));
+    await q.click('#userBtn'); await q.waitForTimeout(100); await q.click('#uOut'); await q.waitForTimeout(250);
+    await q.click('#userBtn'); await q.waitForTimeout(300); await q.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q.waitForTimeout(200);
+    await q.click('[data-dia="2026-10-02"]'); await q.waitForTimeout(80); await q.click('[data-pedir="t1"]'); await q.waitForTimeout(150);
+    check('otra cuenta en el mismo celular NO ve los datos de la anterior', await q.evaluate(() => document.querySelector('#pNom').value === 'Beto' && document.querySelector('#pCel').value === '' && !document.querySelector('#pOk').checked));
+    await q.click('.sheet [data-cerrar]'); await q.waitForTimeout(80);
+    await q.click('#userBtn'); await q.waitForTimeout(100);
+    q.once('dialog', d => d.accept()); await q.click('#uBor'); await q.waitForTimeout(100);
+    check('"Borrar mis datos de este celular" borra todos los perfiles guardados', await q.evaluate(() => !Object.keys(localStorage).some(k => k.startsWith('ppam-perfil'))));
+    check('sin errores (celular compartido)', q.errs.length === 0, q.errs);
+    await cx.close();
+  }
+  {
+    const cx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    await cx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });
+    await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, [])`);
+    await cx.addInitScript(() => { const db = window.__ppamMock.db, c0 = db.collection; db.collection = (x) => x === 'cupos' ? { where() { return this; }, onSnapshot: () => () => {}, get: async () => ({ forEach() {} }) } : c0(x); });
+    const q = await cx.newPage(); await q.goto(FILE + '#/c/parana-terminal'); await q.waitForTimeout(300);
+    check('mientras no llegan los cupos: "Consultando lugares…" y no se puede pedir', /Consultando lugares…/.test(await text(q, '#app')) && await q.evaluate(() => [...document.querySelectorAll('.chip')].every(b => b.disabled)));
+    await cx.close();
+  }
+  {
+    SEED['campanas/orden'] = { nombre: 'Orden', ciudad: 'Paraná', desde: '2026-10-01', hasta: '2026-10-31', activa: true, puntos: { a: { nombre: 'Carrito 10', tipo: 'carrito', cupo: 2 }, b: { nombre: 'Carrito 2', tipo: 'carrito', cupo: 2 }, d: { nombre: 'Carrito 1', tipo: 'carrito', cupo: 2 } }, turnos: { t1: { punto: 'a', desde: '08:00', hasta: '10:00', dias: [4] }, t2: { punto: 'b', desde: '08:00', hasta: '10:00', dias: [4] }, t3: { punto: 'd', desde: '08:00', hasta: '10:00', dias: [4] } } };
+    const q = await open([], '#/c/orden');
+    check('los carritos van en orden por número (1, 2, 10)', await q.evaluate(() => [...document.querySelectorAll('.pc .pt .tx b')].map(x => x.textContent).join() === 'Carrito 1,Carrito 2,Carrito 10'));
+    delete SEED['campanas/orden'];
+  }
+  check('el service worker solo borra sus propias copias (ppam-…)', /ks\.filter\(k => k\.startsWith\('ppam-'\) && k !== CACHE\)/.test(require('fs').readFileSync(path.resolve(__dirname, '..', 'service-worker.js'), 'utf8')));
   console.log('\nCampaña corta: solo sus días');
   {
     SEED['campanas/corta'] = { nombre: 'Fin de semana', ciudad: 'Crespo', desde: '2026-11-06', hasta: '2026-11-07', activa: true,
