@@ -53,21 +53,22 @@ function mock(seed, users) {
     onSnapshot: (cb) => { const f = () => cb(snap(p)); listeners.add(f); f(); return () => listeners.delete(f); }
   });
   const col = (p, filters, o) => {
-    const lista = () => { let ks = Object.keys(store).filter(k => k.startsWith(p + '/') && !k.slice(p.length + 1).includes('/') && (filters || []).every(([ff, v]) => store[k][ff] === v)).sort(); if (o && o.desc) ks.reverse(); if (o && o.lim) ks = ks.slice(0, o.lim); return ks.map(snap); };
+    const lista = () => { let ks = Object.keys(store).filter(k => k.startsWith(p + '/') && !k.slice(p.length + 1).includes('/') && (filters || []).every(([ff, v, op]) => op === '>=' ? store[k][ff] >= v : store[k][ff] === v)).sort(); if (o && o.desc) ks.reverse(); if (o && o.lim) ks = ks.slice(0, o.lim); return ks.map(snap); };
     return {
       doc: (id) => doc(p + '/' + id),
-      where: (f, op, v) => col(p, [...(filters || []), [f, v]], o),
+      where: (f, op, v) => { if (op === '>=' && window.__sinIndice) return Object.assign(col(p, filters, o), { onSnapshot: (a, b, c) => { (typeof a === 'function' ? b : c)(Object.assign(new Error('index'), { code: 'failed-precondition' })); return () => {}; } }); window.__q = (window.__q || []).concat([[p, f, op, v]]); return col(p, [...(filters || []), [f, v, op]], o); },
       orderBy: (f, dir) => col(p, filters, Object.assign({}, o, { desc: dir === 'desc' })),
       limit: (n) => col(p, filters, Object.assign({}, o, { lim: n })),
       get: async () => { const docs = lista(); return { docs, size: docs.length, forEach: (fn) => docs.forEach(fn) }; },
-      onSnapshot: (cb, err) => {
-        const f = () => { const docs = lista(); cb({ docs, forEach: (fn) => docs.forEach(fn) }); };
+      onSnapshot: (a, b, c) => {
+        const cb = typeof a === 'function' ? a : b;
+        const f = () => { const docs = lista(); cb({ docs, forEach: (fn) => docs.forEach(fn), metadata: { fromCache: false } }); };
         listeners.add(f); f(); return () => listeners.delete(f);
       }
     };
   };
   const db = {
-    doc, collection: (p) => col(p),
+    doc, collection: (p) => col(p), enablePersistence: async (o) => { window.__persist = o; },
     batch: () => { const q = []; return { set: (r, d, o) => q.push(() => ops.set(r.path, d, o)), update: (r, d) => q.push(() => ops.update(r.path, d)), delete: (r) => q.push(() => ops.delete(r.path)), commit: async () => { q.forEach(f => f()); window.__writes.push(['batch', q.length]); notify(); } }; }
   };
   const auth = { onAuthStateChanged: (cb) => { authCb = cb; setTimeout(() => cb(user), 0); }, signOut: async () => { user = null; authCb(null); } };
@@ -88,6 +89,7 @@ const SEED = {
   'campanas/concordia-costanera': { nombre: 'Costanera', ciudad: 'Concordia', desde: '2026-10-03', hasta: '2026-11-30', activa: true, puntos: { p1: { nombre: 'Plaza del puerto', tipo: 'stand', cupo: 3 } }, turnos: { t1: { punto: 'p1', desde: '09:00', hasta: '11:00', dias: [6, 0] } } },
   'campanas/vieja': { nombre: 'Campaña vieja', ciudad: 'Paraná', desde: '2026-08-01', hasta: '2026-08-31', activa: true, puntos: {}, turnos: {} },
   'cupos/parana-terminal__2026-10-01__t1': { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't1', ocupados: { otro1: 'c', otro2: 'c' } },
+  'cupos/parana-terminal__2026-09-02__t1': { cid: 'parana-terminal', fecha: '2026-09-02', tid: 't1', ocupados: { viejo1: 'c' } },
   'cupos/parana-terminal__2026-10-01__t2': { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', ocupados: { otro3: 'p' } }
 };
 
@@ -836,7 +838,7 @@ const SEED = {
     check('los carritos van en orden por número (1, 2, 10)', await q.evaluate(() => [...document.querySelectorAll('.pc .pt .tx b')].map(x => x.textContent).join() === 'Carrito 1,Carrito 2,Carrito 10'));
     delete SEED['campanas/orden'];
   }
-  check('el service worker solo borra sus propias copias (ppam-…)', /ks\.filter\(k => k\.startsWith\('ppam-'\) && k !== CACHE\)/.test(require('fs').readFileSync(path.resolve(__dirname, '..', 'service-worker.js'), 'utf8')));
+  check('el service worker solo borra sus propias copias (ppam-…) y conserva las fotos', /ks\.filter\(k => k\.startsWith\('ppam-'\) && !k\.startsWith\('ppam-fotos'\) && k !== CACHE\)/.test(require('fs').readFileSync(path.resolve(__dirname, '..', 'service-worker.js'), 'utf8')));
   console.log('\nAccesibilidad (WCAG 2.2 AA) y ayudas');
   {
     const AXE = path.resolve(__dirname, '..', '..', 'axe', 'node_modules', 'axe-core', 'axe.min.js');
@@ -876,6 +878,32 @@ const SEED = {
         check(`axe (WCAG 2.2 AA) sin problemas: ${nombre}`, v.length === 0, v);
       }
     } else console.log('  (axe-core no está instalado: se saltea el control automático de accesibilidad)');
+  }
+  console.log('\nMuchos usuarios: menos lecturas');
+  {
+    const q = await open([], '#/c/parana-terminal');
+    check('se activa la copia local (persistencia) de Firestore', await q.evaluate(() => !!(window.__persist && window.__persist.synchronizeTabs)));
+    check('los cupos se piden solo desde hoy (fecha >= 2026-09-30)', await q.evaluate(() => (window.__q || []).some(x => x[0] === 'cupos' && x[1] === 'fecha' && x[2] === '>=' && x[3] === '2026-09-30')), await q.evaluate(() => window.__q));
+    check('sin errores (lecturas)', q.errs.length === 0, q.errs);
+    const ctx = q.context();
+    await ctx.addInitScript(() => { window.__sinIndice = true; });
+    const r = await ctx.newPage(); r.errs = []; r.on('pageerror', e => r.errs.push(e.message));
+    await r.goto(FILE + '#/c/parana-terminal'); await r.waitForTimeout(400);
+    const rt = await text(r, '#app');
+    check('si falta el índice, igual muestra los lugares (lee todos)', /Andén 1/.test(rt) && !/No pudimos consultar/i.test(rt), rt.slice(0, 300));
+    check('sin errores (sin índice)', r.errs.length === 0, r.errs);
+  }
+  {
+    SEED['fotos/parana-terminal__fport'] = { cid: 'parana-terminal', data: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==', creado: 'x' };
+    SEED['campanas/parana-terminal'].portada = 'fport';
+    const f = await open([], '#/c/parana-terminal'); await f.waitForTimeout(300);
+    const enCache = await f.evaluate(async () => { if (!window.caches) return 'sin-api'; const c = await caches.open('ppam-fotos-1'); return !!(await c.match('https://ppam.fotos/parana-terminal__fport')); });
+    await f.context().addInitScript(() => { const m = window.__ppamMock; if (!m) return; const d0 = m.db.doc; m.db.doc = (x) => { if (x.startsWith('fotos/')) window.__fget = (window.__fget || 0) + 1; return d0(x); }; });
+    await f.reload(); await f.waitForTimeout(500);
+    const n2 = await f.evaluate(() => window.__fget || 0), bg = await f.evaluate(() => getComputedStyle(document.querySelector('#tb') || document.body).backgroundImage);
+    check('la portada se baja una vez y queda guardada en el celular', enCache === 'sin-api' || (enCache === true && n2 === 0 && /base64/.test(bg)), { enCache, n2, bg: bg.slice(0, 40) });
+    check('sin errores (fotos)', f.errs.length === 0, f.errs);
+    delete SEED['fotos/parana-terminal__fport']; delete SEED['campanas/parana-terminal'].portada;
   }
   console.log('\nCampaña corta: solo sus días');
   {

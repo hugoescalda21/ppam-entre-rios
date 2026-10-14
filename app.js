@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '34';
+  const VERSION = '35';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -68,6 +68,8 @@
       firebase.initializeApp(window.PPAM_FIREBASE);
       S.db = firebase.firestore(); S.auth = firebase.auth();
     }
+    // Copia local de lo leído: abre más rápido, se ve sin señal y al volver pide solo lo que cambió (menos lecturas)
+    try { if (S.db.enablePersistence) S.db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch (e) { /* navegador sin soporte */ }
     S.db.collection('campanas').onSnapshot((qs) => {
       const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); render();
     }, (e) => { console.error(e); if (S.loaded) return; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); $('app').innerHTML = '<div class="empty carga-err"><b>No pudimos cargar las campañas.</b><br>Revisá la conexión y probá de nuevo.</div><button type="button" class="btn" id="reintentar">Reintentar</button>'; $('reintentar').addEventListener('click', () => location.reload()); });
@@ -159,10 +161,17 @@
 
   /* ---------- Fotos: se guardan achicadas en fotos/{cid}__{id} y se piden una sola vez ---------- */
   const fotoKey = (cid, fid) => cid + '__' + fid;
+  // Fotos: cada una tiene un id que no cambia nunca, así que se guardan en el celular y se bajan una sola vez
+  const FOTOS_CACHE = 'ppam-fotos-1', fotoUrl = (k) => 'https://ppam.fotos/' + encodeURIComponent(k);
+  async function fotoGuardada(k) { try { if (!window.caches) return ''; const c = await caches.open(FOTOS_CACHE), r = await c.match(fotoUrl(k)); return r ? await r.text() : ''; } catch (e) { return ''; } }
+  function guardarFoto(k, u) { try { if (window.caches && u) caches.open(FOTOS_CACHE).then(c => c.put(fotoUrl(k), new Response(u))).catch(() => {}); } catch (e) { /* nada */ } }
   function pedirFoto(k) {
     if (k in S.fotos) return;
     S.fotos[k] = '';
-    S.db.doc('fotos/' + k).get().then((d) => { const u = (d.exists && d.data().data) || ''; S.fotos[k] = u; if (u) aplicarFoto(k); }).catch(() => {});
+    fotoGuardada(k).then((g) => {
+      if (g) { S.fotos[k] = g; aplicarFoto(k); return; }
+      S.db.doc('fotos/' + k).get().then((d) => { const u = (d.exists && d.data().data) || ''; S.fotos[k] = u; if (u) { aplicarFoto(k); guardarFoto(k, u); } }).catch(() => {});
+    });
   }
   function aplicarFoto(k) {
     const u = S.fotos[k];
@@ -258,14 +267,23 @@
   const cupoDe = (c, t) => Math.max(1, parseInt((c.puntos[t.punto] || {}).cupo, 10) || 2);
 
   /* ---------- Lugares ocupados (todos los días de una campaña; público y sin datos personales) ---------- */
+  // Cupos de una campaña: solo de hoy en adelante (los días pasados no se leen). Si falta el índice en Firebase, lee todos.
+  function cuposQuery(cid, desde) { const b = S.db.collection('cupos').where('cid', '==', cid); return desde ? b.where('fecha', '>=', desde) : b; }
+  S.sinIndice = false;
   function listenCC(cid) {
     if (S.ccUnsub[cid]) return;
     S.cc[cid] = S.cc[cid] || {}; S.ccUnsub[cid] = true;
     S.ccOk = S.ccOk || {}; S.ccErr = S.ccErr || {};
-    S.ccUnsub[cid] = S.db.collection('cupos').where('cid', '==', cid).onSnapshot((qs) => {
-      const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.cc[cid] = o; S.ccOk[cid] = true; S.ccErr[cid] = false;
+    const escuchar = (conFecha) => cuposQuery(cid, conFecha ? hoy() : '').onSnapshot({ includeMetadataChanges: true }, (qs) => {
+      const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.cc[cid] = o;
+      const delServidor = !(qs.metadata && qs.metadata.fromCache);
+      if (delServidor) { S.ccOk[cid] = true; S.ccErr[cid] = false; }
       if (S.route.name === 'home' || (S.route.name === 'camp' && S.route.cid === cid)) luego();
-    }, (e) => { console.error(e); registrarError('aviso', 'Cupos: ' + (e.code || e.message || e)); S.ccErr[cid] = true; S.ccUnsub[cid] = null; if (S.route.name === 'camp' && S.route.cid === cid) luego(); });
+    }, (e) => {
+      if (conFecha && e && e.code === 'failed-precondition') { if (!S.sinIndice) registrarError('aviso', 'Cupos: falta el índice cid+fecha en Firebase (se leen todos)'); S.sinIndice = true; S.ccUnsub[cid] = escuchar(false); return; }
+      console.error(e); registrarError('aviso', 'Cupos: ' + (e.code || e.message || e)); S.ccErr[cid] = true; S.ccUnsub[cid] = null; if (S.route.name === 'camp' && S.route.cid === cid) luego();
+    });
+    S.ccUnsub[cid] = escuchar(!S.sinIndice);
   }
   const ocupDe = (cid, fecha, tid) => ((S.cc[cid] || {})[cupoId(cid, fecha, tid)] || {}).ocupados || {};
   function cobertura(c, dias) {

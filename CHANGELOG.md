@@ -1,5 +1,11 @@
 # Registro de cambios — PPAM Entre Ríos
 
+
+## Versión 35 — lista para muchos usuarios
+- La app guarda en el celular una copia de lo que ya leyó: abre más rápido, se ve con mala señal y al volver solo pide lo que cambió (menos lecturas a Firebase).
+- Los lugares libres se consultan solo desde hoy: los días pasados ya no se leen.
+- Las fotos se bajan una sola vez y quedan guardadas en el celular.
+- Nuevo índice de Firebase `cupos (cid, fecha)`. Si todavía no está creado, la app sigue funcionando y lee todo como antes.
 ## Auditoría de Crespo, segunda tanda: accesibilidad — 13 oct 2026 (caché ppam-v36)
 
 - WCAG 2.2 AA: textos secundarios con contraste 5:1 (antes 3,1:1), nada por debajo de 11,5 px, contorno de foco visible; en modo oscuro, texto oscuro sobre los botones verdes.
