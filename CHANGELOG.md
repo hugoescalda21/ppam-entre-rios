@@ -6,6 +6,12 @@
 
 
 
+
+## Versión 41 — Ayuda
+- Nueva pestaña "Ayuda" en la barra de abajo, siempre visible: 16 preguntas frecuentes en grupos (Anotarme, Mis turnos, Mis datos y la app, y Para coordinadores, que solo ven ellos). Cada pregunta se abre al tocarla; arriba, "Ver la bienvenida otra vez"; al final, "Reportar un problema".
+- En un turno pendiente, "¿Qué significa?" junto a "Esperando confirmación" abre esa respuesta.
+- El pie de la app ya no queda tapado por la barra de abajo.
+- Las animaciones de la bienvenida se regeneraron con la barra nueva.
 ## Versión 40 — bienvenida
 - La primera vez que alguien abre el inicio aparece una bienvenida de 4 pasos (elegir campaña, día y horario, anotarse con Google, la confirmación), cada uno con una animación corta hecha con capturas reales. Se puede saltear y se vuelve a ver con "¿Cómo funciona?" al pie. No aparece si se entra por un enlace a una campaña o un turno.
 - Con "reducir movimiento" activado se ven imágenes fijas. Las animaciones (unos 140 KB en total) se cargan solo al abrir la bienvenida.

@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '40';
+  const VERSION = '41';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -126,6 +126,7 @@
     else if (h[0] === 'coord') S.route = { name: 'coord', cid: h[1] || null };
     else if (h[0] === 'admin') S.route = { name: 'admin' };
     else if (h[0] === 'soporte') S.route = { name: 'soporte' };
+    else if (h[0] === 'ayuda') S.route = { name: 'ayuda', q: h[1] || '' };
     else S.route = { name: 'home' };
     window.scrollTo(0, 0);
   }
@@ -135,7 +136,7 @@
     const r = S.route, c = r.cid && S.campanas[r.cid];
     document.body.className = 'r-' + r.name;
     const esCoord = !!(S.user && (S.isAdmin || S.coordDe.length || S.isSoporte));
-    const atras = r.name === 'camp' || r.name === 'turno' || r.name === 'admin' || (r.name === 'soporte' && (S.isAdmin || S.coordDe.length)) || (r.name === 'coord' && r.cid && (S.isAdmin || S.coordDe.length > 1));
+    const atras = r.name === 'camp' || r.name === 'turno' || r.name === 'ayuda' || r.name === 'admin' || (r.name === 'soporte' && (S.isAdmin || S.coordDe.length)) || (r.name === 'coord' && r.cid && (S.isAdmin || S.coordDe.length > 1));
     $('backBtn').classList.toggle('hidden', !atras);
     $('brand').classList.toggle('hidden', r.name !== 'home' && S.loaded);
     $('shareBtn').classList.toggle('hidden', r.name !== 'camp' || !c);
@@ -145,13 +146,14 @@
     ub.setAttribute('aria-label', S.user ? 'Mi cuenta' : 'Ingresar');
     $('coordBtn').classList.toggle('hidden', !esCoord);
     $('busBtn').classList.toggle('hidden', !S.user);
-    [['tabHome', ['home', 'camp']], ['tabMis', ['mis', 'turno']], ['coordBtn', ['coord', 'admin', 'soporte']]].forEach(([id, rs]) => $(id).classList.toggle('on', rs.includes(r.name)));
+    [['tabHome', ['home', 'camp']], ['tabMis', ['mis', 'turno']], ['tabAyuda', ['ayuda']], ['coordBtn', ['coord', 'admin', 'soporte']]].forEach(([id, rs]) => $(id).classList.toggle('on', rs.includes(r.name)));
     let k = '', t = '', s = '';
     if (r.name === 'camp' && c) { k = c.ciudad || ''; t = c.nombre; s = campRango(c); }
     else if (r.name === 'mis') { t = 'Mis turnos'; s = 'Tus turnos, su estado y cómo llegar.'; }
     else if (r.name === 'turno') { t = 'Tu turno'; }
     else if (r.name === 'coord') { k = 'Coordinación'; t = c ? c.nombre : 'Tus campañas'; s = c ? (c.ciudad || '') + ' · ' + campRango(c) : ''; }
     else if (r.name === 'admin') { k = 'Administración'; t = 'Campañas y equipo'; }
+    else if (r.name === 'ayuda') { k = 'Ayuda'; t = 'Preguntas frecuentes'; s = 'Cómo anotarte, tus turnos y tus datos.'; }
     else if (r.name === 'soporte') { k = 'Soporte'; t = 'Reportes y errores'; s = 'Lo que avisan los hermanos y lo que la página anota sola.'; }
     $('tbKicker').textContent = k; $('tbTitle').textContent = t; $('tbSub').textContent = s;
     $('tbExtra').innerHTML = '';
@@ -262,6 +264,7 @@
     if (r.name === 'coord') return renderCoord();
     if (r.name === 'admin') return renderAdmin();
     if (r.name === 'soporte') return renderSoporte();
+    if (r.name === 'ayuda') return renderAyuda();
     renderHome();
   }
 
@@ -396,6 +399,45 @@
   function guiaCoord() {
     try { if (localStorage.getItem('ppam-guia-coord')) return ''; } catch (e) { return ''; }
     return `<div class="cguia"><b>${I('star', 'width:16px;height:16px')}Cómo se usa Coordinación</b><ul><li><b>Pedidos:</b> confirmá o no a quien se anotó. Con el botón verde le escribís por WhatsApp.</li><li><b>Del día:</b> quién va a cada punto, y la lista para compartir con el grupo.</li><li><b>La lupa</b> (arriba): buscá un hermano, un punto o un turno, y anotá a alguien que no usa la app.</li></ul><button type="button" class="sbtn" data-cguia>Entendido</button></div>`;
+  }
+  /* ---------- Ayuda: preguntas frecuentes (texto fijo, sin lecturas a Firebase) ---------- */
+  const AYUDA = [
+    { g: 'Anotarme', qs: [
+      ['google', '¿Por qué tengo que entrar con Google?', 'Para saber que sos vos: así nadie puede anotarse a tu nombre y podés ver tus turnos desde cualquier celular. Usamos tu cuenta solo para eso; no vemos tus correos ni tus contactos.'],
+      ['espera', 'Mi turno dice "Esperando confirmación", ¿qué significa?', 'Que tu pedido llegó bien y un coordinador de la campaña lo tiene que confirmar. Mientras tanto el lugar queda guardado para vos. Cuando lo confirme, en Mis turnos va a decir "Confirmado".'],
+      ['completo', 'Un horario dice "Completo", ¿qué hago?', 'Elegí otro horario u otro día: los que tienen lugar dicen "Faltan" y cuántos. Con el filtro "Con lugar" ves solo esos, y con la lupa de arriba buscás lugares libres para hoy o mañana en toda la provincia.'],
+      ['acompanado', '¿Puedo anotarme con mi esposa o con otro hermano?', 'Sí. Cada uno se anota con su propia cuenta en el mismo horario. Al anotarte podés dejar una nota para el coordinador, por ejemplo "Voy con mi esposa". Desde tu turno, "Invitar a alguien a este turno" le manda el enlace por WhatsApp.'],
+      ['varios', '¿Puedo anotarme en más de un turno?', 'Sí, en los que quieras. Si dos turnos se superponen en el horario, la app te avisa antes de confirmar.']
+    ] },
+    { g: 'Mis turnos', qs: [
+      ['confirmado', '¿Cómo sé si me confirmaron?', 'Entrá a Mis turnos: cada turno dice "Esperando confirmación" o "Confirmado". También lo ves en el inicio. La app no manda notificaciones; si hace falta, el coordinador te escribe por WhatsApp.'],
+      ['llegar', '¿Cómo llego al lugar?', 'En tu turno, "Llegar" abre Google Maps con el lugar marcado. En la campaña, "Ver lugar" muestra fotos e indicaciones del punto.'],
+      ['agendar', '¿Cómo lo agendo en el calendario del celular?', 'En tu turno tocá "Agendar": se descarga un archivo que tu celular abre con el calendario, con el día, el horario y el lugar.'],
+      ['cancelar', 'No puedo ir, ¿cómo cancelo?', 'Entrá a Mis turnos, tocá el turno y después "Cancelar". El lugar se libera enseguida para otro hermano. Avisá con tiempo: así el coordinador puede cubrirlo.']
+    ] },
+    { g: 'Mis datos y la app', qs: [
+      ['datos', '¿Quién ve mis datos?', 'Solo los coordinadores de la campaña en la que te anotaste, para organizar los turnos. Los demás hermanos ven cuántos lugares quedan, pero nunca quién está anotado.'],
+      ['borrar', '¿Cómo borro mis datos de este celular?', 'Tocá tu inicial arriba a la derecha y después "Borrar mis datos de este celular". Se borran tu nombre, celular y búsquedas guardadas; tus turnos no se tocan. Al cerrar sesión también se borra lo guardado.'],
+      ['instalar', '¿Cómo instalo la app en el celular?', 'Tocá tu inicial arriba a la derecha y después "Instalar la app". En iPhone: en Safari, tocá Compartir y "Agregar a inicio". Queda como un ícono más y abre más rápido.'],
+      ['senal', 'No me carga o tengo poca señal, ¿qué hago?', 'La app guarda en el celular lo último que cargó, así que podés ver campañas y turnos con poca señal. Si te anotás o cancelás sin conexión, se manda solo cuando vuelve. Si no carga nada, cerrala y volvé a abrirla; si sigue igual, usá "Reportar un problema".']
+    ] },
+    { g: 'Para coordinadores', coord: true, qs: [
+      ['anotar', '¿Cómo anoto a un hermano que no usa la app?', 'En Del día, tocá "Anotar" en el horario, o buscalo con la lupa de arriba. Queda confirmado y podés avisarle por WhatsApp con un solo mensaje.'],
+      ['lista', '¿Cómo paso la lista del día al grupo de WhatsApp?', 'En Del día, elegí el día y tocá "Compartir la lista por WhatsApp" al final: arma el mensaje con cada punto, horario y quiénes van.'],
+      ['recuperar', 'Borré algo por error, ¿se puede recuperar?', 'En Ajustes › Historial ves quién cambió qué y cuándo; los puntos y turnos borrados se pueden volver con "Restaurar". Para cualquier otra cosa, avisale al administrador: hay copias de seguridad diarias.']
+    ] }
+  ];
+  function renderAyuda() {
+    const esCoord = !!(S.user && (S.isAdmin || S.coordDe.length));
+    let h = `<button type="button" class="btn alt" id="ayBv" style="margin:4px 0 6px">${I('star', 'width:18px;height:18px')}Ver la bienvenida otra vez</button>`;
+    AYUDA.filter(g => !g.coord || esCoord).forEach(g => {
+      h += `<div class="sec">${esc(g.g)}</div><div class="card faq">${g.qs.map(([id, q, a]) => `<details name="faq" id="faq-${id}"${S.route.q === id ? ' open' : ''}><summary>${esc(q)}${I('chev', 'width:16px;height:16px')}</summary><p>${esc(a)}</p></details>`).join('')}</div>`;
+    });
+    h += `<div class="card" style="padding:14px 16px;margin-top:14px"><b>¿No encontraste tu respuesta?</b><p class="hint" style="margin:4px 0 10px">Contanos qué pasó y te ayuda el equipo de soporte.</p><button type="button" class="sbtn" id="ayRep">${I('alert', 'width:15px;height:15px')}Reportar un problema</button></div>`;
+    $('app').innerHTML = h;
+    $('ayBv').addEventListener('click', () => bienvenida(true));
+    $('ayRep').addEventListener('click', () => reportar());
+    if (S.route.q) { const d = $('faq-' + S.route.q); if (d) setTimeout(() => d.scrollIntoView({ block: 'center' }), 50); }
   }
   function renderHome() {
     const list = Object.values(S.campanas).filter(c => c.activa !== false && (!c.hasta || c.hasta >= hoy()))
@@ -775,7 +817,7 @@
     const url = rech ? '' : comoLlegarUrl(pt, c), d = parseIso(p.fecha), pasado = p.fecha < hoy();
     let h = pt.lat != null ? mapaLugar(pt, c, 'big')
       : `<div class="mapa big foto"${fotoAttr(p.cid, (pt.fotos || [])[0], `background-image:${colorDe(c.id ? c : { id: p.cid })};`)}></div>`;
-    h += `<div class="det"><div class="st ${esc(p.estado)}"><i></i>${conf ? 'Confirmado por un coordinador' : rech ? 'No fue confirmado' : 'Esperando confirmación'}</div>`;
+    h += `<div class="det"><div class="st ${esc(p.estado)}"><i></i>${conf ? 'Confirmado por un coordinador' : rech ? 'No fue confirmado' : 'Esperando confirmación'}${!conf && !rech ? ' <a class="qhelp" href="#/ayuda/espera">¿Qué significa?</a>' : ''}</div>`;
     h += `<h2>${esc(cap(DOW_L[d.getDay()]))} ${d.getDate()} de ${MES[d.getMonth()]} · <span class="num">${esc(p.desde)} a ${esc(p.hasta)}</span></h2>`;
     h += `<div class="m">${esc([c.nombre, pt.nombre, pt.direccion].filter(Boolean).join(' · '))}</div>`;
     if (!rech) h += `<div class="tl"><span class="ok"><span class="dot">${I('check')}</span>Pedido</span><span class="ln on"></span><span class="${conf ? 'ok' : ''}"><span class="dot">${conf ? I('check') : ''}</span>Confirmado</span><span class="ln${pasado ? ' on' : ''}"></span><span class="${pasado ? 'ok' : ''}"><span class="dot">${pasado ? I('check') : ''}</span>El día</span></div>`;
@@ -2227,7 +2269,7 @@
     }
     if (t.id === 'coordBtn') { go('#/coord'); return; }
     if (t.id === 'privBtn') { privacidad(); return; }
-    if (t.id === 'comoBtn') { bienvenida(true); return; }
+    if (t.id === 'comoBtn') { go('#/ayuda'); return; }
     if (t.closest('[data-cguia]')) { try { localStorage.setItem('ppam-guia-coord', '1'); } catch (e) { /* nada */ } renderCoord(); return; }
     if (ds.instalar !== undefined) { instalar(); return; }
     if (ds.vista) { S.vista = ds.vista; S.mapa.sel = null; try { localStorage.setItem('ppam-vista', ds.vista); } catch (er) { /* nada */ } renderHome(); return; }

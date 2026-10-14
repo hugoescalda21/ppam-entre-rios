@@ -608,7 +608,7 @@ const SEED = {
       return { cx, m };
     };
     let { cx, m } = await abrir(seed, [], '#/c/parana-terminal');
-    check('al pie: "Reportar un problema", "¿Cómo funciona?" y la versión', /Reportar un problema\s*·\s*¿Cómo funciona\?\s*·\s*Cómo se usan tus datos\s*Versión \d+/.test(await text(m, '.foot')), await text(m, '.foot'));
+    check('al pie: "Reportar un problema" y la versión', /Reportar un problema\s*·\s*Cómo se usan tus datos\s*Versión \d+/.test(await text(m, '.foot')), await text(m, '.foot'));
     await m.evaluate(() => { window.dispatchEvent(new ErrorEvent('error', { message: 'Prueba de error', filename: 'https://x/app.js', lineno: 12 })); }); await m.waitForTimeout(150);
     let err = await m.evaluate(() => Object.entries(window.__store).filter(([k]) => k.startsWith('errores/') && k !== 'errores/viejo').map(([, v]) => v));
     check('un error de la página queda anotado solo, con pantalla, celular y versión (sin datos personales)', err.length === 1 && /Prueba de error/.test(err[0].msg) && err[0].pantalla === '#/c/parana-terminal' && /^\d+$/.test(err[0].ver) && err[0].disp && err[0].tipo === 'js' && Object.keys(err[0]).sort().join() === 'creado,disp,msg,pantalla,tipo,ver', err);
@@ -992,8 +992,8 @@ const SEED = {
     check('"Empezar" la cierra y queda marcada como vista', !(await st()) && await w.evaluate(() => localStorage.getItem('ppam-bienvenida') === '1'));
     await w.reload(); await w.waitForTimeout(700);
     check('no vuelve a aparecer', !(await st()));
-    await w.click('#comoBtn'); await w.waitForTimeout(150);
-    check('"¿Cómo funciona?" la vuelve a abrir', /Paso 1 de 4/i.test(((await st()) || {}).t || ''));
+    await w.click('#tabAyuda'); await w.waitForTimeout(200); await w.click('#ayBv'); await w.waitForTimeout(150);
+    check('desde Ayuda, "Ver la bienvenida otra vez" la vuelve a abrir', /Paso 1 de 4/i.test(((await st()) || {}).t || ''));
     await w.click('#bvSal'); await w.waitForTimeout(100);
     check('"Saltear" la cierra', !(await st()));
     check('las 4 animaciones y sus imágenes fijas existen y pesan poco', [1, 2, 3, 4].every(k => ['', '-fijo'].every(x => { try { return fs.statSync(path.resolve(__dirname, '..', 'img/bienvenida/paso' + k + x + '.webp')).size < 70000; } catch (e) { return false; } })));
@@ -1007,6 +1007,35 @@ const SEED = {
     await g.click('[data-cguia]'); await g.waitForTimeout(150);
     check('"Entendido" la cierra para siempre', !(await g.$('.cguia')) && await g.evaluate(() => localStorage.getItem('ppam-guia-coord') === '1'));
     check('sin errores (guía del coordinador)', g.errs.length === 0, g.errs);
+  }
+  console.log('\nAyuda: preguntas frecuentes');
+  {
+    const a = await open([], '');
+    check('la pestaña Ayuda está siempre en la barra de abajo', await a.evaluate(() => { const b = document.getElementById('tabAyuda'); return b && !b.classList.contains('hidden') && /Ayuda/.test(b.textContent); }));
+    await a.click('#tabAyuda'); await a.waitForTimeout(200);
+    const at = await text(a, '#app');
+    check('Ayuda: 13 preguntas para publicadores, en 3 grupos, sin las de coordinadores', await a.evaluate(() => document.querySelectorAll('.faq details').length) === 13 && /Anotarme[\s\S]*Mis turnos[\s\S]*Mis datos y la app/.test(at) && !/Para coordinadores/.test(at), at.slice(0, 200));
+    check('la pestaña queda marcada y el título dice "Preguntas frecuentes"', await a.evaluate(() => document.getElementById('tabAyuda').classList.contains('on')) && /Preguntas frecuentes/.test(await text(a, '#tbTitle')));
+    await a.click('#faq-completo summary'); await a.waitForTimeout(80);
+    check('tocar una pregunta muestra la respuesta', await a.evaluate(() => document.getElementById('faq-completo').open) && /Con lugar/.test(await text(a, '#faq-completo')));
+    await a.click('#faq-cancelar summary'); await a.waitForTimeout(80);
+    check('al abrir otra, la anterior se cierra', await a.evaluate(() => document.getElementById('faq-cancelar').open && !document.getElementById('faq-completo').open));
+    await a.click('#ayRep'); await a.waitForTimeout(150);
+    check('"¿No encontraste tu respuesta?" abre Reportar un problema', /Reportar un problema/.test(await text(a, '.sheet')));
+    check('sin errores (ayuda)', a.errs.length === 0, a.errs);
+    const ax2 = path.resolve(__dirname, '..', '..', 'axe', 'node_modules', 'axe-core', 'axe.min.js');
+    if (fs.existsSync(ax2)) { await a.keyboard.press('Escape'); await a.waitForTimeout(100); await a.addScriptTag({ content: fs.readFileSync(ax2, 'utf8') }); const v = await a.evaluate(async () => (await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations.map(x => x.id + ' x' + x.nodes.length)); check('axe (WCAG 2.2 AA) sin problemas: Ayuda', v.length === 0, v); }
+    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '');
+    await k.click('#userBtn'); await k.waitForTimeout(300); await k.evaluate(() => { location.hash = '#/ayuda/recuperar'; }); await k.waitForTimeout(300);
+    check('el coordinador ve además "Para coordinadores", y un enlace abre esa respuesta', /Para coordinadores/.test(await text(k, '#app')) && await k.evaluate(() => document.getElementById('faq-recuperar').open) && await k.evaluate(() => document.querySelectorAll('.faq details').length) === 16);
+    const u = await open([{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }], '');
+    await u.click('#userBtn'); await u.waitForTimeout(300);
+    await u.evaluate(() => { const db = window.__ppamMock.db; db.doc('pedidos/parana-terminal__2026-10-02__t2__u-ana').set({ cid: 'parana-terminal', fecha: '2026-10-02', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-ana', email: 'ana@x.com', nombre: 'Ana', apellido: 'Paz', congregacion: 'X', celular: '343 555-0000', estado: 'pendiente', creado: 'x' }); });
+    await u.evaluate(() => { location.hash = '#/t/parana-terminal__2026-10-02__t2__u-ana'; }); await u.waitForTimeout(400);
+    check('en un turno pendiente: "¿Qué significa?"', !!(await u.$('.qhelp')));
+    await u.click('.qhelp'); await u.waitForTimeout(300);
+    check('lleva a la Ayuda con esa respuesta abierta', await u.evaluate(() => location.hash === '#/ayuda/espera' && document.getElementById('faq-espera').open));
+    check('sin errores (enlaces de ayuda)', k.errs.length === 0 && u.errs.length === 0, [k.errs, u.errs]);
   }
   console.log('\nCampaña corta: solo sus días');
   {
