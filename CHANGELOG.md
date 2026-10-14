@@ -7,6 +7,12 @@
 
 
 
+
+## Versión 42 — más liviana para los publicadores
+- La parte de coordinación, administración y soporte pasó a un archivo aparte (coord.js) que se baja solo para quienes la usan. Los publicadores bajan unos 40 KB en lugar de 68 KB (comprimido), y la app abre más rápido la primera vez.
+- Los coordinadores la bajan en segundo plano apenas ingresan, así que para ellos todo sigue igual.
+- Pruebas automáticas en GitHub (.github/workflows/pruebas.yml): en cada cambio corren las pruebas de la app y las de las reglas de Firestore.
+- package.json en la raíz, solo para correr las pruebas (npm test).
 ## Versión 41 — Ayuda
 - Nueva pestaña "Ayuda" en la barra de abajo, siempre visible: 16 preguntas frecuentes en grupos (Anotarme, Mis turnos, Mis datos y la app, y Para coordinadores, que solo ven ellos). Cada pregunta se abre al tocarla; arriba, "Ver la bienvenida otra vez"; al final, "Reportar un problema".
 - En un turno pendiente, "¿Qué significa?" junto a "Esperando confirmación" abre esa respuesta.

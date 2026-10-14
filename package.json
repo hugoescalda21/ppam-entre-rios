@@ -1,0 +1,14 @@
+{
+  "name": "ppam-entre-rios",
+  "private": true,
+  "description": "PPAM Entre Ríos: página estática (GitHub Pages). Este archivo es solo para correr las pruebas.",
+  "scripts": {
+    "test": "node tests/app.test.js",
+    "test:reglas": "cd firebase/pruebas-reglas && npm test",
+    "bienvenida": "node tests/bienvenida/capturar.js && python3 tests/bienvenida/armar.py"
+  },
+  "devDependencies": {
+    "axe-core": "4.10.2",
+    "playwright": "1.56.0"
+  }
+}

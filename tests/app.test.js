@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 let chromium;
 try { ({ chromium } = require('playwright')); } catch (e) { ({ chromium } = require('/home/claude/.npm-global/lib/node_modules/playwright/index.js')); }
+// axe-core (control automático de accesibilidad): del proyecto (npm install) o de una copia al lado
+const axePath = () => { try { return require.resolve('axe-core/axe.min.js'); } catch (e) { return path.resolve(__dirname, '..', '..', 'axe', 'node_modules', 'axe-core', 'axe.min.js'); } };
 const FILE = 'file://' + path.resolve(__dirname, '..', 'index.html');
 const SHOTS = path.resolve(__dirname, 'capturas');
 require('fs').mkdirSync(SHOTS, { recursive: true });
@@ -845,7 +847,7 @@ const SEED = {
   check('el service worker solo borra sus propias copias (ppam-…) y conserva las fotos', /ks\.filter\(k => k\.startsWith\('ppam-'\) && !k\.startsWith\('ppam-fotos'\) && k !== SDK && k !== CACHE\)/.test(require('fs').readFileSync(path.resolve(__dirname, '..', 'service-worker.js'), 'utf8')));
   console.log('\nAccesibilidad (WCAG 2.2 AA) y ayudas');
   {
-    const AXE = path.resolve(__dirname, '..', '..', 'axe', 'node_modules', 'axe-core', 'axe.min.js');
+    const AXE = axePath();
     const A2 = { uid: 'u-a2', email: 'a2@x.com', displayName: 'Ana Dos' };
     SEED['pedidos/parana-terminal__2026-10-03__t2__u-a2'] = { cid: 'parana-terminal', fecha: '2026-10-03', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-a2', email: 'a2@x.com', nombre: 'Ana', apellido: 'Dos', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', estado: 'confirmado', creado: '2026-09-30T10:00:00Z' };
     const q = await open([A2], '#/c/parana-terminal');
@@ -1023,7 +1025,7 @@ const SEED = {
     await a.click('#ayRep'); await a.waitForTimeout(150);
     check('"¿No encontraste tu respuesta?" abre Reportar un problema', /Reportar un problema/.test(await text(a, '.sheet')));
     check('sin errores (ayuda)', a.errs.length === 0, a.errs);
-    const ax2 = path.resolve(__dirname, '..', '..', 'axe', 'node_modules', 'axe-core', 'axe.min.js');
+    const ax2 = axePath();
     if (fs.existsSync(ax2)) { await a.keyboard.press('Escape'); await a.waitForTimeout(100); await a.addScriptTag({ content: fs.readFileSync(ax2, 'utf8') }); const v = await a.evaluate(async () => (await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations.map(x => x.id + ' x' + x.nodes.length)); check('axe (WCAG 2.2 AA) sin problemas: Ayuda', v.length === 0, v); }
     const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '');
     await k.click('#userBtn'); await k.waitForTimeout(300); await k.evaluate(() => { location.hash = '#/ayuda/recuperar'; }); await k.waitForTimeout(300);
