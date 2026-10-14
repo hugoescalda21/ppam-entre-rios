@@ -1,3 +1,4 @@
+const fs = require('fs');
 // Pruebas de la página (con un Firestore simulado en memoria; sin conexión).
 //   node tests/app.test.js
 const path = require('path');
@@ -836,6 +837,46 @@ const SEED = {
     delete SEED['campanas/orden'];
   }
   check('el service worker solo borra sus propias copias (ppam-…)', /ks\.filter\(k => k\.startsWith\('ppam-'\) && k !== CACHE\)/.test(require('fs').readFileSync(path.resolve(__dirname, '..', 'service-worker.js'), 'utf8')));
+  console.log('\nAccesibilidad (WCAG 2.2 AA) y ayudas');
+  {
+    const AXE = path.resolve(__dirname, '..', '..', 'axe', 'node_modules', 'axe-core', 'axe.min.js');
+    const A2 = { uid: 'u-a2', email: 'a2@x.com', displayName: 'Ana Dos' };
+    SEED['pedidos/parana-terminal__2026-10-03__t2__u-a2'] = { cid: 'parana-terminal', fecha: '2026-10-03', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-a2', email: 'a2@x.com', nombre: 'Ana', apellido: 'Dos', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', estado: 'confirmado', creado: '2026-09-30T10:00:00Z' };
+    const q = await open([A2], '#/c/parana-terminal');
+    await q.click('[data-dia="2026-10-02"]'); await q.waitForTimeout(80);
+    check('el día elegido se anuncia (aria-pressed) y el foco vuelve al botón del día', await q.evaluate(() => document.querySelector('[data-dia="2026-10-02"]').getAttribute('aria-pressed') === 'true' && document.querySelector('[data-dia="2026-10-01"]').getAttribute('aria-pressed') === 'false' && document.activeElement === document.querySelector('[data-dia="2026-10-02"]')));
+    check('frase de ayuda: "Tocá un horario con lugar…"', /Tocá un horario con lugar para pedir tu turno/.test(await text(q, '#app')));
+    await q.click('[data-pedir="t1"]'); await q.waitForTimeout(150);
+    check('la ventana: el fondo queda inerte y el foco entra en ella', await q.evaluate(() => document.getElementById('app').hasAttribute('inert') && document.querySelector('.sheet').contains(document.activeElement) && !!document.querySelector('.sheet').getAttribute('aria-labelledby')));
+    await q.keyboard.press('Escape'); await q.waitForTimeout(80);
+    check('Escape la cierra y el foco vuelve al horario que la abrió', await q.evaluate(() => !document.querySelector('.ov') && !document.getElementById('app').hasAttribute('inert') && document.activeElement === document.querySelector('[data-pedir="t1"]')));
+    await q.click('#userBtn'); await q.waitForTimeout(300); await q.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q.waitForTimeout(200);
+    await q.click('[data-dia="2026-10-03"]'); await q.waitForTimeout(80); await q.click('[data-pedir="t3"]'); await q.waitForTimeout(150);
+    check('no avisa superposición si no hay', !/Se superpone/.test(await text(q, '.sheet')));
+    await q.keyboard.press('Escape'); await q.waitForTimeout(50);
+    SEED['campanas/parana-terminal'].turnos.t9 = { punto: 'p2', desde: '11:00', hasta: '13:00', dias: [6] };
+    const q2 = await open([A2], '#/c/parana-terminal'); await q2.click('#userBtn'); await q2.waitForTimeout(300); await q2.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q2.waitForTimeout(200);
+    await q2.click('[data-dia="2026-10-03"]'); await q2.waitForTimeout(80); await q2.click('[data-pedir="t9"]'); await q2.waitForTimeout(150);
+    check('turnos superpuestos: avisa con cuál choca', /Se superpone con otro turno tuyo\s*10:00 a 12:00 · Andén 1/.test(await text(q2, '.sheet')), await text(q2, '.sheet'));
+    delete SEED['campanas/parana-terminal'].turnos.t9; delete SEED['pedidos/parana-terminal__2026-10-03__t2__u-a2'];
+    await q2.keyboard.press('Escape');
+    await q2.click('#shareBtn'); await q2.waitForTimeout(100);
+    check('compartir: WhatsApp y "Copiar enlace"', /Mandar por WhatsApp[\s\S]*Copiar enlace/.test(await text(q2, '.sheet')));
+    await q2.keyboard.press('Escape');
+    await q2.evaluate(() => { window.__sinWebGL = true; }); await q2.click('[data-dia="2026-10-01"]');
+    SEED['campanas/parana-terminal'].puntos.p1.lat = -31.74; SEED['campanas/parana-terminal'].puntos.p1.lng = -60.52;
+    const q3 = await open([], '#/c/parana-terminal'); await q3.evaluate(() => { window.__sinWebGL = true; }); await q3.click('[data-lugar="parana-terminal|p1"]'); await q3.waitForTimeout(150);
+    check('sin WebGL: en vez del mapa, la dirección y "Abrir en el mapa"', await q3.evaluate(() => !document.querySelector('.sheet iframe') && /Abrir en el mapa/.test(document.querySelector('.sheet .sinmapa').innerText)));
+    delete SEED['campanas/parana-terminal'].puntos.p1.lat; delete SEED['campanas/parana-terminal'].puntos.p1.lng;
+    if (fs.existsSync(AXE)) {
+      const ax = fs.readFileSync(AXE, 'utf8');
+      for (const [nombre, hash] of [['Inicio', '#/'], ['Campaña', '#/c/parana-terminal']]) {
+        const r = await open([], hash); await r.addScriptTag({ content: ax });
+        const v = await r.evaluate(async () => (await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] } })).violations.map(x => x.id + ' x' + x.nodes.length));
+        check(`axe (WCAG 2.2 AA) sin problemas: ${nombre}`, v.length === 0, v);
+      }
+    } else console.log('  (axe-core no está instalado: se saltea el control automático de accesibilidad)');
+  }
   console.log('\nCampaña corta: solo sus días');
   {
     SEED['campanas/corta'] = { nombre: 'Fin de semana', ciudad: 'Crespo', desde: '2026-11-06', hasta: '2026-11-07', activa: true,

@@ -1,5 +1,13 @@
 # Registro de cambios — PPAM Entre Ríos
 
+## Auditoría de Crespo, segunda tanda: accesibilidad — 13 oct 2026 (caché ppam-v36)
+
+- WCAG 2.2 AA: textos secundarios con contraste 5:1 (antes 3,1:1), nada por debajo de 11,5 px, contorno de foco visible; en modo oscuro, texto oscuro sobre los botones verdes.
+- Ventanas con el patrón de diálogo del W3C: foco adentro, Escape cierra, fondo inerte, el foco vuelve al cerrar; título asociado. Lupas también.
+- Días, filtros y pestañas anuncian su estado (aria-pressed) y el foco se conserva al redibujar.
+- "Tocá un horario con lugar para pedir tu turno…"; compartir con WhatsApp, "Copiar enlace" y "Más opciones"; aviso de turnos superpuestos (hermano y "+ Turno" del coordinador); tarjeta con "Abrir en el mapa" cuando el celular no puede mostrar el mapa.
+- Pruebas: axe-core (WCAG 2.2 AA) en Inicio y campaña, si está instalado en ../axe. Versión 34. 248 pruebas.
+
 ## Auditoría de Crespo, primera tanda — 13 oct 2026 (caché ppam-v35)
 
 - C1: mientras llegan los cupos, "Consultando lugares…" y horarios sin poder pedirse; si fallan, aviso con "Reintentar" (y queda en errores automáticos).

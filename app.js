@@ -49,7 +49,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '33';
+  const VERSION = '34';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -209,6 +209,13 @@
     if (p.direccion) return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(p.direccion + (c && c.ciudad ? ', ' + c.ciudad : '') + ', Entre Ríos');
     return '';
   }
+  const hayWebGL = (() => { let r = null; return () => { if (r !== null) return r; try { const cv = document.createElement('canvas'); r = !!(cv.getContext('webgl') || cv.getContext('experimental-webgl')); } catch (e) { r = false; } return r; }; })();
+  // Mapa del lugar: el de OpenStreetMap necesita WebGL; si el celular no lo tiene, una tarjeta con la dirección y el botón para abrir el mapa
+  function mapaLugar(p, c, cls, alt) {
+    if (p.lat == null) return '';
+    if (!hayWebGL() || window.__sinWebGL) { const url = comoLlegarUrl(p, c || {}); return `<div class="mapa ${cls || ''} sinmapa"${alt || ''}><div class="smi">${I('pin', 'width:22px;height:22px')}<b>${esc(p.nombre || 'Lugar')}</b>${p.direccion ? `<span>${esc(p.direccion)}</span>` : ''}${url ? `<a class="sbtn" href="${esc(url)}" target="_blank" rel="noopener">${I('nav', 'width:15px;height:15px')}Abrir en el mapa</a>` : ''}<small>Este celular no puede mostrar el mapa acá.</small></div></div>`; }
+    return `<div class="mapa ${cls || ''}"><iframe loading="lazy" title="Mapa de ${esc(p.nombre || '')}" src="${esc(mapaUrl(p))}"></iframe></div>`;
+  }
   function mapaUrl(p) { const d = 0.0035; return `https://www.openstreetmap.org/export/embed.html?bbox=${p.lng - d},${p.lat - d * 0.6},${p.lng + d},${p.lat + d * 0.6}&layer=mapnik&marker=${p.lat},${p.lng}`; }
   const retiroLabel = (p) => 'Retiro del ' + (p.tipo === 'stand' ? 'stand' : p.tipo === 'carrito' ? 'carrito' : 'material');
 
@@ -349,7 +356,7 @@
     h += `<div class="sh"><b>Campañas</b>${ciudades.length > 1 ? `<label class="flt">${esc(S.ciudad === 'todas' ? 'Toda la provincia' : S.ciudad)}${I('down', 'width:14px;height:14px')}<select id="fCiudad" aria-label="Filtrar por ciudad">${['todas', ...ciudades].map(x => `<option value="${esc(x)}"${x === S.ciudad ? ' selected' : ''}>${x === 'todas' ? 'Toda la provincia' : esc(x)}</option>`).join('')}</select></label>` : ''}</div>`;
     const conMapa = S.publico.mapa !== false;   // Administración → "Mostrar el mapa en el Inicio"
     if (!conMapa && S.vista === 'mapa') S.vista = 'lista';
-    if (vis.length && conMapa) h += `<div class="seg2" role="tablist"><button type="button" data-vista="lista" class="${S.vista !== 'mapa' ? 'on' : ''}">${I('list', 'width:15px;height:15px')}Lista</button><button type="button" data-vista="mapa" class="${S.vista === 'mapa' ? 'on' : ''}">${I('pin', 'width:15px;height:15px')}Mapa</button></div>`;
+    if (vis.length && conMapa) h += `<div class="seg2" role="group" aria-label="Ver como"><button type="button" data-vista="lista" class="${S.vista !== 'mapa' ? 'on' : ''}">${I('list', 'width:15px;height:15px')}Lista</button><button type="button" data-vista="mapa" class="${S.vista === 'mapa' ? 'on' : ''}">${I('pin', 'width:15px;height:15px')}Mapa</button></div>`;
     if (vis.length && S.vista === 'mapa') {
       h += mapaHTML();
       // Las que no se pueden ubicar (sin puntos marcados y ciudad desconocida) siguen apareciendo, debajo del mapa.
@@ -412,6 +419,7 @@
     h += `<div class="sec">${esc(cap(fmtDia(S.dia)))}</div>`;
     if (!filas.length) h += '<div class="card"><div class="empty">No hay turnos ese día.</div></div>';
     else h += `<div class="dres"><span>${filas.length} ${tipoN[filas.length === 1 ? 0 : 1]} · <b>${cargando ? '<span class="carg">Consultando lugares…</span>' : errCupos ? 'lugares sin datos' : libresDia ? (libresDia === 1 ? '1 lugar libre' : libresDia + ' lugares libres') : 'sin lugares libres'}</b></span><div class="seg2 cf"><button type="button" data-cf="todos" class="${conLugar ? '' : 'on'}">Todos</button><button type="button" data-cf="libres" class="${conLugar ? 'on' : ''}">Con lugar</button></div></div>`;
+    if (filas.length && !cargando && !errCupos && libresDia) h += `<p class="ayuda">Tocá un horario con lugar para pedir tu turno. Un coordinador lo confirma y te avisa.</p>`;
     if (errCupos) h += `<div class="aviso-mapa ccerr">${I('alert', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>No pudimos consultar los lugares libres</b>Puede ser la señal. Los horarios se ven, pero no sabemos cuántos lugares quedan. <button type="button" class="sbtn" data-ccretry="${esc(c.id)}">Reintentar</button></span></div>`;
     S.plegados = S.plegados || {};
     let vistos = 0;
@@ -440,7 +448,7 @@
     const dir = p.direccion || (p.lat != null ? `${p.lat}, ${p.lng}` : '');
     const fotos = (p.fotos || []).map(f => `<div${fotoAttr(cid, f)}></div>`).join('');
     sheet(`${fotos ? `<div class="fotos">${fotos}</div>` : ''}<h3>${esc(p.nombre)}</h3><span class="sub">${esc(tp[1])} · ${cupoDe(c, { punto: pid })} por turno</span>
-      ${p.lat != null ? `<div class="mapa"><iframe loading="lazy" title="Mapa de ${esc(p.nombre)}" src="${esc(mapaUrl(p))}"></iframe></div>` : ''}
+      ${mapaLugar(p, c)}
       <div class="dir">${I('pin')}<div><b>${esc(c.nombre)}${c.ciudad ? ' · ' + esc(c.ciudad) : ''}</b>${dir ? '<br>' + esc(dir) : ''}${p.detalle ? '<br>' + esc(p.detalle) : ''}</div></div>
       ${url ? `<div class="lugar-acts"><a class="go" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Cómo llegar</a>${dir ? `<button type="button" class="sbtn" data-copiar="${esc(dir)}">${I('copy')}Copiar dirección</button>` : ''}</div>` : ''}
       ${p.indicaciones ? `<div class="info"><b>Cómo encontrarlo</b>${esc(p.indicaciones)}</div>` : ''}
@@ -458,8 +466,33 @@
     ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="handle"></div>${html}</div>`;
     document.body.appendChild(ov);
     ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-cerrar]')) ov.remove(); });
+    modal(ov, ov.querySelector('.sheet'));
     return ov;
   }
+  /* Ventanas accesibles (patrón de diálogo del W3C): el foco entra y queda adentro, Escape cierra,
+     el fondo queda inerte y al cerrar el foco vuelve a donde estaba. */
+  const FONDO = ['tb', 'app', 'tabbar'];
+  let abiertas = [];
+  function modal(ov, box) {
+    const antes = document.activeElement;
+    const tit = box.querySelector('h3, h4'); if (tit) { if (!tit.id) tit.id = 'dlg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); box.setAttribute('aria-labelledby', tit.id); }
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+    abiertas.push(ov); fondo();
+    const foco = () => { const f = box.querySelector('input:not([type=hidden]):not([disabled]), select, textarea, button:not([disabled]), a[href]'); if (f && !/^(INPUT|SELECT|TEXTAREA)$/.test(f.tagName)) { if (tit) { tit.tabIndex = -1; tit.focus({ preventScroll: true }); return; } } (f || box).focus({ preventScroll: true }); };
+    setTimeout(foco, 30);
+    ov.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); ov.remove(); return; }
+      if (e.key !== 'Tab') return;
+      const fs = [...box.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent !== null);
+      if (!fs.length) return;
+      const a = fs[0], z = fs[fs.length - 1];
+      if (e.shiftKey && (document.activeElement === a || !box.contains(document.activeElement))) { e.preventDefault(); z.focus(); }
+      else if (!e.shiftKey && (document.activeElement === z || !box.contains(document.activeElement))) { e.preventDefault(); a.focus(); }
+    });
+    const obs = new MutationObserver(() => { if (ov.isConnected) return; obs.disconnect(); abiertas = abiertas.filter(x => x !== ov); fondo(); if (antes && antes.isConnected && !abiertas.length) antes.focus({ preventScroll: true }); });
+    obs.observe(document.body, { childList: true });
+  }
+  function fondo() { const on = abiertas.some(x => x.isConnected); FONDO.forEach(id => { const el = $(id); if (el) { if (on) { el.setAttribute('inert', ''); el.setAttribute('aria-hidden', 'true'); } else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); } } }); const f = document.querySelector('footer'); if (f) { if (on) f.setAttribute('inert', ''); else f.removeAttribute('inert'); } }
   /* ---------- Nota para el coordinador (opcional, privada como el celular) ---------- */
   const NOTA_MAX = 200;
   /* Celular argentino: se limpia el +54, el 9, el 0 y el 15, y se guarda siempre igual (ej. 343 555-0000) */
@@ -532,7 +565,9 @@
     const congs = (S.publico.congregaciones || []).slice().sort((a, b) => a.localeCompare(b, 'es'));
     const opts = congs.map(x => `<option${x === pf.congregacion ? ' selected' : ''}>${esc(x)}</option>`).join('') + `<option value="__otra"${pf.congregacion && !congs.includes(pf.congregacion) ? ' selected' : ''}>Otra…</option>`;
     const libres = cupoDe(c, t) - Object.keys(ocupDe(c.id, S.dia, t.id)).length;
-    const ov = sheet(`<h3>Confirmá tu turno</h3><p class="hint">Un coordinador lo revisa y te confirma.</p>
+    const choca = Object.values(S.mis || {}).filter(m => m.fecha === S.dia && m.estado !== 'rechazado' && !(m.cid === c.id && m.tid === t.id) && minutos(m.desde) < minutos(t.hasta) && minutos(t.desde) < minutos(m.hasta));
+    const avisoChoca = choca.length ? `<div class="aviso-mapa choca">${I('alert', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>Se superpone con otro turno tuyo</b>${choca.map(m => `${esc(m.desde)} a ${esc(m.hasta)} · ${esc((((S.campanas[m.cid] || {}).puntos || {})[m.punto] || {}).nombre || '')}`).join('; ')}. Si igual querés este, después cancelá el otro desde Mis turnos.</span></div>` : '';
+    const ov = sheet(`<h3>Confirmá tu turno</h3><p class="hint">Un coordinador lo revisa y te confirma.</p>${avisoChoca}
       <div class="sum"><div>${I('cal')}${esc(cap(fmtDia(S.dia)))}</div><div>${I('clock')}<span class="num">${esc(t.desde)} – ${esc(t.hasta)}</span><small>${libres === 1 ? 'Queda 1 lugar' : `Quedan ${libres} lugares`}</small></div><div>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}${esc(p.nombre)} · ${esc(c.nombre)}</div></div>
       <div class="two"><div class="fld"><label for="pNom">Nombre</label><input id="pNom" autocomplete="given-name" value="${esc(pf.nombre || (S.user.displayName || '').split(' ')[0] || '')}"></div>
       <div class="fld"><label for="pApe">Apellido</label><input id="pApe" autocomplete="family-name" value="${esc(pf.apellido || (S.user.displayName || '').split(' ').slice(1).join(' ') || '')}"></div></div>
@@ -656,7 +691,7 @@
     if (!p) { $('app').innerHTML = '<div class="card"><div class="empty">Ese turno ya no está en tu lista.</div></div><button type="button" class="btn" data-go="#/mis">Ver mis turnos</button>'; return; }
     const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, conf = p.estado === 'confirmado', rech = p.estado === 'rechazado';
     const url = rech ? '' : comoLlegarUrl(pt, c), d = parseIso(p.fecha), pasado = p.fecha < hoy();
-    let h = pt.lat != null ? `<div class="mapa big"><iframe loading="lazy" title="Mapa de ${esc(pt.nombre || '')}" src="${esc(mapaUrl(pt))}"></iframe></div>`
+    let h = pt.lat != null ? mapaLugar(pt, c, 'big')
       : `<div class="mapa big foto"${fotoAttr(p.cid, (pt.fotos || [])[0], `background-image:${colorDe(c.id ? c : { id: p.cid })};`)}></div>`;
     h += `<div class="det"><div class="st ${esc(p.estado)}"><i></i>${conf ? 'Confirmado por un coordinador' : rech ? 'No fue confirmado' : 'Esperando confirmación'}</div>`;
     h += `<h2>${esc(cap(DOW_L[d.getDay()]))} ${d.getDate()} de ${MES[d.getMonth()]} · <span class="num">${esc(p.desde)} a ${esc(p.hasta)}</span></h2>`;
@@ -791,8 +826,8 @@
   }
   function abrirBuscadorPub() {
     const ov = document.createElement('div'); ov.className = 'bsov';
-    ov.innerHTML = `<div class="bsbox"><div class="bsin">${I('search')}<input id="bsQ" type="search" placeholder="Buscar lugar, día u horario" autocomplete="off" enterkeyhint="search"><button type="button" class="bsx" data-bscerrar aria-label="Cerrar">Cerrar</button></div><div class="bsres" id="bsR"></div></div>`;
-    document.body.appendChild(ov);
+    ov.innerHTML = `<div class="bsbox" aria-label="Buscar lugares, días u horarios"><div class="bsin">${I('search')}<input id="bsQ" type="search" placeholder="Buscar lugar, día u horario" aria-label="Buscar lugar, día u horario" autocomplete="off" enterkeyhint="search"><button type="button" class="bsx" data-bscerrar aria-label="Cerrar">Cerrar</button></div><div class="bsres" id="bsR"></div></div>`;
+    document.body.appendChild(ov); modal(ov, ov.querySelector('.bsbox'));
     const inp = ov.querySelector('#bsQ'), res = ov.querySelector('#bsR');
     let atajo = null, timer = null;
     const pinta = () => {
@@ -898,8 +933,8 @@
   function abrirBuscador() {
     if (!(S.isAdmin || S.coordDe.length)) { abrirBuscadorPub(); return; }
     const ov = document.createElement('div'); ov.className = 'bsov';
-    ov.innerHTML = `<div class="bsbox"><div class="bsin">${I('search')}<input id="bsQ" type="search" placeholder="Buscar hermano, punto o turno" autocomplete="off" enterkeyhint="search"><button type="button" class="bsx" data-bscerrar aria-label="Cerrar">Cerrar</button></div><div class="bsres" id="bsR"></div></div>`;
-    document.body.appendChild(ov);
+    ov.innerHTML = `<div class="bsbox" aria-label="Buscar hermanos, puntos o turnos"><div class="bsin">${I('search')}<input id="bsQ" type="search" aria-label="Buscar hermano, punto o turno" placeholder="Buscar hermano, punto o turno" autocomplete="off" enterkeyhint="search"><button type="button" class="bsx" data-bscerrar aria-label="Cerrar">Cerrar</button></div><div class="bsres" id="bsR"></div></div>`;
+    document.body.appendChild(ov); modal(ov, ov.querySelector('.bsbox'));
     const inp = ov.querySelector('#bsQ'), res = ov.querySelector('#bsR');
     let atajo = null, timer = null;
     const pinta = () => {
@@ -1082,10 +1117,11 @@
       if (cs.length > 1) h += `<div class="fld"><select id="lgCamp">${cs.map(x => `<option value="${esc(x.id)}"${x.id === c.id ? ' selected' : ''}>${esc(x.nombre)}${x.ciudad ? ' · ' + esc(x.ciudad) : ''}</option>`).join('')}</select></div>`;
       let hay = 0;
       ver.forEach(d => {
-        const fs = turnosDelDia(c, d).map(t => { const oc = Object.keys((cups[cupoId(c.id, d, t.id)] || {}).ocupados || {}).length; return { t, falta: cupoDe(c, t) - oc, esta: yaEsta(c.id, d, t.id) }; }).filter(x => x.falta > 0 || x.esta);
+        const suyos = busPeds(c.id).filter(q => q.fecha === d && (q.estado === 'confirmado' || q.estado === 'pendiente') && ((per.uid && q.uid === per.uid) || sinTilde(q.nombre + ' ' + q.apellido) === sinTilde(per.nombre + ' ' + per.apellido)));
+        const fs = turnosDelDia(c, d).filter(t => !yaEmpezo(d, t)).map(t => { const oc = Object.keys((cups[cupoId(c.id, d, t.id)] || {}).ocupados || {}).length, ch = suyos.find(q => q.tid !== t.id && minutos(q.desde) < minutos(t.hasta) && minutos(t.desde) < minutos(q.hasta)); return { t, falta: cupoDe(c, t) - oc, esta: yaEsta(c.id, d, t.id), ch }; }).filter(x => x.falta > 0 || x.esta);
         if (!fs.length) return;
-        h += `<div class="lgd">${esc(cap(fmtDia(d)))}</div>` + fs.map(({ t, falta, esta }) => { const p = c.puntos[t.punto] || {}; if (!esta) hay++;
-          return `<label class="lgr${esta ? ' ya' : ''}"><input type="checkbox" value="${d}|${esc(t.id)}"${esta ? ' disabled' : ''}><span class="tx"><b class="num">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))}</b> · ${esc(p.nombre || '')}<small>${esta ? 'Ya está anotado' : falta === 1 ? 'Falta 1' : 'Faltan ' + falta}${p.detalle ? ' · ' + esc(p.detalle) : ''}</small>${esta ? '' : `<span class="cqs"><em>Con:</em> ${conQuienHTML(quienesEn(c.id, d, t.id), per.apellido)}</span>`}</span></label>`; }).join('');
+        h += `<div class="lgd">${esc(cap(fmtDia(d)))}</div>` + fs.map(({ t, falta, esta, ch }) => { const p = c.puntos[t.punto] || {}; if (!esta) hay++;
+          return `<label class="lgr${esta ? ' ya' : ''}"><input type="checkbox" value="${d}|${esc(t.id)}"${esta ? ' disabled' : ''}><span class="tx"><b class="num">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))}</b> · ${esc(p.nombre || '')}<small>${esta ? 'Ya está anotado' : falta === 1 ? 'Falta 1' : 'Faltan ' + falta}${p.detalle ? ' · ' + esc(p.detalle) : ''}</small>${esta ? '' : `<span class="cqs"><em>Con:</em> ${conQuienHTML(quienesEn(c.id, d, t.id), per.apellido)}</span>`}${!esta && ch ? `<span class="chq">Se superpone con su turno de ${esc(ch.desde)} a ${esc(ch.hasta)}</span>` : ''}</span></label>`; }).join('');
       });
       if (!hay) h += '<div class="bs0">No quedan lugares libres en esta campaña.</div>';
       if (!todos && dias.length > 14) h += `<button type="button" class="btn alt" id="lgMas">Ver los días que siguen</button>`;
@@ -1174,7 +1210,7 @@
   function pedidoCoordRow(c, p, acciones) {
     const pt = (c.puntos || {})[p.punto] || {};
     const wa = String(p.celular || '').replace(/\D/g, '');
-    const pal = ['#E5EEEB|#12433F', '#F4ECDC|#8A6A2E', '#E6ECF5|#2F4B7A', '#F3E6EC|#7A3553'][(p.nombre || '').length % 4].split('|');
+    const pal = ['#E5EEEB|#12433F', '#F4ECDC|#7A5E27', '#E6ECF5|#2F4B7A', '#F3E6EC|#7A3553'][(p.nombre || '').length % 4].split('|');
     return `<div class="rq"><div class="t"><span class="ini" style="background:${pal[0]};color:${pal[1]}">${esc(iniciales(p.nombre + ' ' + p.apellido))}</span><div class="who"><b>${esc(p.nombre)} ${esc(p.apellido)}</b><small>${esc(p.congregacion)}</small></div><a class="wa" href="https://wa.me/${wa.length === 10 ? '549' + wa : wa}" target="_blank" rel="noopener" aria-label="WhatsApp">${I('chat')}</a></div><div class="w">${I('cal', 'width:15px;height:15px')}<span>${esc(cap(fmtDia(p.fecha)))} · ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))} · ${esc(pt.nombre || '')}</span><span class="num tel">${esc(p.celular)}</span></div>${notaHTML(p.nota)}${acciones ? `<div class="bb">${acciones}</div>` : ''}</div>`;
   }
   function coordPedidos(c, pend, peds) {
@@ -2065,11 +2101,31 @@
   }
 
   /* ---------- Clics ---------- */
+  // Botones que eligen una opción (día, filtro, pestaña): su estado se anuncia con aria-pressed
+  const GRUPOS = '.seg2 button, .days button, .tabs button, .bsch button';
+  function marcarEstados() { document.querySelectorAll(GRUPOS).forEach(b => b.setAttribute('aria-pressed', b.classList.contains('on') ? 'true' : 'false')); }
+  new MutationObserver(() => { clearTimeout(marcarEstados.t); marcarEstados.t = setTimeout(marcarEstados, 0); }).observe(document.body, { childList: true, subtree: true });
+  // Si la pantalla se vuelve a dibujar después de tocar un botón, el foco vuelve al botón equivalente
+  const CLAVES = ['dia', 'cdia', 'cf', 'cdf', 'aj', 'hf', 'tab', 'vista', 'plegar', 'sem', 'bsat'];
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const k = CLAVES.find(x => b.dataset[x] !== undefined); if (!k) return;
+    const sel = `[data-${k}="${CSS.escape(b.dataset[k])}"]`;
+    setTimeout(() => { if (document.activeElement && document.activeElement !== document.body && document.activeElement.isConnected) return; const n = document.querySelector(sel); if (n) n.focus({ preventScroll: true }); }, 0);
+  });
   document.addEventListener('click', (e) => {
     const t = e.target.closest('button, a[data-go]'); if (!t) return;
     const ds = t.dataset;
     if (t.id === 'backBtn') { const r = S.route; go((r.name === 'coord' && r.cid) || r.name === 'admin' || r.name === 'soporte' ? '#/coord' : r.name === 'turno' ? '#/mis' : '#/'); return; }
-    if (t.id === 'shareBtn') { const c = S.campanas[S.route.cid]; if (!c) return; const txt = `PPAM · ${c.nombre} (${c.ciudad || ''}). Anotate en un turno: ${linkCampana(c)}`; if (navigator.share && !window.__ppamMock) navigator.share({ title: c.nombre, text: txt }).catch(() => {}); else compartir(txt); return; }
+    if (t.id === 'shareBtn') {
+      const c = S.campanas[S.route.cid]; if (!c) return;
+      const link = linkCampana(c), txt = `PPAM · ${c.nombre} (${c.ciudad || ''}). Anotate en un turno: ${link}`;
+      const ov = sheet(`<h3>Compartir la campaña</h3><p class="hint">${esc(c.nombre)}</p><button type="button" class="btn" id="shWa">${I('chat')}Mandar por WhatsApp</button><button type="button" class="btn alt" id="shCopy">${I('copy')}Copiar enlace</button>${navigator.share && !window.__ppamMock ? `<button type="button" class="btn alt" id="shMas">${I('share')}Más opciones…</button>` : ''}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+      ov.querySelector('#shWa').addEventListener('click', () => { ov.remove(); compartir(txt); });
+      ov.querySelector('#shCopy').addEventListener('click', () => { ov.remove(); copiar(link); });
+      const m = ov.querySelector('#shMas'); if (m) m.addEventListener('click', () => { ov.remove(); navigator.share({ title: c.nombre, text: txt }).catch((er) => { if (er && er.name !== 'AbortError') copiar(link); }); });
+      return;
+    }
     if (t.id === 'userBtn') {
       if (!S.user) { login(); return; }
       const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(S.user.displayName || S.user.email))}</span><div><h3>${esc(S.user.displayName || 'Mi cuenta')}</h3><p class="hint">${esc(S.user.email)}</p></div></div><button type="button" class="btn" id="uMis">Mis turnos</button>${puedeInstalar() ? '<button type="button" class="btn alt" id="uInst">Instalar la app</button>' : ''}<button type="button" class="btn alt" id="uOut">Cerrar sesión</button><button type="button" class="linkish ubor" id="uBor">Borrar mis datos de este celular</button>`);
