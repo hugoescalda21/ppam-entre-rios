@@ -3,3 +3,4 @@ node_modules/
 tests/capturas/
 .tmp/
 tests/bienvenida/cuadros/
+.firebase/
