@@ -282,6 +282,17 @@ const section = (t) => console.log('\n' + t);
   await check('el coordinador NO borra hermanos', assertFails(db(CO).doc('hermanos/h-marta').delete()));
   await check('quien usaba Google se habilita con su mismo id (sus turnos quedan)', assertSucceeds(habilitar(CO, uidOf(G), { cod: 'GENTE001' })));
 
+  section('Quitados de la lista "Usaban Google"');
+  const desc = (email, extra) => db(email).doc('descartados/uid-prueba').set(Object.assign({ nombre: 'Hugo Prueba', por: email, at: TSv() }, extra || {}));
+  await check('un hermano NO quita a nadie de la lista', assertFails(desc(A, { por: 'link' })));
+  await check('con Google sin ser coordinador NO', assertFails(desc(G)));
+  await check('NO firmado por otro', assertFails(desc(CO, { por: 'otro@x.com' })));
+  await check('NO con campos de más', assertFails(desc(CO, { celular: '1' })));
+  await check('el coordinador lo quita de la lista', assertSucceeds(desc(CO)));
+  await check('los coordinadores ven quiénes se quitaron', assertSucceeds(db(CO).collection('descartados').get()));
+  await check('un hermano NO los ve', assertFails(db(A).collection('descartados').get()));
+  await check('el coordinador lo vuelve a mostrar', assertSucceeds(db(CO).doc('descartados/uid-prueba').delete()));
+
   await env.cleanup();
   console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;

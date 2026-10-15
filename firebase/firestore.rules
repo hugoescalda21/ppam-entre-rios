@@ -281,6 +281,12 @@ service cloud.firestore {
                      request.resource.data.usado == true && getAfter(docSes()).data.cod == cod;
       allow delete: if staff();
     }
+    // descartados/{uid}: quienes usaban Google y un coordinador sacó de la lista de sugerencias (pruebas, etc.)
+    match /descartados/{uid} {
+      allow read, delete: if staff();
+      allow create: if staff() && request.resource.data.keys().hasOnly(['nombre', 'por', 'at']) &&
+                     request.resource.data.por == mail() && request.resource.data.at == request.time && texto(request.resource.data, 'nombre', 120);
+    }
     // sesiones/{uid}: qué hermano está usando este celular (sesión anónima de Firebase).
     match /sesiones/{sid} {
       allow read: if anonimo() && request.auth.uid == sid;

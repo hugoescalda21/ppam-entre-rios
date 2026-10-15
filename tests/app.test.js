@@ -1186,10 +1186,14 @@ const SEED = {
     SEED['links/ANAB0001'] = { hid: 'h-ana2', nombre: 'Ana' };
     const k = await open([{ uid: 'u-co', email: 'coord@x.com', displayName: 'Carlos Vega' }], '');
     await entrar(k, 300); await k.click('#coordBtn'); await k.waitForTimeout(300);
-    check('Coordinar: tarjeta con habilitados, sin entrar, los que usaban Google y el aviso', /Hermanos habilitados\s*1 aviso[\s\S]*habilitados · 2 todavía no entraron · 1 usaba Google/.test(await text(k, '.hcard')), await text(k, '.hcard'));
+    check('Coordinar: tarjeta con habilitados, sin entrar, los que usaban Google y el aviso', /Hermanos habilitados\s*1 aviso[\s\S]*habilitados · 2 todavía no entraron · 2 usaban Google/.test(await text(k, '.hcard')), await text(k, '.hcard'));
     await k.click('.hcard'); await k.waitForTimeout(300);
     let tk = await text(k, '#app');
-    check('lista: aviso, "Todavía no entraron", "Usaban la página con Google" (solo con turnos por delante) y "Habilitados"', /Ana Benítez entró desde otro celular[\s\S]*Todavía no entraron[\s\S]*Luis Gómez[\s\S]*Marta Gómez[\s\S]*Usaban la página con Google[\s\S]*Elsa Vieja[\s\S]*1 turno[\s\S]*Habilitados[\s\S]*Ana Benítez/.test(tk) && !/Hugo Prueba/.test(tk) && /Hermanos habilitados/.test(await text(k, '#tbTitle')), tk);
+    check('lista: aviso, "Todavía no entraron", "Usaban la página con Google" (también sin turnos por delante) y "Habilitados"', /Ana Benítez entró desde otro celular[\s\S]*Todavía no entraron[\s\S]*Luis Gómez[\s\S]*Marta Gómez[\s\S]*Usaban la página con Google[\s\S]*Elsa Vieja[\s\S]*1 turno[\s\S]*Habilitados[\s\S]*Ana Benítez/.test(tk) && /Usaban la página con Google\s*2[\s\S]*Hugo Prueba[\s\S]*Habilitados/.test(tk) && /Hermanos habilitados/.test(await text(k, '#tbTitle')), tk);
+    await k.click('[data-hquitar="u-prueba"]'); await k.waitForTimeout(250);
+    check('la ✕ quita a alguien de "Usaban Google" (queda guardado para todos los coordinadores)', await k.evaluate(() => { const d = window.__store['descartados/u-prueba']; return d && d.por === 'coord@x.com' && d.nombre === 'Hugo Prueba'; }) && !/Usaban la página con Google[\s\S]*Hugo Prueba[\s\S]*Habilitados/.test(await text(k, '#app')) && /Quitados de la lista \(1\)/.test(await text(k, '#app')));
+    await k.click('.hbajas summary'); await k.waitForTimeout(80); await k.click('[data-hvolver="u-prueba"]'); await k.waitForTimeout(250);
+    check('"Volver a mostrar" lo devuelve a la lista', await k.evaluate(() => !window.__store['descartados/u-prueba']) && /Usaban la página con Google[\s\S]*Hugo Prueba[\s\S]*Habilitados/.test(await text(k, '#app')));
     await k.fill('#hBus', 'marta'); await k.waitForTimeout(400);
     check('el buscador filtra por nombre', /Marta Gómez/.test(await text(k, '#app')) && !/Luis Gómez|Ana Benítez/.test(await text(k, '#app')));
     await k.fill('#hBus', ''); await k.waitForTimeout(400);

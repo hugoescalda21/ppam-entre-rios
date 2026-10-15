@@ -1035,7 +1035,13 @@ window.PPAM_COORD = function (K) {
       const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.herm.lista = o; S.herm.ok = true;
       if (S.route.name === 'hermanos') refrescar(renderHermanos); else if (S.route.name === 'coord' && !S.route.cid) refrescar(renderCoord);
     }, (e) => { console.error(e); S.herm.err = true; if (S.route.name === 'hermanos') renderHermanos(); });
-    if (S.herm) S.herm.unsub = un;
+    // Los que un coordinador sacó de "Usaban la página con Google" (pruebas, gente que ya no participa)
+    S.herm.desc = {};
+    const un2 = S.db.collection('descartados').onSnapshot((qs) => {
+      const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); if (!S.herm) return; S.herm.desc = o;
+      if (S.route.name === 'hermanos') refrescar(renderHermanos); else if (S.route.name === 'coord' && !S.route.cid) refrescar(renderCoord);
+    }, (e) => console.error(e));
+    if (S.herm) S.herm.unsub = () => { un(); un2(); };
   }
   // Quienes ya pidieron turnos con Google en las campañas que coordino: se habilitan con su mismo id (así sus turnos quedan)
   async function cargarViejos() {
@@ -1052,8 +1058,8 @@ window.PPAM_COORD = function (K) {
     if (S.route.name === 'hermanos') refrescar(renderHermanos); else if (S.route.name === 'coord' && !S.route.cid) refrescar(renderCoord);
   }
   const listaHermanos = () => Object.keys(S.herm.lista).map(id => Object.assign({ id }, S.herm.lista[id]));
-  // Solo los que tienen turnos por delante (los demás no tienen nada que pasar: si vuelven, se habilitan como nuevos)
-  const viejosPend = () => Object.values(S.herm.viejos || {}).filter(v => v.turnos > 0 && !S.herm.lista[v.uid]).sort((a, b) => (a.apellido + a.nombre).localeCompare(b.apellido + b.nombre, 'es'));
+  // Todos los que pidieron turnos con Google y todavía no tienen link, salvo los que un coordinador quitó de la lista
+  const viejosPend = () => Object.values(S.herm.viejos || {}).filter(v => !S.herm.lista[v.uid] && !(S.herm.desc || {})[v.uid]).sort((a, b) => (a.apellido + a.nombre).localeCompare(b.apellido + b.nombre, 'es'));
   function tarjetaHermanos() {
     if (!(S.isAdmin || S.coordDe.length)) return '';
     escucharHermanos(); cargarViejos();
@@ -1080,19 +1086,23 @@ window.PPAM_COORD = function (K) {
     h += avisos.map(a => `<div class="codok warn">${I('alert', 'width:18px;height:18px')}<span><b>${esc(a.nombre)} ${esc(a.apellido)} entró desde otro celular</b>${esc(cap(cuandoH(a.ultimo) || ''))}${a.disp ? ' · ' + esc(a.disp) : ''}. Si no lo cambió ${esc(a.nombre)}, mandale un link nuevo: el viejo deja de servir.<br><button type="button" class="linkish fuerte" data-hfic="${esc(a.id)}">Ver a ${esc(a.nombre)}</button> · <button type="button" class="linkish" data-hok="${esc(a.id)}">Ya está, fue ${esc(a.nombre)}</button></span></div>`).join('');
     const reenviar = (x) => `<a class="sbtn" href="${esc(waTxt(x.celular, msgLink(x)))}" target="_blank" rel="noopener" aria-label="Reenviarle el link por WhatsApp">${I('chat', 'width:15px;height:15px')}</a>`;
     if (sinEntrar.length) h += `<div class="sec">Todavía no entraron <span class="tag pendiente">${sinEntrar.length}</span></div><div class="card">${sinEntrar.map(x => filaH(Object.assign({ sub: `${congCorta(x.congregacion)} · link enviado ${cuandoH(x.creado) || ''}`.trim() }, x), reenviar(x))).join('')}</div>`;
-    if (viejos.length) h += `<div class="sec">Usaban la página con Google <span class="tag">${viejos.length}</span></div><div class="card">${viejos.map(v => `<div class="arow"><span class="av">${esc(iniciales(v.nombre + ' ' + v.apellido))}</span><span class="tx"><b>${esc(v.nombre)} ${esc(v.apellido)}</b><small>${esc(congCorta(v.congregacion))} · ${esc(v.celular || '')}${v.turnos ? ` · ${v.turnos} ${v.turnos === 1 ? 'turno' : 'turnos'}` : ''}</small></span><span class="acts"><button type="button" class="sbtn pri" data-hviejo="${esc(v.uid)}">Habilitar</button></span></div>`).join('')}</div><p class="fine izq">Pidieron turnos con Google y todavía tienen alguno por delante. Al habilitarlos se cargan solos sus datos y, cuando tocan el link, sus turnos pasan al acceso nuevo.</p>`;
+    if (viejos.length) h += `<div class="sec">Usaban la página con Google <span class="tag">${viejos.length}</span></div><div class="card">${viejos.map(v => `<div class="arow"><span class="av">${esc(iniciales(v.nombre + ' ' + v.apellido))}</span><span class="tx"><b>${esc(v.nombre)} ${esc(v.apellido)}</b><small>${esc(congCorta(v.congregacion))} · ${esc(v.celular || '')}${v.turnos ? ` · ${v.turnos} ${v.turnos === 1 ? 'turno' : 'turnos'}` : ''}</small></span><span class="acts"><button type="button" class="sbtn pri" data-hviejo="${esc(v.uid)}">Habilitar</button><button type="button" class="sbtn" data-hquitar="${esc(v.uid)}" aria-label="Quitar a ${esc(v.nombre)} ${esc(v.apellido)} de esta lista" title="Quitar de esta lista">${I('x', 'width:15px;height:15px')}</button></span></div>`).join('')}</div><p class="fine izq">Pidieron turnos con Google y todavía no tienen su link. Al habilitarlos se cargan solos sus datos y, cuando tocan el link, sus turnos pasan al acceso nuevo. Con la ✕ lo quitás de esta lista (por ejemplo, una prueba).</p>`;
+    const quitados = Object.values(S.herm.viejos || {}).filter(v => !S.herm.lista[v.uid] && (S.herm.desc || {})[v.uid]);
+    if (quitados.length) h += `<details class="hbajas"><summary>Quitados de la lista (${quitados.length})</summary><div class="card">${quitados.map(v => `<div class="arow"><span class="av">${esc(iniciales(v.nombre + ' ' + v.apellido))}</span><span class="tx"><b>${esc(v.nombre)} ${esc(v.apellido)}</b><small>${esc(congCorta(v.congregacion))} · ${esc(v.celular || '')}</small></span><span class="acts"><button type="button" class="sbtn" data-hvolver="${esc(v.uid)}">Volver a mostrar</button></span></div>`).join('')}</div></details>`;
     h += `<div class="sec">Habilitados <span class="tag confirmado">${activos.length}</span></div><div class="card">${activos.length ? activos.map(x => filaH(Object.assign({ sub: `${congCorta(x.congregacion)} · entró ${cuandoH(x.ultimo)}` }, x), I('chev'))).join('') : '<div class="empty">Todavía nadie entró con su link.</div>'}</div>`;
     if (bajas.length) h += `<details class="hbajas"><summary>Dados de baja (${bajas.length})</summary><div class="card">${bajas.map(x => filaH(Object.assign({ sub: congCorta(x.congregacion) }, x), I('chev'))).join('')}</div></details>`;
     $('app').innerHTML = h + '</div>';
     const box = $('herm');
     const bus = $('hBus'); bus.addEventListener('input', () => { H.q = bus.value; clearTimeout(H.t); H.t = setTimeout(() => { renderHermanos(); const b = $('hBus'); if (b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); } }, 250); });
     box.addEventListener('click', (e) => {
-      const t = e.target.closest('[data-hnuevo],[data-hcong],[data-hok],[data-hviejo],[data-hfic]'); if (!t || t.tagName === 'A' || e.target.closest('a')) return;
+      const t = e.target.closest('[data-hnuevo],[data-hcong],[data-hok],[data-hviejo],[data-hquitar],[data-hvolver],[data-hfic]'); if (!t || t.tagName === 'A' || e.target.closest('a')) return;
       const d = t.dataset;
       if (d.hnuevo !== undefined) return habilitarHermano();
       if (d.hcong !== undefined) { H.cong = d.hcong; return renderHermanos(); }
       if (d.hok) return S.db.doc('hermanos/' + d.hok).update({ aviso: false }).catch(() => toast('No se pudo guardar. Probá de nuevo.'));
       if (d.hviejo) return habilitarHermano((S.herm.viejos || {})[d.hviejo]);
+      if (d.hquitar) { const v = (S.herm.viejos || {})[d.hquitar] || {}; return S.db.doc('descartados/' + d.hquitar).set({ nombre: ((v.nombre || '') + ' ' + (v.apellido || '')).trim().slice(0, 120), por: S.user.email.toLowerCase(), at: S.ahora() }).then(() => toast(`${v.nombre || 'Quitado'}: ya no aparece en esta lista`)).catch((er) => { console.error(er); toast('No se pudo guardar. Revisá la conexión y probá de nuevo.'); }); }
+      if (d.hvolver) return S.db.doc('descartados/' + d.hvolver).delete().catch(() => toast('No se pudo guardar. Probá de nuevo.'));
       if (d.hfic) return fichaHermano(d.hfic);
     });
   }

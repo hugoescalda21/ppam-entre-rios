@@ -9,6 +9,12 @@
 
 
 
+## Versión 49 — "Usaban Google" completo y botón para quitar
+
+- "Usaban la página con Google" vuelve a mostrar a todos los que pidieron turnos con Google y todavía no tienen link, tengan o no turnos por delante (como en la versión 47). Así se los habilita con sus datos ya cargados.
+- Cada uno tiene una ✕ para quitarlo de esa lista (por ejemplo, una prueba). Se guarda para todos los coordinadores y se puede deshacer en "Quitados de la lista" → "Volver a mostrar".
+- Hay que publicar las reglas nuevas (`firebase deploy --only firestore:rules`): sin eso, la ✕ no se puede guardar.
+
 ## Versión 48 — limpieza de la lista de hermanos
 
 - "Usaban la página con Google" muestra solo a quienes tienen turnos por delante. Las pruebas viejas y quienes no tienen nada pendiente ya no aparecen; si vuelven, se los habilita como nuevos.
