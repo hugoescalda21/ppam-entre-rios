@@ -9,6 +9,11 @@
 
 
 
+## Versión 48 — limpieza de la lista de hermanos
+
+- "Usaban la página con Google" muestra solo a quienes tienen turnos por delante. Las pruebas viejas y quienes no tienen nada pendiente ya no aparecen; si vuelven, se los habilita como nuevos.
+- El administrador puede borrar para siempre a un hermano dado de baja (pide confirmar). Sus turnos viejos quedan en cada campaña.
+
 ## Versión 47 — acceso con link personal (web cerrada)
 
 - **La web está cerrada:** sin estar habilitado no se ve ninguna campaña, punto, horario ni foto. El bloqueo está en las reglas de la base de datos, no solo en la pantalla.

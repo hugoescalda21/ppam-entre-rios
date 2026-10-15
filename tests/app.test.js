@@ -506,7 +506,7 @@ const SEED = {
   await entrar(a, 300);
   check('ve la administración', /Campañas[\s\S]*Congregaciones[\s\S]*Administradores/i.test(await text(a, '#app')));
   await a.screenshot({ path: SHOTS + '/admin.png', fullPage: true });
-  await a.click('[data-nueva]'); await a.fill('#ncNom', 'Plaza San Martín'); await a.fill('#ncCiu', 'Gualeguaychú'); await a.click('#ncOk'); await a.waitForTimeout(600);
+  await a.click('[data-nueva]'); await a.fill('#ncNom', 'Plaza San Martín'); await a.fill('#ncCiu', 'Gualeguaychú'); await a.click('#ncOk'); await a.waitForFunction(() => /#\/coord\//.test(location.hash), null, { timeout: 5000 }).catch(() => {}); await a.waitForTimeout(200);
   const nueva = await a.evaluate(() => Object.keys(window.__store).find(k => k.startsWith('campanas/gualeguaychu-plaza-san-martin')));
   check('crea una campaña y va a configurarla', !!nueva && /#\/coord\/gualeguaychu-plaza-san-martin/.test(await a.evaluate(() => location.hash)), nueva);
   await a.evaluate(() => { location.hash = '#/admin'; }); await a.waitForTimeout(250);
@@ -714,7 +714,7 @@ const SEED = {
     await m.evaluate(() => { const e = new Event('beforeinstallprompt'); e.prompt = () => { window.__prompted = true; }; e.userChoice = Promise.resolve({ outcome: 'accepted' }); window.dispatchEvent(e); }); await m.waitForTimeout(100);
     check('Android: aparece "Instalá la app PPAM" arriba del Inicio', /Instalá la app PPAM\s*Abrila desde la pantalla de inicio/.test(await text(m, '#instBan')));
     await m.screenshot({ path: SHOTS + '/instalar-android.png' });
-    await m.click('[data-instalar]'); await m.waitForTimeout(100);
+    await m.click('[data-instalar]'); await m.waitForTimeout(400);
     check('"Instalar" abre el aviso del celular y, si acepta, no vuelve a aparecer', await m.evaluate(() => window.__prompted === true && localStorage.getItem('ppam-instalar') === 'never') && !(await m.$('#instBan')));
     check('sin errores (instalar Android)', m.errs.length === 0, m.errs);
     await cx.close();
@@ -1009,7 +1009,9 @@ const SEED = {
     await w.click('#bvSig'); await w.waitForTimeout(100);
     check('"Empezar" la cierra y queda marcada como vista', !(await st()) && await w.evaluate(() => localStorage.getItem('ppam-bienvenida') === '1'));
     await w.reload(); await w.waitForTimeout(700);
+    if (await st()) await w.waitForTimeout(1000);   // con la máquina cargada, la primera pintura puede demorar
     check('no vuelve a aparecer', !(await st()));
+    if (await st()) await w.click('#bvSal').catch(() => {});
     await w.click('#tabAyuda'); await w.waitForTimeout(200); await w.click('#ayBv'); await w.waitForTimeout(150);
     check('desde Ayuda, "Ver la bienvenida otra vez" la vuelve a abrir', /Paso 1 de 4/i.test(((await st()) || {}).t || ''));
     await w.click('#bvSal'); await w.waitForTimeout(100);
@@ -1179,6 +1181,7 @@ const SEED = {
     check('una cuenta de Google que no coordina: lo dice y no ve nada', /Esta cuenta no coordina ninguna campaña[\s\S]*gente@x.com/.test(await text(c5, '#app')) && !(await c5.$('.cc.camp')));
     // Panel del coordinador
     SEED['pedidos/parana-terminal__2026-10-03__t3__u-vieja'] = { cid: 'parana-terminal', fecha: '2026-10-03', tid: 't3', punto: 'p2', desde: '16:00', hasta: '18:00', uid: 'u-vieja', email: 'vieja@x.com', nombre: 'Elsa', apellido: 'Vieja', congregacion: 'San Agustín (Paraná)', celular: '343 555-7777', estado: 'confirmado', creado: 'x' };
+    SEED['pedidos/parana-terminal__2026-09-02__t1__u-prueba'] = { cid: 'parana-terminal', fecha: '2026-09-02', tid: 't1', punto: 'p1', desde: '08:00', hasta: '10:00', uid: 'u-prueba', email: 'prueba@x.com', nombre: 'Hugo', apellido: 'Prueba', congregacion: 'San Agustín (Paraná)', celular: '343 555-1111', estado: 'confirmado', creado: 'x' };
     SEED['hermanos/h-ana2'] = { nombre: 'Ana', apellido: 'Benítez', congregacion: 'San Agustín (Paraná)', celular: '343 411-4444', cod: 'ANAB0001', uid: 'anon-ab', ultimo: '2026-09-30T10:42:00Z', disp: 'Android · Chrome', aviso: true, creado: '2026-09-20T10:00:00Z', por: 'coord@x.com', porNombre: 'Carlos Vega' };
     SEED['links/ANAB0001'] = { hid: 'h-ana2', nombre: 'Ana' };
     const k = await open([{ uid: 'u-co', email: 'coord@x.com', displayName: 'Carlos Vega' }], '');
@@ -1186,7 +1189,7 @@ const SEED = {
     check('Coordinar: tarjeta con habilitados, sin entrar, los que usaban Google y el aviso', /Hermanos habilitados\s*1 aviso[\s\S]*habilitados · 2 todavía no entraron · 1 usaba Google/.test(await text(k, '.hcard')), await text(k, '.hcard'));
     await k.click('.hcard'); await k.waitForTimeout(300);
     let tk = await text(k, '#app');
-    check('lista: aviso, "Todavía no entraron", "Usaban la página con Google" y "Habilitados"', /Ana Benítez entró desde otro celular[\s\S]*Todavía no entraron[\s\S]*Luis Gómez[\s\S]*Marta Gómez[\s\S]*Usaban la página con Google[\s\S]*Elsa Vieja[\s\S]*1 turno[\s\S]*Habilitados[\s\S]*Ana Benítez/.test(tk) && /Hermanos habilitados/.test(await text(k, '#tbTitle')), tk);
+    check('lista: aviso, "Todavía no entraron", "Usaban la página con Google" (solo con turnos por delante) y "Habilitados"', /Ana Benítez entró desde otro celular[\s\S]*Todavía no entraron[\s\S]*Luis Gómez[\s\S]*Marta Gómez[\s\S]*Usaban la página con Google[\s\S]*Elsa Vieja[\s\S]*1 turno[\s\S]*Habilitados[\s\S]*Ana Benítez/.test(tk) && !/Hugo Prueba/.test(tk) && /Hermanos habilitados/.test(await text(k, '#tbTitle')), tk);
     await k.fill('#hBus', 'marta'); await k.waitForTimeout(400);
     check('el buscador filtra por nombre', /Marta Gómez/.test(await text(k, '#app')) && !/Luis Gómez|Ana Benítez/.test(await text(k, '#app')));
     await k.fill('#hBus', ''); await k.waitForTimeout(400);
@@ -1218,8 +1221,19 @@ const SEED = {
     check('dar de baja pide confirmar y explica que no se borran sus turnos', /¿Dar de baja a Ana Benítez\?[\s\S]*No se borran sus datos ni sus turnos/.test(await text(k, '.sheet')));
     await k.click('#bOk'); await k.waitForTimeout(250);
     check('dado de baja: marcado, sin celular y sin link', await k.evaluate(() => { const h = window.__store['hermanos/h-ana2']; return h.baja === true && h.uid === null && h.bajaPor === 'coord@x.com' && !window.__store['links/' + h.cod]; }) && /Dados de baja \(1\)/.test(await text(k, '#app')));
+    check('un coordinador NO ve "Borrar para siempre"', await (async () => { await k.click('summary'); await k.waitForTimeout(80); await k.click('.hbajas .arow[data-hfic="h-ana2"]'); await k.waitForTimeout(150); const no = !(await k.$('#fBorrar')); await k.click('.sheet [data-cerrar]').catch(() => {}); await k.evaluate(() => document.querySelectorAll('.ov').forEach(x => x.remove())); return no; })());
     check('sin errores (panel de hermanos)', k.errs.length === 0, k.errs);
-    ['hermanos/h-marta', 'links/MARTA001', 'hermanos/u-luis', 'links/LUIS0001', 'pedidos/parana-terminal__2026-10-03__t3__u-vieja', 'hermanos/h-ana2', 'links/ANAB0001'].forEach(x => delete SEED[x]);
+    {
+      const ad = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/hermanos'); await entrar(ad, 300);
+      await ad.evaluate(() => window.__ppamMock.db.doc('hermanos/h-ana2').update({ baja: true })); await ad.evaluate(() => { location.hash = '#/hermanos'; }); await ad.waitForTimeout(300);
+      await ad.click('summary'); await ad.waitForTimeout(80); await ad.click('.hbajas .arow[data-hfic="h-ana2"]'); await ad.waitForTimeout(150);
+      await ad.click('#fBorrar'); await ad.waitForTimeout(100);
+      check('el administrador borra para siempre a un dado de baja (pide confirmar)', /¿Borrar a Ana Benítez para siempre\?/.test(await text(ad, '.sheet')));
+      await ad.click('#dOk'); await ad.waitForTimeout(200);
+      check('…y sale de la lista', await ad.evaluate(() => !window.__store['hermanos/h-ana2']) && !/Dados de baja/.test(await text(ad, '#app')));
+      check('sin errores (borrar hermano)', ad.errs.length === 0, ad.errs);
+    }
+    ['hermanos/h-marta', 'links/MARTA001', 'hermanos/u-luis', 'links/LUIS0001', 'pedidos/parana-terminal__2026-10-03__t3__u-vieja', 'pedidos/parana-terminal__2026-09-02__t1__u-prueba', 'hermanos/h-ana2', 'links/ANAB0001'].forEach(x => delete SEED[x]);
   }
 
   console.log('\nCampaña corta: solo sus días');
