@@ -8,11 +8,13 @@ const path = require('path');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
 try { require('firebase/compat/app').default.firestore.setLogLevel('silent'); } catch (e) { /* nada */ }
 
-const TEC = 'hugoescalda@gmail.com', ADM = 'admin@x.com', CO = 'coord@x.com', CO2 = 'coord2@x.com', A = 'ana@x.com', B = 'beto@x.com';
+const TEC = 'hugoescalda@gmail.com', ADM = 'admin@x.com', CO = 'coord@x.com', CO2 = 'coord2@x.com', A = 'ana@x.com', B = 'beto@x.com', C = 'caro@x.com', G = 'gente@x.com';
+// Los publicadores son hermanos habilitados: entran con su link (sesión anónima), no con Google.
+const HER = { [A]: { hid: 'h-ana', anon: 'anon-ana', cod: 'ANA00001' }, [B]: { hid: 'h-beto', anon: 'anon-beto', cod: 'BETO0001' }, [C]: { hid: 'h-caro', anon: 'anon-caro', cod: 'CARO0001' } };
 const CID = 'parana-terminal', F = '2026-10-05';
 const cupo = (tid) => `cupos/${CID}__${F}__${tid}`;
 const ped = (tid, uid) => `pedidos/${CID}__${F}__${tid}__${uid}`;
-const uidOf = (e) => 'uid-' + e.split('@')[0];
+const uidOf = (e) => HER[e] ? HER[e].hid : 'uid-' + e.split('@')[0];
 
 let ok = 0, bad = 0;
 async function check(label, p) {
@@ -23,9 +25,10 @@ const section = (t) => console.log('\n' + t);
 
 (async () => {
   const env = await initializeTestEnvironment({ projectId: 'demo-ppam', firestore: { rules: fs.readFileSync(path.join(__dirname, '..', 'firestore.rules'), 'utf8') } });
-  const db = (email) => email ? env.authenticatedContext(uidOf(email), { email, firebase: { sign_in_provider: 'google.com' } }).firestore() : env.unauthenticatedContext().firestore();
+  const anonDb = (uid) => env.authenticatedContext(uid, { firebase: { sign_in_provider: 'anonymous' } }).firestore();
+  const db = (email) => !email ? env.unauthenticatedContext().firestore() : HER[email] ? anonDb(HER[email].anon) : env.authenticatedContext(uidOf(email), { email, firebase: { sign_in_provider: 'google.com' } }).firestore();
   const TUR = { t1: { punto: 'p1', desde: '08:00', hasta: '10:00' }, t2: { punto: 'p2', desde: '10:00', hasta: '12:00' } };
-  const datos = (email, tid, extra) => Object.assign({ cid: CID, fecha: F, tid, punto: TUR[tid].punto, desde: TUR[tid].desde, hasta: TUR[tid].hasta, uid: uidOf(email), email, nombre: 'Ana', apellido: 'Paz', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', estado: 'pendiente', creado: '2026-10-01T10:00:00Z' }, extra || {});
+  const datos = (email, tid, extra) => Object.assign({ cid: CID, fecha: F, tid, punto: TUR[tid].punto, desde: TUR[tid].desde, hasta: TUR[tid].hasta, uid: uidOf(email), ...(HER[email] ? {} : { email }), nombre: 'Ana', apellido: 'Paz', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', estado: 'pendiente', creado: '2026-10-01T10:00:00Z' }, extra || {});
   async function pedir(email, tid, extra) {
     const f = db(email), b = f.batch();
     b.set(f.doc(cupo(tid)), { cid: CID, fecha: F, tid, ocupados: { [uidOf(email)]: 'p' } }, { merge: true });
@@ -43,6 +46,12 @@ const section = (t) => console.log('\n' + t);
       puntos: { p1: { nombre: 'Andén 1', tipo: 'carrito', cupo: 2 }, p2: { nombre: 'Hall', tipo: 'stand', cupo: 3 } },
       turnos: { t1: { punto: 'p1', desde: '08:00', hasta: '10:00', dias: [1] }, t2: { punto: 'p2', desde: '10:00', hasta: '12:00', dias: [1] } } });
     await f.doc('campanas/otra').set({ nombre: 'Otra', activa: true, puntos: {}, turnos: {} });
+    for (const e of [A, B, C]) {
+      const h = HER[e];
+      await f.doc('hermanos/' + h.hid).set({ nombre: e.split('@')[0], apellido: 'Prueba', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', cod: h.cod, uid: h.anon, creado: 'x', por: CO });
+      await f.doc('links/' + h.cod).set({ hid: h.hid, nombre: e.split('@')[0], por: CO });
+      await f.doc('sesiones/' + h.anon).set({ hid: h.hid, cod: h.cod, at: new Date() });
+    }
   });
 
   section('0) Solo cuentas de Google');
@@ -50,10 +59,16 @@ const section = (t) => console.log('\n' + t);
   await check('con email y contraseña NO hereda permisos de administrador', assertFails(otroIngreso.doc('config/admins').get()));
   await check('con email y contraseña NO pide turnos', assertFails(otroIngreso.doc('campanas/x').set({ nombre: 'X' })));
 
-  section('1) Lo público');
-  await check('sin sesión se ven las campañas', assertSucceeds(db(null).doc('campanas/' + CID).get()));
-  await check('sin sesión se ven los cupos', assertSucceeds(db(null).collection('cupos').where('cid', '==', CID).get()));
-  await check('sin sesión se ve la lista de congregaciones', assertSucceeds(db(null).doc('config/publico').get()));
+  section('1) La web cerrada');
+  await check('sin sesión NO se ven las campañas', assertFails(db(null).doc('campanas/' + CID).get()));
+  await check('sin sesión NO se ven los cupos', assertFails(db(null).collection('cupos').where('cid', '==', CID).get()));
+  await check('sin sesión NO se ve la lista de congregaciones', assertFails(db(null).doc('config/publico').get()));
+  await check('con Google pero sin ser coordinador NO se ven las campañas', assertFails(db(G).doc('campanas/' + CID).get()));
+  await check('una sesión anónima sin link NO ve nada', assertFails(anonDb('anon-x').doc('campanas/' + CID).get()));
+  await check('un hermano habilitado ve las campañas', assertSucceeds(db(A).doc('campanas/' + CID).get()));
+  await check('un hermano habilitado ve los cupos', assertSucceeds(db(A).collection('cupos').where('cid', '==', CID).get()));
+  await check('un hermano habilitado ve la lista de congregaciones', assertSucceeds(db(A).doc('config/publico').get()));
+  await check('el coordinador ve las campañas', assertSucceeds(db(CO).doc('campanas/' + CID).get()));
   await check('NO se ven los administradores', assertFails(db(A).doc('config/admins').get()));
   await check('NO se ven los coordinadores de una campaña', assertFails(db(A).doc('coordinadores/' + CID).get()));
   await check('el coordinador ve su rol', assertSucceeds(db(CO).doc('roles/' + CO).get()));
@@ -81,7 +96,7 @@ const section = (t) => console.log('\n' + t);
   await check('Beto NO saca a Ana del turno', assertFails(db(B).doc(cupo('t1')).update({ ['ocupados.' + uidOf(A)]: require('firebase/compat/app').default.firestore.FieldValue.delete() })));
   await check('Beto NO se pone como confirmado', assertFails(db(B).doc(cupo('t1')).update({ ['ocupados.' + uidOf(B)]: 'c' })));
   await check('un pedido sin anotarse en el cupo NO vale', assertFails(db(B).doc(ped('t2', uidOf(B))).set(datos(B, 't2'))));
-  await check('NO se pide con el email de otro', assertFails(pedir(B, 't2', { email: A })));
+  await check('NO se pide con el email de otro', assertFails(pedir(CO, 't2', { email: A })));
   await check('NO se pide ya confirmado', assertFails(pedir(B, 't2', { estado: 'confirmado' })));
   await check('NO se aceptan campos de más', assertFails(pedir(B, 't2', { dni: '123' })));
   await check('NO sin celular', assertFails(pedir(B, 't2', { celular: '' })));
@@ -94,7 +109,10 @@ const section = (t) => console.log('\n' + t);
   await check('Ana NO deja su pedido y se saca del cupo', assertFails(db(A).doc(cupo('t1')).update({ ['ocupados.' + uidOf(A)]: DEL() })));
   await check('Ana NO borra su pedido sin liberar el lugar', assertFails(db(A).doc(ped('t1', uidOf(A))).delete()));
   await check('Beto pide el último lugar del turno de 8', assertSucceeds(pedir(B, 't1')));
-  await check('un tercero NO entra: el turno está completo', assertFails(pedir(CO2, 't1')));
+  await check('un tercero NO entra: el turno está completo', assertFails(pedir(C, 't1')));
+  await check('con Google sin ser coordinador NO se pide', assertFails(pedir(G, 't2')));
+  await check('un hermano NO pide con el id de otro hermano', assertFails((async () => { const f = db(B), b = f.batch(); b.set(f.doc(cupo('t2')), { cid: CID, fecha: F, tid: 't2', ocupados: { [uidOf(C)]: 'p' } }, { merge: true }); b.set(f.doc(ped('t2', uidOf(C))), datos(C, 't2')); await b.commit(); })()));
+  await check('un hermano NO pide con email (no tiene cuenta de Google)', assertFails(pedir(B, 't2', { email: B })));
 
   section('4) Coordinador');
   await check('ve los pedidos de su campaña', assertSucceeds(db(CO).collection('pedidos').where('cid', '==', CID).get()));
@@ -105,15 +123,17 @@ const section = (t) => console.log('\n' + t);
 
   section('5) Cancelar y volver a pedir');
   await check('Beto cancela su turno', assertSucceeds((async () => { const f = db(B), b = f.batch(); b.update(f.doc(cupo('t1')), { ['ocupados.' + uidOf(B)]: require('firebase/compat/app').default.firestore.FieldValue.delete() }); b.delete(f.doc(ped('t1', uidOf(B)))); await b.commit(); })()));
-  await check('ahora entra otro en ese lugar', assertSucceeds(pedir(CO2, 't1')));
-  await check('el coordinador no confirma a ese otro', assertSucceeds((async () => { const f = db(CO), b = f.batch(); b.update(f.doc(cupo('t1')), { ['ocupados.' + uidOf(CO2)]: require('firebase/compat/app').default.firestore.FieldValue.delete() }); b.update(f.doc(ped('t1', uidOf(CO2))), { estado: 'rechazado', actualizado: 'x', por: CO }); await b.commit(); })()));
-  await check('y puede volver a pedir otro día u horario (o el mismo)', assertSucceeds(pedir(CO2, 't1')));
+  await check('ahora entra otro en ese lugar', assertSucceeds(pedir(C, 't1')));
+  await check('el coordinador no confirma a ese otro', assertSucceeds((async () => { const f = db(CO), b = f.batch(); b.update(f.doc(cupo('t1')), { ['ocupados.' + uidOf(C)]: require('firebase/compat/app').default.firestore.FieldValue.delete() }); b.update(f.doc(ped('t1', uidOf(C))), { estado: 'rechazado', actualizado: 'x', por: CO }); await b.commit(); })()));
+  await check('y puede volver a pedir otro día u horario (o el mismo)', assertSucceeds(pedir(C, 't1')));
+  await check('un coordinador también se anota con su cuenta de Google', assertSucceeds(pedir(CO, 't2')));
 
   section('6) Fotos');
   const JPG = 'data:image/jpeg;base64,' + 'A'.repeat(2000);
   const foto = (email, id, extra) => db(email).doc('fotos/' + id).set(Object.assign({ cid: CID, data: JPG, creado: 'x' }, extra || {}));
   await check('el coordinador sube una foto de su campaña', assertSucceeds(foto(CO, CID + '__f1')));
-  await check('cualquiera la ve, sin sesión', assertSucceeds(db(null).doc('fotos/' + CID + '__f1').get()));
+  await check('un hermano la ve', assertSucceeds(db(A).doc('fotos/' + CID + '__f1').get()));
+  await check('sin sesión NO se ve', assertFails(db(null).doc('fotos/' + CID + '__f1').get()));
   await check('un publicador NO sube fotos', assertFails(foto(A, CID + '__f2')));
   await check('el coordinador NO sube fotos de otra campaña', assertFails(foto(CO, 'otra__f1', { cid: 'otra' })));
   await check('NO con un id que no es de la campaña', assertFails(foto(CO, 'otra__f3')));
@@ -160,7 +180,7 @@ const section = (t) => console.log('\n' + t);
 
   section('Historial (auditoría)');
   const TS = () => require('firebase/compat/app').default.firestore.FieldValue.serverTimestamp();
-  const linea = (email, extra) => Object.assign({ cid: CID, tipo: 'borro_turno', texto: 'borró el turno 8–10 del Andén 1', por: email, uid: uidOf(email), at: TS() }, extra || {});
+  const linea = (email, extra) => Object.assign({ cid: CID, tipo: 'borro_turno', texto: 'borró el turno 8–10 del Andén 1', por: HER[email] ? 'link' : email, uid: uidOf(email), at: TS() }, extra || {});
   await check('el coordinador anota una línea en su campaña', assertSucceeds(db(CO).doc('auditoria/a1').set(linea(CO, { antes: { punto: 'p1', desde: '08:00', hasta: '10:00', dias: [1] }, ref: 'turno:t9' }))));
   await check('NO con una hora inventada', assertFails(db(CO).doc('auditoria/a2').set(linea(CO, { at: '2020-01-01T00:00:00Z' }))));
   await check('NO firmada con el email de otro', assertFails(db(CO).doc('auditoria/a3').set(linea(CO, { por: 'otro@x.com' }))));
@@ -189,8 +209,9 @@ const section = (t) => console.log('\n' + t);
   const rep = (extra) => Object.assign({ tipo: 'Otro', texto: 'No carga', pantalla: '#/', disp: 'Android 11 · Chrome 128', ver: '11', estado: 'nuevo', creado: '2026-10-13T12:00:00Z' }, extra || {});
   await check('sin sesión se manda un reporte', assertSucceeds(db(null).doc('reportes/r1').set(rep({ celular: '343 555-0000' }))));
   await check('sin sesión NO se manda con email ajeno', assertFails(db(null).doc('reportes/r2').set(rep({ email: 'otro@x.com' }))));
-  await check('con sesión, con su uid y email', assertSucceeds(db(A).doc('reportes/r3').set(rep({ uid: uidOf(A), email: A, nombre: 'Ana Paz' }))));
-  await check('NO con el uid de otro', assertFails(db(A).doc('reportes/r4').set(rep({ uid: uidOf(B), email: A }))));
+  await check('un hermano, con su id y nombre', assertSucceeds(db(A).doc('reportes/r3').set(rep({ uid: uidOf(A), nombre: 'Ana Paz' }))));
+  await check('un coordinador, con su uid y email', assertSucceeds(db(CO).doc('reportes/r3b').set(rep({ uid: uidOf(CO), email: CO, nombre: 'Carlos' }))));
+  await check('NO con el uid de otro', assertFails(db(A).doc('reportes/r4').set(rep({ uid: uidOf(B) }))));
   await check('NO ya resuelto', assertFails(db(A).doc('reportes/r5').set(rep({ estado: 'resuelto' }))));
   await check('NO con campos de más', assertFails(db(A).doc('reportes/r6').set(rep({ admin: true }))));
   await check('NO un texto de más de 1000 letras', assertFails(db(A).doc('reportes/r7').set(rep({ texto: 'x'.repeat(1001) }))));
@@ -209,6 +230,57 @@ const section = (t) => console.log('\n' + t);
   await check('un publicador NO lee errores', assertFails(db(A).doc('errores/e1').get()));
   await check('soporte lee y borra errores', assertSucceeds(db(SOP).doc('errores/e1').delete()));
   await check('soporte borra reportes viejos', assertSucceeds(db(SOP).doc('reportes/r1').delete()));
+
+  section('Hermanos habilitados: el link personal');
+  const TSv = () => require('firebase/compat/app').default.firestore.FieldValue.serverTimestamp();
+  const hermano = (extra) => Object.assign({ nombre: 'Marta', apellido: 'Gómez', congregacion: 'San Agustín (Paraná)', celular: '343 412-3412', cod: 'MARTA001', creado: '2026-10-14T10:00:00Z', por: CO, porNombre: 'Carlos' }, extra || {});
+  const habilitar = (email, hid, extra, cod) => { const f = db(email), b = f.batch(), h = hermano(Object.assign({ por: email }, extra || {})); b.set(f.doc('hermanos/' + hid), h); b.set(f.doc('links/' + (cod || h.cod)), { hid, nombre: h.nombre, congregacion: h.congregacion, creado: 'x', por: email }); return b.commit(); };
+  await check('un hermano NO habilita a otro', assertFails(habilitar(A, 'h-x1', { por: 'link' })));
+  await check('con Google sin ser coordinador NO se habilita', assertFails(habilitar(G, 'h-x2')));
+  await check('NO firmado por otro', assertFails(habilitar(CO, 'h-x3', { por: 'otro@x.com' })));
+  await check('NO ya atado a un celular', assertFails(habilitar(CO, 'h-x4', { uid: 'anon-x' })));
+  await check('NO con un código raro', assertFails(habilitar(CO, 'h-x5', { cod: 'abc' }, 'abc')));
+  await check('NO un link que no es el código del hermano', assertFails(habilitar(CO, 'h-x6', {}, 'OTRO0001')));
+  await check('NO sin celular', assertFails(habilitar(CO, 'h-x7', { celular: '' })));
+  await check('el coordinador habilita a Marta (hermano + link)', assertSucceeds(habilitar(CO, 'h-marta')));
+  await check('el coordinador ve la lista de hermanos', assertSucceeds(db(CO).collection('hermanos').get()));
+  await check('el administrador también', assertSucceeds(db(ADM).collection('hermanos').get()));
+  await check('un hermano NO ve la lista de hermanos', assertFails(db(A).collection('hermanos').get()));
+  await check('un hermano NO ve a otro hermano', assertFails(db(A).doc('hermanos/h-marta').get()));
+  const M1 = anonDb('anon-m1'), M2 = anonDb('anon-m2');
+  await check('sin sesión NO se lee el link', assertFails(db(null).doc('links/MARTA001').get()));
+  await check('con la sesión anónima se lee el link (para saludar)', assertSucceeds(M1.doc('links/MARTA001').get()));
+  await check('NO se listan los links', assertFails(M1.collection('links').get()));
+  await check('antes de entrar NO ve las campañas', assertFails(M1.doc('campanas/' + CID).get()));
+  const entrar = (f, uid, hid, cod, extra) => { const b = f.batch(); b.set(f.doc('sesiones/' + uid), { hid, cod, at: TSv() }); b.update(f.doc('hermanos/' + hid), Object.assign({ uid, ultimo: TSv(), disp: 'Android · Chrome' }, extra || {})); b.update(f.doc('links/' + cod), { usado: true }); return b.commit(); };
+  await check('NO entra con el código de otro hermano', assertFails(entrar(M1, 'anon-m1', 'h-marta', 'ANA00001')));
+  await check('NO entra con un código que no existe', assertFails(entrar(M1, 'anon-m1', 'h-marta', 'NOEXISTE')));
+  await check('NO se ata el celular de otro', assertFails(entrar(M1, 'anon-m2', 'h-marta', 'MARTA001')));
+  await check('NO cambia su nombre al entrar', assertFails(entrar(M1, 'anon-m1', 'h-marta', 'MARTA001', { nombre: 'Otra' })));
+  await check('Marta toca "Confirmar ingreso"', assertSucceeds(entrar(M1, 'anon-m1', 'h-marta', 'MARTA001')));
+  await check('ahora ve las campañas', assertSucceeds(M1.doc('campanas/' + CID).get()));
+  await check('y ve sus propios datos', assertSucceeds(M1.doc('hermanos/h-marta').get()));
+  await check('NO cambia su propio nombre o su código', assertFails(M1.doc('hermanos/h-marta').update({ nombre: 'Marta Elena' })));
+  await check('NO lee la sesión de otro celular', assertFails(M1.doc('sesiones/anon-ana').get()));
+  await check('entra desde otro celular con el mismo link (avisa)', assertSucceeds(entrar(M2, 'anon-m2', 'h-marta', 'MARTA001', { aviso: true, antes: { disp: 'Android · Chrome' } })));
+  await check('el celular anterior queda afuera', assertFails(M1.doc('campanas/' + CID).get()));
+  await check('…pero puede ver que su acceso se abrió en otro lado', assertSucceeds(M1.doc('hermanos/h-marta').get()));
+  await check('el nuevo celular sí ve las campañas', assertSucceeds(M2.doc('campanas/' + CID).get()));
+  await check('el coordinador ve el aviso y lo da por visto', assertSucceeds(db(CO).doc('hermanos/h-marta').update({ aviso: false })));
+  const nuevoLink = () => { const f = db(CO), b = f.batch(); b.update(f.doc('hermanos/h-marta'), { cod: 'MARTA002', uid: null }); b.set(f.doc('links/MARTA002'), { hid: 'h-marta', nombre: 'Marta', por: CO }); b.delete(f.doc('links/MARTA001')); return b.commit(); };
+  await check('el coordinador NO ata el hermano a un celular', assertFails(db(CO).doc('hermanos/h-marta').update({ uid: 'anon-cualquiera' })));
+  await check('el coordinador le manda un link nuevo', assertSucceeds(nuevoLink()));
+  await check('con el link nuevo, el celular que estaba queda afuera', assertFails(M2.doc('campanas/' + CID).get()));
+  await check('el link viejo ya no sirve', assertFails(entrar(M2, 'anon-m2', 'h-marta', 'MARTA001')));
+  await check('con el link nuevo vuelve a entrar', assertSucceeds(entrar(M2, 'anon-m2', 'h-marta', 'MARTA002')));
+  await check('y pide un turno con su id de hermano', assertSucceeds((async () => { const b = M2.batch(); b.set(M2.doc(cupo('t1')), { cid: CID, fecha: F, tid: 't1', ocupados: { 'h-marta': 'p' } }, { merge: true }); b.set(M2.doc(ped('t1', 'h-marta')), Object.assign(datos(A, 't1'), { uid: 'h-marta' })); await b.commit(); })()));
+  await check('ve "mis turnos"', assertSucceeds(M2.collection('pedidos').where('uid', '==', 'h-marta').get()));
+  await check('dar de baja', assertSucceeds(db(CO).doc('hermanos/h-marta').update({ baja: true, bajaPor: CO, bajaAt: 'x' })));
+  await check('dado de baja NO ve nada', assertFails(M2.doc('campanas/' + CID).get()));
+  await check('dado de baja NO vuelve a entrar', assertFails(entrar(M2, 'anon-m2', 'h-marta', 'MARTA002')));
+  await check('dado de baja NO ve sus turnos', assertFails(M2.collection('pedidos').where('uid', '==', 'h-marta').get()));
+  await check('el coordinador NO borra hermanos', assertFails(db(CO).doc('hermanos/h-marta').delete()));
+  await check('quien usaba Google se habilita con su mismo id (sus turnos quedan)', assertSucceeds(habilitar(CO, uidOf(G), { cod: 'GENTE001' })));
 
   await env.cleanup();
   console.log(`\n${ok} OK, ${bad} fallaron`);

@@ -9,6 +9,19 @@
 
 
 
+## Versión 47 — acceso con link personal (web cerrada)
+
+- **La web está cerrada:** sin estar habilitado no se ve ninguna campaña, punto, horario ni foto. El bloqueo está en las reglas de la base de datos, no solo en la pantalla.
+- **Los publicadores entran con su link personal**, que les manda un coordinador por WhatsApp: tocan "Confirmar ingreso" y listo, sin cuenta de Google ni contraseña. Sus datos (nombre, congregación, celular) ya vienen cargados.
+- **Un celular a la vez:** si el link se usa en otro teléfono, el anterior se cierra y lo avisa, y el coordinador lo ve en su panel. Para volver a entrar o cambiar de celular, se toca el mismo link del WhatsApp.
+- **Panel "Hermanos habilitados"** en Coordinar (una sola lista para toda la provincia): habilitar (con la confirmación de que lo aprobó el comité de servicio), reenviar el link, mandar un link nuevo (anula el anterior), cambiar datos y dar de baja. Buscador, filtro por congregación y avisos de "entró desde otro celular".
+- **Quienes usaban la página con Google** aparecen en "Usaban la página con Google": se habilitan con un toque, con sus datos, y sus turnos pasan solos al acceso nuevo.
+- Los coordinadores, administradores y soporte siguen entrando con Google ("Soy coordinador"). Una cuenta de Google que no coordina nada no ve las campañas.
+- En Coordinar ya no se entra directo a la campaña: arriba está la tarjeta de hermanos habilitados y abajo las campañas.
+- Ayuda: "¿Cómo entro a la página?" y "¿Puedo pasarle mi link a otro hermano?".
+
+Para publicarla: en Firebase → Authentication → Método de acceso, habilitar **Anónimo**; y publicar las reglas nuevas (`firebase deploy --only firestore:rules`).
+
 ## Versión 46 — nueva dirección
 
 - La página ahora está en **https://ppam-entre-rios.web.app** (Firebase Hosting). Se publica sola cada vez que se sube un cambio.

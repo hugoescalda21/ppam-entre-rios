@@ -4,7 +4,7 @@ name: Pruebas
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'prueba-*']
   pull_request:
   workflow_dispatch:
 
@@ -20,7 +20,13 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
-      - run: npm test
+      # Cada prueba que falla queda también como aviso en el resumen de GitHub.
+      - run: |
+          set -o pipefail
+          r=0; npm test 2>&1 | tee salida.txt || r=1
+          grep "❌" salida.txt | head -40 | sed 's/^ *❌/::error::/' || true
+          grep -E "[0-9]+ OK, " salida.txt | tail -1 | sed 's/^/::notice::/' || true
+          exit $r
 
   reglas:
     name: Pruebas de las reglas de Firestore
@@ -38,5 +44,11 @@ jobs:
       - run: npm install -g firebase-tools
       - run: npm install --no-audit --no-fund
         working-directory: firebase/pruebas-reglas
-      - run: npm test
+      # Cada prueba que falla queda también como aviso en el resumen de GitHub.
+      - run: |
+          set -o pipefail
+          r=0; npm test 2>&1 | tee salida.txt || r=1
+          grep "❌" salida.txt | head -40 | sed 's/^ *❌/::error::/' || true
+          grep -E "[0-9]+ OK, " salida.txt | tail -1 | sed 's/^/::notice::/' || true
+          exit $r
         working-directory: firebase/pruebas-reglas

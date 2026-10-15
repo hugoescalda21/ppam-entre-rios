@@ -9,8 +9,11 @@ rules_version = '2';
 //  · Administrador técnico: hugoescalda@gmail.com (fijo, para no quedar nunca afuera).
 //  · Administradores: config/admins.emails — crean campañas y eligen coordinadores.
 //  · Coordinadores de una campaña: coordinadores/{campaña}.emails — la configuran y confirman pedidos.
-//  · Cualquiera: mira campañas y cupos sin iniciar sesión.
-//  · Publicador con sesión (Google): pide turnos y ve SOLO los suyos.
+//  · Hermanos habilitados: entran con su link personal (sesión anónima de Firebase, sin Google).
+//    hermanos/{id} los carga un coordinador; links/{código} es la llave; sesiones/{uid} ata el celular al hermano.
+//    Un celular a la vez: vale la sesión cuyo uid y código coinciden con los del hermano.
+//  · La web está cerrada: sin ser hermano habilitado, coordinador, administrador o soporte no se lee nada.
+//  · Pedir turnos: el hermano (con su id de hermano) o un coordinador con su cuenta de Google. Cada uno ve SOLO los suyos.
 // Los datos personales (nombre, apellido, congregación, celular) están solo en "pedidos"
 // y los ven quien pidió y los coordinadores de esa campaña. En "cupos" solo hay ids.
 // Las fotos (fotos/…) son del lugar, sin personas reconocibles.
@@ -37,8 +40,25 @@ service cloud.firestore {
     }
     function texto(d, k, max) { return !(k in d) || (d[k] is string && d[k].size() <= max); }
 
+    // ---- Hermanos habilitados (ingreso con link) ----
+    function anonimo() { return request.auth != null && request.auth.token.firebase.sign_in_provider == 'anonymous'; }
+    function docSes() { return /databases/$(database)/documents/sesiones/$(request.auth.uid); }
+    function docHer(hid) { return /databases/$(database)/documents/hermanos/$(hid); }
+    function sesionVale(s) { let h = get(docHer(s.hid)).data; return h.get('uid', '') == request.auth.uid && h.cod == s.cod && h.get('baja', false) == false; }
+    function habilitado() { return anonimo() && exists(docSes()) && sesionVale(get(docSes()).data); }
+    function esCoordAlguno() {
+      return conSesion() && exists(/databases/$(database)/documents/roles/$(mail())) &&
+             get(/databases/$(database)/documents/roles/$(mail())).data.get('campanas', []).size() > 0;
+    }
+    function staff() { return esAdmin() || esCoordAlguno(); }
+    function lector() { return habilitado() || staff() || esSoporte(); }
+    // Quién pide turnos: el hermano (su id de hermano) o un coordinador/administrador con su cuenta de Google.
+    function puedePedir() { return habilitado() || staff(); }
+    function yo() { return anonimo() ? get(docSes()).data.hid : request.auth.uid; }
+    function firmaOk(d) { return anonimo() ? !('email' in d) : d.email == mail(); }
+
     match /config/publico {
-      allow read: if true;
+      allow read: if lector();
       allow write: if esAdmin();
     }
     match /config/admins {
@@ -57,7 +77,8 @@ service cloud.firestore {
                d.texto is string && d.texto.size() > 0 && d.texto.size() <= 1000 &&
                d.estado == 'nuevo' && d.creado is string && d.creado.size() <= 30 &&
                texto(d, 'pantalla', 100) && texto(d, 'disp', 80) && texto(d, 'ver', 20) && texto(d, 'ultErr', 300) && texto(d, 'celular', 30) && texto(d, 'nombre', 80) &&
-               (('uid' in d) ? (conSesion() && d.uid == request.auth.uid && d.email == mail()) : !('email' in d) && !('nombre' in d));
+               (('uid' in d) ? ((conSesion() && d.uid == request.auth.uid && d.email == mail()) || (habilitado() && d.uid == yo() && !('email' in d)))
+                             : !('email' in d) && !('nombre' in d));
       }
       allow create: if reporteValido(request.resource.data);
       allow read, delete: if esSoporte();
@@ -82,7 +103,7 @@ service cloud.firestore {
     }
 
     match /campanas/{cid} {
-      allow read: if true;
+      allow read: if lector();
       allow create, delete: if esAdmin();
       allow update: if gestiona(cid);
     }
@@ -96,16 +117,16 @@ service cloud.firestore {
       function forma(d) { return d.keys().hasOnly(['cid', 'fecha', 'tid', 'ocupados']) && d.fecha is string && d.fecha.size() == 10 && d.ocupados is map; }
       // Un publicador solo se agrega a sí mismo como "pedido" o se saca (cancelar), y sin pasarse del cupo.
       // Al agregarse tiene que crear su pedido en el mismo envío; al sacarse, borrarlo. Así nadie ocupa lugares sin dejar sus datos.
-      function miPedido() { return /databases/$(database)/documents/pedidos/$(id + '__' + request.auth.uid); }
+      function miPedido() { return /databases/$(database)/documents/pedidos/$(id + '__' + yo()); }
       function enFecha(d) { let c = campana(d.cid); return d.fecha >= c.get('desde', '') && d.fecha <= c.get('hasta', '9999-12-31'); }
       function publicador(antes, despues) {
-        let yo = request.auth.uid;
-        return conSesion() && despues.diff(antes).affectedKeys().hasOnly([yo]) &&
-               ((yo in despues) ? (despues[yo] == 'p' && !(yo in antes) && existsAfter(miPedido()) && enFecha(request.resource.data))
+        let quien = yo();
+        return puedePedir() && despues.diff(antes).affectedKeys().hasOnly([quien]) &&
+               ((quien in despues) ? (despues[quien] == 'p' && !(quien in antes) && existsAfter(miPedido()) && enFecha(request.resource.data))
                                : !existsAfter(miPedido())) &&
                campana(request.resource.data.cid).get('activa', true) == true;
       }
-      allow read: if true;
+      allow read: if lector();
       allow create: if forma(request.resource.data) && idOk(request.resource.data) && (
                      gestiona(request.resource.data.cid) ||
                      (publicador({}, request.resource.data.ocupados) && request.resource.data.ocupados.size() <= maximo(request.resource.data)));
@@ -123,7 +144,7 @@ service cloud.firestore {
         return d.keys().hasOnly(['cid', 'data', 'creado']) && d.cid is string && id.matches(d.cid + '__[A-Za-z0-9-]+') &&
                d.data is string && d.data.size() < 450000 && d.data.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+');
       }
-      allow read: if true;
+      allow read: if lector();
       allow create, update: if fotoValida(request.resource.data) && gestiona(request.resource.data.cid) &&
                              (resource == null || resource.data.cid == request.resource.data.cid);
       allow delete: if gestiona(resource.data.cid);
@@ -133,7 +154,7 @@ service cloud.firestore {
     match /auditoria/{id} {
       function lineaOk(d) {
         return d.keys().hasOnly(['cid', 'tipo', 'texto', 'por', 'uid', 'at', 'antes', 'ref', 'de']) &&
-               d.por == mail() && d.uid == request.auth.uid && d.at == request.time &&
+               (anonimo() ? d.por == 'link' : d.por == mail()) && d.uid == yo() && d.at == request.time &&
                d.cid is string && d.cid.size() <= 80 &&
                d.tipo is string && d.tipo.size() > 0 && d.tipo.size() <= 30 &&
                d.texto is string && d.texto.size() > 0 && d.texto.size() <= 400 &&
@@ -145,12 +166,12 @@ service cloud.firestore {
       function cancelePropio(d) {
         let ped = /databases/$(database)/documents/pedidos/$(d.ref);
         return d.tipo == 'cancelo' && d.keys().hasOnly(['cid', 'tipo', 'texto', 'por', 'uid', 'at', 'ref']) &&
-               'ref' in d && d.ref.matches(d.cid + '__.+__' + request.auth.uid) &&
-               exists(ped) && get(ped).data.uid == request.auth.uid && !existsAfter(ped);
+               'ref' in d && d.ref.matches(d.cid + '__.+__' + yo()) &&
+               exists(ped) && get(ped).data.uid == yo() && !existsAfter(ped);
       }
-      allow create: if conSesion() && lineaOk(request.resource.data) && (
+      allow create: if (conSesion() || habilitado()) && lineaOk(request.resource.data) && (
                      (request.resource.data.cid == '' && esAdmin()) ||
-                     (request.resource.data.cid != '' && (gestiona(request.resource.data.cid) || cancelePropio(request.resource.data))));
+                     (request.resource.data.cid != '' && (gestiona(request.resource.data.cid) || (puedePedir() && cancelePropio(request.resource.data)))));
       allow read: if conSesion() && (esAdmin() || (resource.data.cid != '' && esCoord(resource.data.cid)));
       // Nadie la cambia; solo el administrador borra líneas de más de 6 meses.
       allow update: if false;
@@ -170,13 +191,13 @@ service cloud.firestore {
         let cupo = /databases/$(database)/documents/cupos/$(d.cid + '__' + d.fecha + '__' + d.tid);
         return d.keys().hasOnly(['cid', 'fecha', 'tid', 'punto', 'desde', 'hasta', 'uid', 'email', 'nombre', 'apellido', 'congregacion', 'celular', 'estado', 'creado', 'nota']) &&
                notaOk(d) && turnoOk(d) &&
-               d.uid == request.auth.uid && d.email == mail() && d.estado == 'pendiente' &&
-               id == d.cid + '__' + d.fecha + '__' + d.tid + '__' + request.auth.uid &&
+               d.uid == yo() && firmaOk(d) && d.estado == 'pendiente' &&
+               id == d.cid + '__' + d.fecha + '__' + d.tid + '__' + yo() &&
                d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 60 &&
                d.apellido is string && d.apellido.size() > 0 && d.apellido.size() <= 60 &&
                d.congregacion is string && d.congregacion.size() > 0 && d.congregacion.size() <= 80 &&
                d.celular is string && d.celular.size() >= 8 && d.celular.size() <= 30 &&
-               getAfter(cupo).data.ocupados.get(request.auth.uid, '') == 'p';
+               getAfter(cupo).data.ocupados.get(yo(), '') == 'p';
       }
       // El coordinador anota a un hermano que no usa la app: uid "m-…", queda confirmado y marcado como manual.
       function pedidoManual(d) {
@@ -192,23 +213,84 @@ service cloud.firestore {
                (!('celular' in d) || (d.celular is string && d.celular.size() >= 8 && d.celular.size() <= 30)) &&
                getAfter(cupo).data.ocupados.get(d.uid, '') == 'c';
       }
-      allow read: if conSesion() && (resource.data.uid == request.auth.uid || gestiona(resource.data.cid));
-      allow create: if conSesion() && (pedidoValido(request.resource.data) || pedidoManual(request.resource.data));
+      allow read: if (puedePedir() && resource.data.uid == yo()) || gestiona(resource.data.cid);
+      allow create: if (puedePedir() && pedidoValido(request.resource.data)) || (conSesion() && pedidoManual(request.resource.data));
       // El coordinador confirma o no; el publicador puede volver a pedir si antes no se lo confirmaron.
-      allow update: if conSesion() && (
+      allow update: if (
                      (gestiona(resource.data.cid) &&
                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'actualizado', 'por']) &&
                       request.resource.data.estado in ['pendiente', 'confirmado', 'rechazado'] &&
                       texto(request.resource.data, 'actualizado', 30) && (!('por' in request.resource.data) || request.resource.data.por == mail() || request.resource.data.por == resource.data.get('por', ''))) ||
-                     (resource.data.uid == request.auth.uid && resource.data.estado == 'rechazado' && pedidoValido(request.resource.data)) ||
+                     (puedePedir() && resource.data.uid == yo() && resource.data.estado == 'rechazado' && pedidoValido(request.resource.data)) ||
                      // quien pidió puede cambiar o borrar su nota
-                     (resource.data.uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nota']) && request.resource.data.diff(resource.data).affectedKeys().size() == 1 && notaOk(request.resource.data)));
+                     (puedePedir() && resource.data.uid == yo() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nota']) && request.resource.data.diff(resource.data).affectedKeys().size() == 1 && notaOk(request.resource.data)));
       // Quien pidió lo borra liberando su lugar en el mismo envío.
       function libero(d) {
         let cupo = /databases/$(database)/documents/cupos/$(d.cid + '__' + d.fecha + '__' + d.tid);
         return !existsAfter(cupo) || !(d.uid in getAfter(cupo).data.ocupados);
       }
-      allow delete: if conSesion() && ((resource.data.uid == request.auth.uid && libero(resource.data)) || gestiona(resource.data.cid));
+      allow delete: if (puedePedir() && resource.data.uid == yo() && libero(resource.data)) || gestiona(resource.data.cid);
+    }
+
+    // ---- Hermanos habilitados ----
+    // Los carga un coordinador (o un administrador) cuando el comité de servicio de la congregación lo aprobó.
+    // Cada uno tiene un código (la llave de su link) y el uid del celular que lo está usando.
+    match /hermanos/{hid} {
+      function campos(d) {
+        return d.keys().hasOnly(['nombre', 'apellido', 'congregacion', 'celular', 'cod', 'uid', 'ultimo', 'disp', 'antes', 'aviso', 'baja', 'creado', 'por', 'porNombre', 'bajaPor', 'bajaAt']) &&
+               d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 60 &&
+               d.apellido is string && d.apellido.size() > 0 && d.apellido.size() <= 60 &&
+               d.congregacion is string && d.congregacion.size() > 0 && d.congregacion.size() <= 80 &&
+               d.celular is string && d.celular.size() >= 8 && d.celular.size() <= 30 &&
+               d.cod is string && d.cod.matches('[A-Z0-9]{8}') &&
+               texto(d, 'creado', 30) && texto(d, 'porNombre', 80) && texto(d, 'bajaPor', 120) && texto(d, 'bajaAt', 30) && texto(d, 'disp', 80) &&
+               (!('aviso' in d) || d.aviso is bool) && (!('baja' in d) || d.baja is bool);
+      }
+      // El hermano entra con su link: este celular pasa a ser el suyo (el anterior queda afuera).
+      function ingreso() {
+        let s = getAfter(docSes()).data;
+        return anonimo() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'ultimo', 'disp', 'antes', 'aviso']) &&
+               request.resource.data.uid == request.auth.uid && request.resource.data.ultimo == request.time &&
+               resource.data.get('baja', false) == false && s.hid == hid && s.cod == resource.data.cod &&
+               texto(request.resource.data, 'disp', 80) && (!('aviso' in request.resource.data) || request.resource.data.aviso is bool) &&
+               (!('antes' in request.resource.data) || request.resource.data.antes is map);
+      }
+      allow read: if staff() || (anonimo() && exists(docSes()) && get(docSes()).data.hid == hid);
+      allow create: if staff() && campos(request.resource.data) && request.resource.data.por == mail() &&
+                     !('uid' in request.resource.data) && !('ultimo' in request.resource.data) && request.resource.data.get('baja', false) == false;
+      // El coordinador cambia datos, manda un link nuevo (cambia el código y deja afuera al celular) o da de baja.
+      allow update: if (staff() && campos(request.resource.data) &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nombre', 'apellido', 'congregacion', 'celular', 'cod', 'uid', 'aviso', 'baja', 'bajaPor', 'bajaAt']) &&
+                       (request.resource.data.get('uid', null) == null || request.resource.data.get('uid', null) == resource.data.get('uid', null))) ||
+                     ingreso();
+      allow delete: if esAdmin();
+    }
+    // links/{código}: lo justo para saludar al hermano antes de entrar. Solo lo lee quien conoce el código.
+    match /links/{cod} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if staff() && cod.matches('[A-Z0-9]{8}') &&
+                     request.resource.data.keys().hasOnly(['hid', 'nombre', 'congregacion', 'turnos', 'creado', 'por']) &&
+                     request.resource.data.por == mail() && request.resource.data.hid is string &&
+                     request.resource.data.nombre is string && request.resource.data.nombre.size() <= 60 &&
+                     texto(request.resource.data, 'congregacion', 80) && texto(request.resource.data, 'creado', 30) &&
+                     (!('turnos' in request.resource.data) || request.resource.data.turnos is int) &&
+                     getAfter(docHer(request.resource.data.hid)).data.cod == cod;
+      // Al entrar, el link queda marcado como usado (para saludar "Hola de nuevo" en otro celular).
+      allow update: if anonimo() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usado']) &&
+                     request.resource.data.usado == true && getAfter(docSes()).data.cod == cod;
+      allow delete: if staff();
+    }
+    // sesiones/{uid}: qué hermano está usando este celular (sesión anónima de Firebase).
+    match /sesiones/{sid} {
+      allow read: if anonimo() && request.auth.uid == sid;
+      allow create, update: if anonimo() && request.auth.uid == sid &&
+                             request.resource.data.keys().hasOnly(['hid', 'cod', 'at']) && request.resource.data.at == request.time &&
+                             request.resource.data.cod is string && request.resource.data.hid is string &&
+                             get(/databases/$(database)/documents/links/$(request.resource.data.cod)).data.hid == request.resource.data.hid &&
+                             get(docHer(request.resource.data.hid)).data.cod == request.resource.data.cod &&
+                             get(docHer(request.resource.data.hid)).data.get('baja', false) == false;
+      allow delete: if false;
     }
   }
 }

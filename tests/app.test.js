@@ -75,11 +75,24 @@ function mock(seed, users) {
     doc, collection: (p) => col(p), enablePersistence: async (o) => { window.__persist = o; },
     batch: () => { const q = []; return { set: (r, d, o) => q.push(() => ops.set(r.path, d, o)), update: (r, d) => q.push(() => ops.update(r.path, d)), delete: (r) => q.push(() => ops.delete(r.path)), commit: async () => { q.forEach(f => f()); window.__writes.push(['batch', q.length]); notify(); } }; }
   };
-  const auth = { onAuthStateChanged: (cb) => { authCb = cb; setTimeout(() => cb(user), 0); }, signOut: async () => { user = null; authCb(null); } };
+  // Hermanos habilitados: entran con su link (sesión anónima). Los coordinadores, administradores y soporte, con Google.
+  const esStaff = (u) => !!(u && u.email && (u.email === 'hugoescalda@gmail.com' || ((store['config/admins'] || {}).emails || []).includes(u.email) || store['roles/' + u.email] || ((store['config/soporte'] || {}).emails || []).includes(u.email)));
+  const comoHermano = (u) => {
+    const hid = u.uid, anon = 'anon-' + hid, cod = ('H' + hid.replace(/[^a-z0-9]/gi, '').toUpperCase() + '0000000').slice(0, 8), [n, ...a] = (u.displayName || 'Hermano Prueba').split(' ');
+    if (!store['hermanos/' + hid]) store['hermanos/' + hid] = { nombre: n, apellido: a.join(' ') || 'Prueba', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', cod, uid: anon, creado: '2026-09-01T10:00:00Z', por: 'coord@x.com', ultimo: '2026-09-29T10:00:00Z' };
+    store['sesiones/' + anon] = { hid, cod }; store['links/' + cod] = { hid, nombre: n, congregacion: 'San Agustín (Paraná)' };
+    return { uid: anon, isAnonymous: true };
+  };
+  if (!window.__cerrado) { if (!users.length) user = comoHermano({ uid: 'u-visita', displayName: 'Visita Prueba' }); else if (!esStaff(users[0]) && !users[0].google) user = comoHermano(users.shift()); }
+  const auth = {
+    onAuthStateChanged: (cb) => { authCb = cb; setTimeout(() => cb(user), 0); }, signOut: async () => { user = null; authCb(null); },
+    signInAnonymously: async () => { user = { uid: 'anon-' + Math.random().toString(36).slice(2, 10), isAnonymous: true }; authCb(user); return { user }; },
+    get currentUser() { return user; }
+  };
   window.__writes = []; window.__store = store; window.__opened = [];
   window.open = (u) => { window.__opened.push(u); return null; };
   window.confirm = () => true;
-  window.__ppamMock = { db, auth, del: () => DEL, arr: { arrayUnion: (v) => ARR('u', v), arrayRemove: (v) => ARR('r', v) }, login: async () => { user = users.shift(); authCb(user); } };
+  window.__ppamMock = { db, auth, del: () => DEL, arr: { arrayUnion: (v) => ARR('u', v), arrayRemove: (v) => ARR('r', v) }, login: async () => { const u = users.shift(); user = u && !esStaff(u) && !u.google ? comoHermano(u) : u; authCb(user); } };
 }
 
 const SEED = {
@@ -104,12 +117,15 @@ const SEED = {
     await ctx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });   // miércoles 30 de septiembre
     await ctx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
     if (opts && opts.nuevo) await ctx.addInitScript(() => { window.__bvNueva = true; });   // ver la bienvenida como alguien nuevo
+    if (opts && opts.cerrado) await ctx.addInitScript(() => { window.__cerrado = true; });   // un celular sin link (la web cerrada)
     await ctx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, ${JSON.stringify(users)})`);
     const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
     await p.goto(FILE + (hash || '')); await p.waitForTimeout(300);
     return p;
   }
   const text = (p, sel) => p.evaluate((s) => (document.querySelector(s) || {}).innerText || '', sel);
+  // Ingresar como coordinador (Google). Un hermano ya está adentro con su link: no hace falta.
+  const entrar = async (p, ms) => { if (await p.evaluate(() => { const u = document.getElementById('userBtn'); return u.classList.contains('login') && !u.classList.contains('hidden'); })) await p.click('#userBtn'); await p.waitForTimeout(ms || 300); };
 
   console.log('\nPublicador');
   const pub = { uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' };
@@ -117,7 +133,7 @@ const SEED = {
   let home = await text(p, '#app');
   check('inicio: las campañas vigentes (no la que ya terminó)', /Terminal de ómnibus/.test(home) && /Costanera/.test(home) && !/Campaña vieja/.test(home), home);
   check('cobertura de la primera semana en la tarjeta', /Terminal de ómnibus[\s\S]*11%\s*24 lugares libres en los próximos 7 días/.test(home) && /Costanera[\s\S]*0%\s*6 lugares libres en los próximos 7 días/.test(home), home);
-  check('sin sesión: bienvenida con campañas activas y lugares libres de la semana', /Sumate a un turno[\s\S]*2\s*campañas activas\s*\d+\s*lugares libres esta semana\s*Ver turnos libres/.test(home) && await p.evaluate(() => document.getElementById('userBtn').textContent === 'Ingresar'), home.slice(0, 300));
+  check('un hermano habilitado (entró con su link): lugares libres de la semana y su cuenta arriba', /¿Te sumás esta semana\?\s*En Entre Ríos hay \d+ lugares libres[\s\S]*Ver turnos libres/.test(home) && await p.evaluate(() => document.getElementById('userBtn').textContent === 'AP'), home.slice(0, 300));
   check('accesibilidad: la pantalla no se relee entera en cada cambio (sin aria-live en <main>)', await p.evaluate(() => !document.getElementById('app').hasAttribute('aria-live') && !document.getElementById('app').hasAttribute('aria-busy') && window.__ppamOk === true && document.getElementById('toast').getAttribute('role') === 'status'));
   {
     const cx = await b.newContext({ viewport: { width: 390, height: 844 } });
@@ -132,7 +148,7 @@ const SEED = {
   check('filtro por ciudad', await p.evaluate(() => [...document.querySelectorAll('#fCiudad option')].map(x => x.textContent).join() === 'Toda la provincia,Concordia,Paraná'));
   await p.selectOption('#fCiudad', 'Concordia'); await p.waitForTimeout(50);
   check('filtrando Concordia queda solo la Costanera', await p.evaluate(() => document.querySelectorAll('.camp').length === 1 && /Costanera/.test(document.querySelector('.camp').innerText)));
-  check('el contador de campañas sigue al filtro por ciudad', /1\s*campaña activa en Concordia/.test(await text(p, '#app')), await text(p, '#app'));
+  check('los lugares libres siguen al filtro por ciudad', /En Concordia hay 6 lugares libres/.test(await text(p, '#app')), await text(p, '#app'));
   await p.selectOption('#fCiudad', 'todas'); await p.waitForTimeout(50);
   await p.click('[data-go="#/c/parana-terminal"]'); await p.waitForTimeout(150);
   check('encabezado con la campaña', /Terminal de ómnibus/.test(await text(p, '#tbTitle')) && /^1 al 31 de octubre/.test(await text(p, '#tbSub')));
@@ -153,10 +169,8 @@ const SEED = {
   check('el sábado aparece también el stand (3 lugares)', /Hall central\s*3 libres\s*16:00\s*a 18:00\s*3 libres/.test(camp), camp);
   await p.screenshot({ path: SHOTS + '/campana.png' });
   await p.click('[data-pedir="t3"]'); await p.waitForTimeout(80);
-  check('sin sesión: pide iniciar sesión primero', /Ingresá para anotarte/.test(await text(p, '.sheet')));
-  await p.click('#lgBtn'); await p.waitForTimeout(250);
-  check('después de iniciar sesión abre el formulario con su nombre', await p.evaluate(() => document.querySelector('#pNom').value === 'Ana' && document.querySelector('#pApe').value === 'Paz'));
-  await p.click('#pGo');
+  check('el formulario viene con los datos que cargó el coordinador (sin pedir Google)', !/Ingresá|Google/.test(await text(p, '.sheet')) && await p.evaluate(() => document.querySelector('#pNom').value === 'Ana' && document.querySelector('#pApe').value === 'Paz' && document.querySelector('#pCong').value === 'San Agustín (Paraná)' && document.querySelector('#pCel').value === '343 555-0000'));
+  await p.selectOption('#pCong', ''); await p.click('#pGo');
   check('valida la congregación', /Elegí tu congregación/.test(await text(p, '#pErr')));
   await p.selectOption('#pCong', 'San Agustín (Paraná)'); await p.fill('#pCel', '343 555');
   await p.click('#pGo');
@@ -174,7 +188,7 @@ const SEED = {
   await p.click('#pGo'); await p.waitForTimeout(250);
   const st = await p.evaluate(() => ({ cupo: window.__store['cupos/parana-terminal__2026-10-03__t3'], ped: window.__store['pedidos/parana-terminal__2026-10-03__t3__u-ana'] }));
   check('queda anotada en el cupo como "pedido", sin datos personales', st.cupo && st.cupo.ocupados['u-ana'] === 'p' && !JSON.stringify(st.cupo).includes('Ana'), st.cupo);
-  check('el pedido guarda nombre, apellido, congregación y celular', st.ped && st.ped.nombre === 'Ana' && st.ped.apellido === 'Paz' && st.ped.congregacion === 'San Agustín (Paraná)' && st.ped.celular === '343 555-0000' && st.ped.estado === 'pendiente' && st.ped.email === 'ana@x.com', st.ped);
+  check('el pedido guarda nombre, apellido, congregación y celular', st.ped && st.ped.nombre === 'Ana' && st.ped.apellido === 'Paz' && st.ped.congregacion === 'San Agustín (Paraná)' && st.ped.celular === '343 555-0000' && st.ped.estado === 'pendiente' && !('email' in st.ped) && st.ped.uid === 'u-ana', st.ped);
   check('confirmación en pantalla', /Te anotaste/.test(await text(p, '.sheet')));
   check('al anotarse: Agendar, Compartir e Invitar ahí mismo', await p.evaluate(() => !!document.querySelector('.sheet .okacts [data-ics]') && !!document.querySelector('.sheet .okacts [data-comp]') && !!document.querySelector('.sheet .okacts [data-invitar]')));
   await p.click('.sheet .btn.alt[data-cerrar]'); await p.waitForTimeout(80);
@@ -189,7 +203,7 @@ const SEED = {
   await p.click('#cxOk'); await p.waitForTimeout(200);
   const st2 = await p.evaluate(() => ({ cupo: window.__store['cupos/parana-terminal__2026-10-03__t3'], ped: window.__store['pedidos/parana-terminal__2026-10-03__t3__u-ana'] }));
   check('cancelar libera el lugar y borra sus datos', !st2.ped && st2.cupo && !('u-ana' in st2.cupo.ocupados), st2);
-  check('la cancelación queda en el historial (firmada por quien canceló)', await p.evaluate(() => Object.values(window.__store).some(d => d && d.tipo === 'cancelo' && d.por === 'ana@x.com' && d.cid === 'parana-terminal' && /canceló su turno: Ana Paz · Sáb 3\/10 16–18 · Hall central/.test(d.texto))));
+  check('la cancelación queda en el historial (firmada por quien canceló)', await p.evaluate(() => Object.values(window.__store).some(d => d && d.tipo === 'cancelo' && d.por === 'link' && d.uid === 'u-ana' && d.cid === 'parana-terminal' && /canceló su turno: Ana Paz · Sáb 3\/10 16–18 · Hall central/.test(d.texto))));
   check('la línea de cancelar lleva el id del pedido (las reglas la validan)', await p.evaluate(() => Object.values(window.__store).some(d => d && d.tipo === 'cancelo' && /^parana-terminal__.+__u-ana$/.test(d.ref || ''))));
   check('sin botón "Coordinación" para un publicador', await p.evaluate(() => document.getElementById('coordBtn').classList.contains('hidden')));
   check('sin errores', p.errs.length === 0, p.errs);
@@ -219,13 +233,15 @@ const SEED = {
   });
   const c = await ctx2.newPage(); c.errs = []; c.on('pageerror', e => c.errs.push(e.message));
   await c.goto(FILE); await c.waitForTimeout(300);
-  await c.click('#userBtn'); await c.waitForTimeout(250);
+  await entrar(c, 250);
   check('el coordinador ve "Coordinar" en la barra de abajo', await c.evaluate(() => !document.getElementById('coordBtn').classList.contains('hidden')));
   await c.waitForTimeout(100);
   check('en el inicio, la franja con los pedidos por confirmar', /1\s*Pedido por confirmar\s*Terminal de ómnibus/.test(await text(c, '.coordbar')), await text(c, '.coordbar'));
   await c.click('#coordBtn'); await c.waitForTimeout(250);
+  check('Coordinar: arriba la tarjeta de hermanos habilitados y abajo su campaña', /Hermanos habilitados[\s\S]*Terminal de ómnibus/.test(await text(c, '#app')) && !!(await c.$('.hcard[data-go="#/hermanos"]')), await text(c, '#app'));
+  await c.click('[data-go="#/coord/parana-terminal"]'); await c.waitForTimeout(250);
   let co = await text(c, '#app');
-  check('entra directo a su campaña: 1 por confirmar', /1\s*por confirmar/.test(co) && /Ana Paz\s*San Agustín \(Paraná\)/.test(co) && /343 555-0000/.test(co), co.slice(0, 400));
+  check('en su campaña: 1 por confirmar', /1\s*por confirmar/.test(co) && /Ana Paz\s*San Agustín \(Paraná\)/.test(co) && /343 555-0000/.test(co), co.slice(0, 400));
   check('el celular abre WhatsApp', await c.evaluate(() => /wa\.me\/5493435550000/.test(document.querySelector('#app a[href*="wa.me"]').href)));
   await c.screenshot({ path: SHOTS + '/coordinador.png' });
   await c.click('[data-confirmar]'); await c.waitForTimeout(200);
@@ -443,7 +459,7 @@ const SEED = {
   await v.click('[data-lugar="parana-terminal|p2"]'); await v.waitForTimeout(150);
   check('con un link corto, "Cómo llegar" usa ese link', await v.evaluate(() => document.querySelector('.sheet a.go').href === 'https://maps.app.goo.gl/AbCd123XyZ'));
   await v.click('.sheet [data-cerrar]');
-  await v.click('#userBtn'); await v.waitForTimeout(250);
+  await entrar(v, 250);
   await v.evaluate(() => { location.hash = '#/mis'; }); await v.waitForTimeout(250);
   const mis = await v.evaluate(() => { const m = document.querySelector('.tc'); return m && { t: m.innerText, all: document.getElementById('app').innerText, go: (m.querySelector('a.go') || {}).href || '', lugar: !!m.querySelector('[data-go^="#/t/"]'), cancelar: !!m.querySelector('[data-cancelar]'), foto: !!m.querySelector('.thumb') }; });
   check('"Mis turnos": resumen del mes, próximos con hojita de calendario, Cómo llegar, Detalle y Cancelar', mis && /Confirmado/.test(mis.t) && /SÁB\s*3\s*oct\s*16:00 – 18:00\s*Terminal de ómnibus · Hall central · Paraná\s*Confirmado\s*Cómo llegar\s*Detalle\s*Cancelar/i.test(mis.t) && mis.cancelar && /1\s*turno en octubre\s*2 h\s*de predicación\s*0\s*por confirmar/.test(mis.all) && /Próximos\s*1/i.test(mis.all) && /Anotarme en otro turno/.test(mis.all) && mis.go === 'https://maps.app.goo.gl/AbCd123XyZ' && mis.lugar, mis);
@@ -487,10 +503,10 @@ const SEED = {
 
   console.log('\nAdministrador');
   const a = await open([{ uid: 'u-ad', email: 'admin@x.com', displayName: 'Admin' }], '#/admin');
-  await a.click('#userBtn'); await a.waitForTimeout(300);
+  await entrar(a, 300);
   check('ve la administración', /Campañas[\s\S]*Congregaciones[\s\S]*Administradores/i.test(await text(a, '#app')));
   await a.screenshot({ path: SHOTS + '/admin.png', fullPage: true });
-  await a.click('[data-nueva]'); await a.fill('#ncNom', 'Plaza San Martín'); await a.fill('#ncCiu', 'Gualeguaychú'); await a.click('#ncOk'); await a.waitForTimeout(200);
+  await a.click('[data-nueva]'); await a.fill('#ncNom', 'Plaza San Martín'); await a.fill('#ncCiu', 'Gualeguaychú'); await a.click('#ncOk'); await a.waitForTimeout(600);
   const nueva = await a.evaluate(() => Object.keys(window.__store).find(k => k.startsWith('campanas/gualeguaychu-plaza-san-martin')));
   check('crea una campaña y va a configurarla', !!nueva && /#\/coord\/gualeguaychu-plaza-san-martin/.test(await a.evaluate(() => location.hash)), nueva);
   await a.evaluate(() => { location.hash = '#/admin'; }); await a.waitForTimeout(250);
@@ -521,7 +537,7 @@ const SEED = {
     await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
     await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(seed)}, ${JSON.stringify([pub])})`);
     const m = await cx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
-    await m.goto(FILE + '#/mis'); await m.waitForTimeout(250); await m.click('#userBtn'); await m.waitForTimeout(300);
+    await m.goto(FILE + '#/mis'); await m.waitForTimeout(250); await entrar(m, 300);
     const tx = await text(m, '#app');
     check('el turno de hoy que ya terminó (10 a 12) pasa a Realizados; el de 16 a 18 queda en Hoy', /^[\s\S]*HOY\s*MAR\s*29\s*sep\s*en 2 h 4 min\s*16:00 – 18:00[\s\S]*PRÓXIMOS\s*1\s*SÁB\s*3[\s\S]*Esperando confirmación[\s\S]*REALIZADOS\s*Septiembre\s*MAR\s*29\s*sep\s*10:00 – 12:00[\s\S]*Hecho\s*Detalle\s*SÁB\s*19[\s\S]*Hecho/i.test(tx), tx);
     check('resumen: 3 turnos este mes, 6 h, 1 por confirmar, y el agradecimiento', /3\s*turnos este mes\s*6 h\s*de predicación\s*1\s*por confirmar/.test(tx) && /Gracias por participar[\s\S]*Ya hiciste 2 turnos este mes/.test(tx), tx.slice(0, 200));
@@ -538,7 +554,7 @@ const SEED = {
     await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
     await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, ${JSON.stringify([luis])})`);
     const m = await cx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
-    await m.goto(FILE + '#/c/parana-terminal'); await m.waitForTimeout(250); await m.click('#userBtn'); await m.waitForTimeout(300);
+    await m.goto(FILE + '#/c/parana-terminal'); await m.waitForTimeout(250); await entrar(m, 300);
     await m.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await m.waitForTimeout(150);
     await m.click('[data-dia="2026-10-03"]'); await m.click('[data-pedir="t3"]'); await m.waitForTimeout(100);
     check('el formulario tiene "Nota para el coordinador (opcional)" con 4 atajos y 0/200', /Nota para el coordinador\s*\(opcional\)\s*0\/200/i.test(await text(m, '.sheet')) && await m.evaluate(() => document.querySelectorAll('[data-atajo]').length === 4));
@@ -579,7 +595,7 @@ const SEED = {
     await cy.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
     await cy.addInitScript(`(${mock.toString()})(${JSON.stringify(seed2)}, ${JSON.stringify([{ uid: 'u-co', email: 'coord@x.com', displayName: 'Carlos Vega' }])})`);
     const k = await cy.newPage(); k.errs = []; k.on('pageerror', e => k.errs.push(e.message));
-    await k.goto(FILE); await k.waitForTimeout(250); await k.click('#userBtn'); await k.waitForTimeout(300); await k.click('#coordBtn'); await k.waitForTimeout(250);
+    await k.goto(FILE); await k.waitForTimeout(250); await entrar(k, 300); await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(300);
     check('el coordinador ve la nota en el pedido', /Luis Gómez[\s\S]*343 555-2222\s*Nota: Es mi primera vez\.\s*No confirmar\s*Confirmar/.test(await text(k, '#app')), await text(k, '#app'));
     await k.screenshot({ path: SHOTS + '/coord-nota.png' });
     await k.click('[data-confirmar]'); await k.waitForTimeout(200);
@@ -616,14 +632,14 @@ const SEED = {
     check('un error de la página queda anotado solo, con pantalla, celular y versión (sin datos personales)', err.length === 1 && /Prueba de error/.test(err[0].msg) && err[0].pantalla === '#/c/parana-terminal' && /^\d+$/.test(err[0].ver) && err[0].disp && err[0].tipo === 'js' && Object.keys(err[0]).sort().join() === 'creado,disp,msg,pantalla,tipo,ver', err);
     await m.click('#repBtn'); await m.waitForTimeout(100);
     const sh = await text(m, '.sheet');
-    check('la ventana muestra lo que se envía también (pantalla, celular, versión, último error)', /Reportar un problema/.test(sh) && /Pantalla:\s*Terminal de ómnibus \(Paraná\)/.test(sh) && /Versión:\s*\d+/.test(sh) && /Último error:\s*"Prueba de error/.test(sh) && !/Tu cuenta/.test(sh), sh);
+    check('la ventana muestra lo que se envía también (pantalla, celular, versión, último error)', /Reportar un problema/.test(sh) && /Pantalla:\s*Terminal de ómnibus \(Paraná\)/.test(sh) && /Versión:\s*\d+/.test(sh) && /Último error:\s*"Prueba de error/.test(sh) && /Tu cuenta:\s*Visita Prueba/.test(sh), sh);
     await m.fill('#rpTx', 'No me deja anotarme el sábado'); await m.click('#rpGo');
     check('pide elegir qué pasó', /Elegí qué pasó/.test(await text(m, '#rpErr')));
     await m.click('[data-rptipo="No me deja anotarme"]'); await m.fill('#rpCel', '343 555-9999');
     await m.screenshot({ path: SHOTS + '/reportar.png' });
     await m.click('#rpGo'); await m.waitForTimeout(200);
     let reps = await m.evaluate(() => Object.entries(window.__store).filter(([k]) => k.startsWith('reportes/') && !k.includes('viejo')).map(([, v]) => v));
-    check('sin sesión: el reporte se guarda sin cuenta, con el celular que dejó y el último error', reps.length === 1 && reps[0].estado === 'nuevo' && reps[0].tipo === 'No me deja anotarme' && reps[0].celular === '343 555-9999' && !reps[0].uid && !reps[0].email && /Prueba de error/.test(reps[0].ultErr), reps);
+    check('un hermano: el reporte lleva su id y nombre (sin email), el celular que dejó y el último error', reps.length === 1 && reps[0].estado === 'nuevo' && reps[0].tipo === 'No me deja anotarme' && reps[0].celular === '343 555-9999' && reps[0].uid === 'u-visita' && reps[0].nombre === 'Visita Prueba' && !reps[0].email && /Prueba de error/.test(reps[0].ultErr), reps);
     check('avisa que lo recibió el equipo de soporte', /Lo recibió el equipo de soporte/.test(await text(m, '#toast')));
     for (let i = 0; i < 4; i++) { await m.click('#repBtn'); await m.click('[data-rptipo="Otro"]'); await m.fill('#rpTx', 'Prueba ' + i); await m.click('#rpGo'); await m.waitForTimeout(120); }
     await m.click('#repBtn'); await m.click('[data-rptipo="Otro"]'); await m.fill('#rpTx', 'Uno más'); await m.click('#rpGo'); await m.waitForTimeout(120);
@@ -634,25 +650,25 @@ const SEED = {
     await cx.close();
     // Con sesión, el reporte lleva quién es
     ({ cx, m } = await abrir(seed2, [{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }], '#/mis'));
-    await m.click('#userBtn'); await m.waitForTimeout(300);
+    await entrar(m, 300);
     await m.click('#repBtn'); await m.waitForTimeout(80);
-    check('con sesión muestra "Tu cuenta"', /Tu cuenta:\s*ana@x.com/.test(await text(m, '.sheet')));
+    check('muestra "Tu cuenta" con su nombre', /Tu cuenta:\s*Ana Paz/.test(await text(m, '.sheet')));
     await m.click('[data-rptipo="No veo un botón"]'); await m.fill('#rpTx', 'No veo Coordinar'); await m.click('#rpGo'); await m.waitForTimeout(200);
     const r2 = await m.evaluate(() => Object.values(window.__store).find(v => v && v.texto === 'No veo Coordinar'));
-    check('con sesión: guarda uid, email y nombre para responderle', r2 && r2.uid === 'u-ana' && r2.email === 'ana@x.com' && r2.nombre === 'Ana Paz' && r2.pantalla === '#/mis', r2);
+    check('guarda su id y nombre para responderle', r2 && r2.uid === 'u-ana' && !r2.email && r2.nombre === 'Ana Paz' && r2.pantalla === '#/mis', r2);
     check('un publicador no ve "Coordinar"', await m.evaluate(() => document.getElementById('coordBtn').classList.contains('hidden')));
     const seed3 = await m.evaluate(() => JSON.parse(JSON.stringify(window.__store)));
     await cx.close();
     // Equipo de soporte
     ({ cx, m } = await abrir(seed3, [{ uid: 'u-sop', email: 'sop@x.com', displayName: 'Sofía Soporte' }]));
-    await m.click('#userBtn'); await m.waitForTimeout(300);
+    await entrar(m, 300);
     check('soporte ve "Coordinar" en la barra', await m.evaluate(() => !document.getElementById('coordBtn').classList.contains('hidden')));
     await m.click('#coordBtn'); await m.waitForTimeout(300);
     let tx = await text(m, '#app');
     check('va directo a "Reportes y errores"', /#\/soporte/.test(await m.evaluate(() => location.hash)) && /Reportes y errores/.test(await text(m, '#tbTitle')), await m.evaluate(() => location.hash));
     check('resumen de errores automáticos de las últimas 24 h', /Errores automáticos: 1 en las últimas 24 h\s*1 × "Prueba de error/.test(tx), tx.slice(0, 300));
     check('reportes: Nuevos (6), con el más nuevo arriba', /Nuevos \(6\)\s*Vistos \(1\)\s*Resueltos \(0\)/.test(tx) && /No veo un botón\s*Nuevo\s*Ana Paz · Mis turnos/.test(tx), tx.slice(0, 600));
-    check('el reporte sin sesión dice "Sin nombre" y tiene WhatsApp', /Sin nombre \(no inició sesión\) · Terminal de ómnibus \(Paraná\)/.test(tx) && await m.evaluate(() => [...document.querySelectorAll('#app a[href*="wa.me"]')].some(a => /5493435559999/.test(a.href))), tx);
+    check('el reporte del hermano dice su nombre y tiene WhatsApp', /Visita Prueba · Terminal de ómnibus \(Paraná\)/.test(tx) && await m.evaluate(() => [...document.querySelectorAll('#app a[href*="wa.me"]')].some(a => /5493435559999/.test(a.href))), tx);
     check('se borraron solos el reporte resuelto de hace más de 60 días y el error viejo (no el visto)', await m.evaluate(() => !window.__store['reportes/viejo1'] && !window.__store['errores/viejo'] && !!window.__store['reportes/viejo2']));
     await m.screenshot({ path: SHOTS + '/soporte.png', fullPage: true });
     const idAna = await m.evaluate(() => Object.keys(window.__store).find(k => k.startsWith('reportes/') && window.__store[k].texto === 'No veo Coordinar').split('/')[1]);
@@ -671,7 +687,7 @@ const SEED = {
     await cx.close();
     // Administrador
     ({ cx, m } = await abrir(seed4, [{ uid: 'u-ad', email: 'admin@x.com', displayName: 'Admin' }], '#/admin'));
-    await m.click('#userBtn'); await m.waitForTimeout(400);
+    await entrar(m, 400);
     tx = await text(m, '#app');
     check('administración: "Reportes y errores" arriba y "Equipo de soporte" abajo', /^Reportes y errores\s*5 nuevos/.test(tx.trim()) && /Equipo de soporte/.test(tx), tx.slice(0, 200));
     await m.fill('#adSop', 'sop@x.com\nOTRO@x.com\nno-email'); await m.click('#adSopOk'); await m.waitForTimeout(200);
@@ -717,7 +733,7 @@ const SEED = {
     await m.screenshot({ path: SHOTS + '/instalar-iphone.png' });
     await m.click('#instNunca'); await m.waitForTimeout(80);
     check('"No mostrar más": no vuelve a aparecer', !(await m.$('#instBan')) && await m.evaluate(() => localStorage.getItem('ppam-instalar') === 'never'));
-    await m.click('#userBtn'); await m.waitForTimeout(300); await m.click('#userBtn'); await m.waitForTimeout(100);
+    await entrar(m, 300); await m.click('#userBtn'); await m.waitForTimeout(100);
     check('en el menú de la cuenta queda "Instalar la app"', /Instalar la app/.test(await text(m, '.sheet')));
     check('sin errores (instalar iPhone)', m.errs.length === 0, m.errs);
     await cx.close();
@@ -740,7 +756,7 @@ const SEED = {
     await cx.route(/unpkg\.com\/leaflet@1\.9\.4\/dist\/leaflet\.(js|css)$/, r => r.fulfill({ path: path.join(LFD, r.request().url().endsWith('.css') ? 'leaflet.css' : 'leaflet.js') }));
     await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(seed)}, ${JSON.stringify([{ uid: 'u-ad', email: 'admin@x.com', displayName: 'Admin' }])})`);
     const m = await cx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
-    await m.goto(FILE); await m.waitForTimeout(300);
+    await m.goto(FILE); await m.waitForTimeout(300); await entrar(m, 300);
     const labs = () => m.evaluate(() => [...document.querySelectorAll('.pp .lab')].map(x => x.textContent.replace(/\s+/g, ' ').trim()).sort());
     const pin = (re) => m.evaluateHandle((r) => [...document.querySelectorAll('.pp')].find(x => new RegExp(r).test(x.textContent)).querySelector('.pin'), re);
     check('en modo Lista sigue la tarjeta "Sumate a un turno"', !!(await m.$('.welcome')));
@@ -789,7 +805,7 @@ const SEED = {
     await m.evaluate(() => { location.hash = '#/'; }); await m.waitForTimeout(500);
     check('al volver al Inicio el mapa sigue ahí (no se vuelve a armar)', await m.evaluate(() => !!document.querySelector('#mapw .mapin') && document.querySelectorAll('.mapin').length === 1));
     // Interruptor en Administración
-    await m.click('#userBtn'); await m.waitForTimeout(300);
+    await entrar(m, 300);
     await m.evaluate(() => { location.hash = '#/admin'; }); await m.waitForTimeout(300);
     check('Administración: "Mostrar el mapa en el Inicio", prendido', await m.evaluate(() => document.getElementById('adMapa').checked));
     await m.click('#adMapa'); await m.waitForTimeout(200);
@@ -812,15 +828,15 @@ const SEED = {
     check('el perfil viejo (sin dueño) se descarta', await q.evaluate(() => localStorage.getItem('ppam-perfil') === null));
     const camp = await text(q, '#app');
     check('hoy: el turno que ya empezó (8 a 10) no se ofrece; el de 10 sí', !(await q.$('[data-pedir="t1"]')) && !!(await q.$('[data-pedir="t2"]')), camp.slice(0, 400));
-    await q.click('#userBtn'); await q.waitForTimeout(300); await q.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q.waitForTimeout(200);
+    await entrar(q, 300); await q.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q.waitForTimeout(200);
     await q.click('[data-pedir="t2"]'); await q.waitForTimeout(150);
     await q.selectOption('#pCong', 'San Agustín (Paraná)'); await q.fill('#pCel', '343 555-1234'); await q.check('#pOk'); await q.click('#pGo'); await q.waitForTimeout(250);
     await q.click('.sheet [data-cerrar]'); await q.waitForTimeout(80);
     check('los datos quedan guardados para esa cuenta', await q.evaluate(() => /343 555-1234/.test(localStorage.getItem('ppam-perfil:u-a1') || '')));
     await q.click('#userBtn'); await q.waitForTimeout(100); await q.click('#uOut'); await q.waitForTimeout(250);
-    await q.click('#userBtn'); await q.waitForTimeout(300); await q.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q.waitForTimeout(200);
+    await entrar(q, 300); await q.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q.waitForTimeout(200);
     await q.click('[data-dia="2026-10-02"]'); await q.waitForTimeout(80); await q.click('[data-pedir="t1"]'); await q.waitForTimeout(150);
-    check('otra cuenta en el mismo celular NO ve los datos de la anterior', await q.evaluate(() => document.querySelector('#pNom').value === 'Beto' && document.querySelector('#pCel').value === '' && !document.querySelector('#pOk').checked));
+    check('otro hermano en el mismo celular NO ve los datos del anterior (ve los suyos)', await q.evaluate(() => document.querySelector('#pNom').value === 'Beto' && document.querySelector('#pCel').value === '343 555-0000' && !document.querySelector('#pOk').checked));
     await q.click('.sheet [data-cerrar]'); await q.waitForTimeout(80);
     await q.click('#userBtn'); await q.waitForTimeout(100);
     q.once('dialog', d => d.accept()); await q.click('#uBor'); await q.waitForTimeout(100);
@@ -858,12 +874,12 @@ const SEED = {
     check('la ventana: el fondo queda inerte y el foco entra en ella', await q.evaluate(() => document.getElementById('app').hasAttribute('inert') && document.querySelector('.sheet').contains(document.activeElement) && !!document.querySelector('.sheet').getAttribute('aria-labelledby')));
     await q.keyboard.press('Escape'); await q.waitForTimeout(80);
     check('Escape la cierra y el foco vuelve al horario que la abrió', await q.evaluate(() => !document.querySelector('.ov') && !document.getElementById('app').hasAttribute('inert') && document.activeElement === document.querySelector('[data-pedir="t1"]')));
-    await q.click('#userBtn'); await q.waitForTimeout(300); await q.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q.waitForTimeout(200);
+    await entrar(q, 300); await q.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q.waitForTimeout(200);
     await q.click('[data-dia="2026-10-03"]'); await q.waitForTimeout(80); await q.click('[data-pedir="t3"]'); await q.waitForTimeout(150);
     check('no avisa superposición si no hay', !/Se superpone/.test(await text(q, '.sheet')));
     await q.keyboard.press('Escape'); await q.waitForTimeout(50);
     SEED['campanas/parana-terminal'].turnos.t9 = { punto: 'p2', desde: '11:00', hasta: '13:00', dias: [6] };
-    const q2 = await open([A2], '#/c/parana-terminal'); await q2.click('#userBtn'); await q2.waitForTimeout(300); await q2.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q2.waitForTimeout(200);
+    const q2 = await open([A2], '#/c/parana-terminal'); await entrar(q2, 300); await q2.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await q2.waitForTimeout(200);
     await q2.click('[data-dia="2026-10-03"]'); await q2.waitForTimeout(80); await q2.click('[data-pedir="t9"]'); await q2.waitForTimeout(150);
     check('turnos superpuestos: avisa con cuál choca', /Se superpone con otro turno tuyo\s*10:00 a 12:00 · Andén 1/.test(await text(q2, '.sheet')), await text(q2, '.sheet'));
     delete SEED['campanas/parana-terminal'].turnos.t9; delete SEED['pedidos/parana-terminal__2026-10-03__t2__u-a2'];
@@ -915,7 +931,7 @@ const SEED = {
   {
     SEED['campanas/terminada'] = { nombre: 'Feria vieja', ciudad: 'Paraná', desde: '2026-08-01', hasta: '2026-08-31', activa: true, puntos: { p1: { nombre: 'Stand feria', tipo: 'stand', cupo: 2 } }, turnos: { t1: { punto: 'p1', desde: '09:00', hasta: '11:00', dias: [0, 1, 2, 3, 4, 5, 6] } } };
     const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal');
-    await k.click('#userBtn'); await k.waitForTimeout(300); await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(300);
+    await entrar(k, 300); await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(300);
     await k.click('#busBtn'); await k.waitForTimeout(200); await k.click('[data-bsat="man"]'); await k.waitForTimeout(150);
     const lt = await text(k, '.bsov');
     check('lupa "Faltan mañana": no muestra campañas que ya terminaron', /Faltan mañana/.test(lt) && !/Feria vieja|Stand feria/.test(lt), lt.slice(0, 300));
@@ -941,9 +957,9 @@ const SEED = {
   }
   console.log('\nTanda 2: diseño del coordinador, sin señal y avisos de error');
   {
-    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '');
+    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], ''); await entrar(k, 300);
     check('campaña sin foto: muestra el ícono del tipo de punto', await k.evaluate(() => [...document.querySelectorAll('.cc .th.sinf')].some(x => !!x.querySelector('svg'))));
-    await k.click('#userBtn'); await k.waitForTimeout(300); await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(300);
+    await entrar(k, 300); await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(300);
     const kt = await text(k, '#app');
     check('números del coordinador dicen el período y "hermanos confirmados"', /cubierto de hoy al 31 oct/i.test(kt) && /hermanos? confirmados?/i.test(kt) && !/publicadores/i.test(kt), kt.slice(0, 200));
     await k.click('[data-tab="config"]'); await k.waitForTimeout(150);
@@ -953,7 +969,7 @@ const SEED = {
     check('sin errores (tanda 2, coordinador)', k.errs.length === 0, k.errs);
 
     const u = await open([{ uid: 'u-beto', email: 'beto@x.com', displayName: 'Beto Ruiz' }], '');
-    await u.click('#userBtn'); await u.waitForTimeout(300); await u.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await u.waitForTimeout(300);
+    await entrar(u, 300); await u.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await u.waitForTimeout(300);
     await u.click('[data-dia="2026-10-03"]'); await u.waitForTimeout(80); await u.click('[data-pedir="t3"]'); await u.waitForTimeout(100);
     await u.selectOption('#pCong', 'San Agustín (Paraná)'); await u.fill('#pCel', '343 555-0000'); await u.check('#pOk');
     await u.evaluate(() => { const db = window.__ppamMock.db, b0 = db.batch; db.batch = () => { const x = b0(); x.commit = () => new Promise(() => {}); return x; }; });
@@ -969,7 +985,7 @@ const SEED = {
     await ctx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, ${JSON.stringify([{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }])})`);
     await ctx.addInitScript(() => { const db = window.__ppamMock.db, c0 = db.collection; db.collection = (x) => { const c = c0(x); if (x !== 'pedidos') return c; const w0 = c.where; return Object.assign({}, c, { where: (f, op, v) => f === 'uid' ? { onSnapshot: (a, bb, cc) => { setTimeout(() => (typeof a === 'function' ? bb : cc)(Object.assign(new Error('x'), { code: 'unavailable' })), 0); return () => {}; } } : w0(f, op, v) }); }; });
     const m = await ctx.newPage(); m.errs = []; m.on('pageerror', e => m.errs.push(e.message));
-    await m.goto(FILE); await m.waitForTimeout(200); await m.click('#userBtn'); await m.waitForTimeout(300);
+    await m.goto(FILE); await m.waitForTimeout(200); await entrar(m, 300);
     await m.evaluate(() => { location.hash = '#/mis'; }); await m.waitForTimeout(200);
     const mt = await text(m, '#app');
     check('si no cargan Mis turnos, avisa y ofrece Reintentar (no dice "no tenés turnos")', /No pudimos cargar tus turnos/.test(mt) && !!(await m.$('#misRe')), mt.slice(0, 200));
@@ -1004,7 +1020,7 @@ const SEED = {
     check('si entra por un enlace a una campaña, no aparece', !(await dl.$('.ovbv')));
     const g = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal', { nuevo: true });
     await g.evaluate(() => { try { localStorage.setItem('ppam-bienvenida', '1'); } catch (e) {} document.querySelectorAll('.ov').forEach(x => x.remove()); });
-    await g.click('#userBtn'); await g.waitForTimeout(300); await g.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await g.waitForTimeout(300);
+    await entrar(g, 300); await g.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await g.waitForTimeout(300);
     check('la primera vez en Coordinación: tarjeta "Cómo se usa Coordinación"', /Cómo se usa Coordinación[\s\S]*Pedidos:[\s\S]*Del día:[\s\S]*lupa/i.test(await text(g, '#app')));
     await g.click('[data-cguia]'); await g.waitForTimeout(150);
     check('"Entendido" la cierra para siempre', !(await g.$('.cguia')) && await g.evaluate(() => localStorage.getItem('ppam-guia-coord') === '1'));
@@ -1016,7 +1032,7 @@ const SEED = {
     check('la pestaña Ayuda está siempre en la barra de abajo', await a.evaluate(() => { const b = document.getElementById('tabAyuda'); return b && !b.classList.contains('hidden') && /Ayuda/.test(b.textContent); }));
     await a.click('#tabAyuda'); await a.waitForTimeout(200);
     const at = await text(a, '#app');
-    check('Ayuda: 13 preguntas para publicadores, en 3 grupos, sin las de coordinadores', await a.evaluate(() => document.querySelectorAll('.faq details').length) === 13 && /Anotarme[\s\S]*Mis turnos[\s\S]*Mis datos y la app/.test(at) && !/Para coordinadores/.test(at), at.slice(0, 200));
+    check('Ayuda: 14 preguntas para publicadores, en 3 grupos, sin las de coordinadores', await a.evaluate(() => document.querySelectorAll('.faq details').length) === 14 && /Anotarme[\s\S]*Mis turnos[\s\S]*Mis datos y la app/.test(at) && !/Para coordinadores/.test(at), at.slice(0, 200));
     check('la pestaña queda marcada y el título dice "Preguntas frecuentes"', await a.evaluate(() => document.getElementById('tabAyuda').classList.contains('on')) && /Preguntas frecuentes/.test(await text(a, '#tbTitle')));
     await a.click('#faq-completo summary'); await a.waitForTimeout(80);
     check('tocar una pregunta muestra la respuesta', await a.evaluate(() => document.getElementById('faq-completo').open) && /Con lugar/.test(await text(a, '#faq-completo')));
@@ -1028,10 +1044,10 @@ const SEED = {
     const ax2 = axePath();
     if (fs.existsSync(ax2)) { await a.keyboard.press('Escape'); await a.waitForTimeout(100); await a.addScriptTag({ content: fs.readFileSync(ax2, 'utf8') }); const v = await a.evaluate(async () => (await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations.map(x => x.id + ' x' + x.nodes.length)); check('axe (WCAG 2.2 AA) sin problemas: Ayuda', v.length === 0, v); }
     const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '');
-    await k.click('#userBtn'); await k.waitForTimeout(300); await k.evaluate(() => { location.hash = '#/ayuda/recuperar'; }); await k.waitForTimeout(300);
-    check('el coordinador ve además "Para coordinadores", y un enlace abre esa respuesta', /Para coordinadores/.test(await text(k, '#app')) && await k.evaluate(() => document.getElementById('faq-recuperar').open) && await k.evaluate(() => document.querySelectorAll('.faq details').length) === 16);
+    await entrar(k, 300); await k.evaluate(() => { location.hash = '#/ayuda/recuperar'; }); await k.waitForTimeout(300);
+    check('el coordinador ve además "Para coordinadores", y un enlace abre esa respuesta', /Para coordinadores/.test(await text(k, '#app')) && await k.evaluate(() => document.getElementById('faq-recuperar').open) && await k.evaluate(() => document.querySelectorAll('.faq details').length) === 17);
     const u = await open([{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }], '');
-    await u.click('#userBtn'); await u.waitForTimeout(300);
+    await entrar(u, 300);
     await u.evaluate(() => { const db = window.__ppamMock.db; db.doc('pedidos/parana-terminal__2026-10-02__t2__u-ana').set({ cid: 'parana-terminal', fecha: '2026-10-02', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-ana', email: 'ana@x.com', nombre: 'Ana', apellido: 'Paz', congregacion: 'X', celular: '343 555-0000', estado: 'pendiente', creado: 'x' }); });
     await u.evaluate(() => { location.hash = '#/t/parana-terminal__2026-10-02__t2__u-ana'; }); await u.waitForTimeout(400);
     check('en un turno pendiente: "¿Qué significa?"', !!(await u.$('.qhelp')));
@@ -1049,10 +1065,10 @@ const SEED = {
     const l = await ctx.newPage(); await l.goto(FILE); await l.waitForTimeout(300);
     check('mientras cargan las campañas se ve la forma de la pantalla (no un "Cargando…" suelto)', await l.evaluate(() => !!document.querySelector('#app .sk .skc') && /Cargando las campañas/.test(document.querySelector('#app [role="status"]').textContent)));
     const h = await open([], '');
-    check('sin sesión, "Ingresar" es un botón con borde (lo principal es "Ver turnos libres")', await h.evaluate(() => { const b = document.getElementById('userBtn'), cs = getComputedStyle(b); return b.classList.contains('login') && cs.backgroundColor !== getComputedStyle(document.querySelector('.welcome .btn, .welcome button')).backgroundColor && parseFloat(cs.borderTopWidth) > 0; }));
+    check('el hermano ve sus iniciales arriba (no hay "Ingresar")', await h.evaluate(() => { const b = document.getElementById('userBtn'); return b.classList.contains('av') && b.textContent === 'VP'; }));
     check('"Predicación pública" no se repite en el inicio', !/Predicación pública/i.test(await text(h, '#app')));
     const u = await open([{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }], '');
-    await u.click('#userBtn'); await u.waitForTimeout(300);
+    await entrar(u, 300);
     await u.evaluate(() => window.__ppamMock.db.doc('pedidos/parana-terminal__2026-10-01__t2__u-ana').set({ cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-ana', email: 'ana@x.com', nombre: 'Ana', apellido: 'Paz', congregacion: 'X', celular: '343 555-0000', estado: 'pendiente', creado: 'x' }));
     await u.waitForTimeout(300);
     check('inicio: si el turno es mañana y sigue sin confirmar, sugiere avisar al coordinador', /Si falta poco y todavía no te confirmaron, avisale al coordinador de tu congregación/.test(await text(u, '#app')));
@@ -1069,7 +1085,7 @@ const SEED = {
     S2['cupos/parana-terminal__2026-10-02__t1'] = { cid: 'parana-terminal', fecha: '2026-10-02', tid: 't1', ocupados: { 'u-luis': 'p' } };
     await ctx2.addInitScript(`(${mock.toString()})(${JSON.stringify(S2)}, ${JSON.stringify([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }])})`);
     const k = await ctx2.newPage(); k.errs = []; k.on('pageerror', e => k.errs.push(e.message));
-    await k.goto(FILE); await k.waitForTimeout(300); await k.click('#userBtn'); await k.waitForTimeout(300);
+    await k.goto(FILE); await k.waitForTimeout(300); await entrar(k, 300);
     await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(500);
     await k.click('[data-confirmar="parana-terminal__2026-10-02__t1__u-luis"]'); await k.waitForTimeout(400);
     const av = await k.evaluate(() => { const a = document.getElementById('avWa'); return a && { t: document.querySelector('.sheet').innerText, href: a.getAttribute('href') }; });
@@ -1115,13 +1131,104 @@ const SEED = {
     check('con "reducir movimiento" no hay presentación', !(await r.$('.intro')));
     delete SEED['campanas/futura'];
   }
+  console.log('\nWeb cerrada y link personal');
+  {
+    const c0 = await open([], '', { cerrado: true });
+    let t0 = await text(c0, '#app');
+    check('sin link no se ve ninguna campaña: solo cómo entrar', /tocá el link que te mandó por WhatsApp/.test(t0) && !/Terminal de ómnibus|Costanera/.test(t0) && !(await c0.$('.cc.camp')), t0);
+    check('sin barra de abajo y arriba solo "Coordinadores"', await c0.evaluate(() => getComputedStyle(document.querySelector('.tabbar')).display === 'none' && document.getElementById('userBtn').textContent === 'Coordinadores'));
+    await c0.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await c0.waitForTimeout(200);
+    check('el link de una campaña tampoco muestra nada', !/Terminal de ómnibus|Andén/.test(await text(c0, '#app')) && !/Terminal/.test(await text(c0, '#tbTitle')));
+    check('sin errores (web cerrada)', c0.errs.length === 0, c0.errs);
+    // Entrar con el link
+    SEED['hermanos/h-marta'] = { nombre: 'Marta', apellido: 'Gómez', congregacion: 'Crespo Sur (Crespo)', celular: '343 412-3412', cod: 'MARTA001', creado: '2026-09-29T10:00:00Z', por: 'coord@x.com' };
+    SEED['links/MARTA001'] = { hid: 'h-marta', nombre: 'Marta', congregacion: 'Crespo Sur (Crespo)' };
+    SEED['hermanos/u-luis'] = { nombre: 'Luis', apellido: 'Gómez', congregacion: 'San Agustín (Paraná)', celular: '343 555-2222', cod: 'LUIS0001', creado: '2026-09-29T10:00:00Z', por: 'coord@x.com' };
+    SEED['links/LUIS0001'] = { hid: 'u-luis', nombre: 'Luis', congregacion: 'San Agustín (Paraná)', turnos: 2 };
+    const c1 = await open([], '#/?cod=MARTA001', { cerrado: true }); await c1.waitForTimeout(200);
+    check('con su link: "¡Hola, Marta!" y "Confirmar ingreso" (no entra solo al abrirlo)', /¡Hola, Marta![\s\S]*Crespo Sur[\s\S]*Confirmar ingreso[\s\S]*Sin contraseña ni cuenta de Google/.test(await text(c1, '#app')) && !(await c1.evaluate(() => Object.keys(window.__store).some(k => k.startsWith('sesiones/')))), await text(c1, '#app'));
+    await c1.click('#cjOk'); await c1.waitForTimeout(400);
+    const e1 = await c1.evaluate(() => { const s = window.__store, sk = Object.keys(s).find(k => k.startsWith('sesiones/')); return { ses: s[sk], uid: sk && sk.slice(9), h: s['hermanos/h-marta'], l: s['links/MARTA001'], hash: location.hash }; });
+    check('al confirmar: el celular queda atado a Marta y el link marcado como usado', e1.ses && e1.ses.hid === 'h-marta' && e1.ses.cod === 'MARTA001' && e1.h.uid === e1.uid && !!e1.h.ultimo && !!e1.h.disp && !e1.h.aviso && e1.l.usado === true, e1);
+    check('el código se borra de la dirección y entra al inicio con las campañas', e1.hash === '#/' && /Terminal de ómnibus/.test(await text(c1, '#app')) && await c1.evaluate(() => document.getElementById('userBtn').textContent === 'MG'));
+    await c1.click('[data-go="#/c/parana-terminal"]'); await c1.waitForTimeout(200); await c1.click('[data-pedir="t2"]'); await c1.waitForTimeout(150);
+    check('al anotarse, sus datos ya están cargados', await c1.evaluate(() => document.querySelector('#pNom').value === 'Marta' && document.querySelector('#pApe').value === 'Gómez' && document.querySelector('#pCel').value === '343 412-3412'));
+    await c1.check('#pOk'); await c1.click('#pGo'); await c1.waitForTimeout(250);
+    check('el pedido queda a nombre de su id de hermano, sin email', await c1.evaluate(() => { const p = window.__store['pedidos/parana-terminal__2026-10-01__t2__h-marta']; return p && p.uid === 'h-marta' && !p.email && p.congregacion === 'Crespo Sur (Crespo)' && window.__store['cupos/parana-terminal__2026-10-01__t2'].ocupados['h-marta'] === 'p'; }));
+    await c1.evaluate(() => document.querySelectorAll('.ov').forEach(x => x.remove()));
+    // Alguien entra con el mismo link en otro celular: en este se cierra
+    await c1.evaluate(() => window.__ppamMock.db.doc('hermanos/h-marta').update({ uid: 'anon-otro', ultimo: '2026-09-30T14:42:00Z', disp: 'iPhone · Safari', aviso: true })); await c1.waitForTimeout(250);
+    let t1 = await text(c1, '#app');
+    check('si su link se usa en otro celular, en este se cierra y lo dice', /Tu acceso se abrió en otro celular[\s\S]*iPhone · Safari[\s\S]*¿Fuiste vos\?[\s\S]*¿No fuiste vos\?/.test(t1) && !/Terminal de ómnibus/.test(t1), t1);
+    await c1.evaluate(() => window.__ppamMock.db.doc('hermanos/h-marta').update({ baja: true })); await c1.waitForTimeout(200);
+    check('dado de baja: lo dice y no ve nada', /Tu acceso fue dado de baja/.test(await text(c1, '#app')));
+    check('sin errores (entrar con el link)', c1.errs.length === 0, c1.errs);
+    // El mismo link en otro celular
+    SEED['links/MARTA001'].usado = true; Object.assign(SEED['hermanos/h-marta'], { uid: 'anon-viejo', ultimo: '2026-09-25T10:00:00Z' });
+    const c2 = await open([], '#/?cod=MARTA001', { cerrado: true }); await c2.waitForTimeout(200);
+    check('otro celular con el mismo link: "Hola de nuevo" y "Entrar desde este celular"', /Hola de nuevo, Marta[\s\S]*Entrar desde este celular[\s\S]*el otro se cierra/.test(await text(c2, '#app')), await text(c2, '#app'));
+    await c2.click('#cjOk'); await c2.waitForTimeout(400);
+    check('al entrar: el acceso pasa a este celular y queda el aviso para el coordinador', await c2.evaluate(() => { const h = window.__store['hermanos/h-marta']; return h.uid !== 'anon-viejo' && /^anon-/.test(h.uid) && h.aviso === true; }) && /Terminal de ómnibus/.test(await text(c2, '#app')));
+    delete SEED['links/MARTA001'].usado; delete SEED['hermanos/h-marta'].uid; delete SEED['hermanos/h-marta'].ultimo;
+    const c3 = await open([], '#/?cod=NOEXISTE', { cerrado: true }); await c3.waitForTimeout(200);
+    check('un link anulado o mal copiado: "Este link ya no sirve"', /Este link ya no sirve[\s\S]*responsable/.test(await text(c3, '#app')));
+    const c4 = await open([], '#/?cod=LUIS0001', { cerrado: true }); await c4.waitForTimeout(200);
+    check('quien usaba Google: sus turnos pasan a su acceso nuevo', /¡Hola, Luis![\s\S]*Tus 2 turnos pasan a tu acceso nuevo/.test(await text(c4, '#app')));
+    const c5 = await open([{ uid: 'u-g', email: 'gente@x.com', displayName: 'Gente Google', google: true }], '', { cerrado: true });
+    await entrar(c5, 300);
+    check('una cuenta de Google que no coordina: lo dice y no ve nada', /Esta cuenta no coordina ninguna campaña[\s\S]*gente@x.com/.test(await text(c5, '#app')) && !(await c5.$('.cc.camp')));
+    // Panel del coordinador
+    SEED['pedidos/parana-terminal__2026-10-03__t3__u-vieja'] = { cid: 'parana-terminal', fecha: '2026-10-03', tid: 't3', punto: 'p2', desde: '16:00', hasta: '18:00', uid: 'u-vieja', email: 'vieja@x.com', nombre: 'Elsa', apellido: 'Vieja', congregacion: 'San Agustín (Paraná)', celular: '343 555-7777', estado: 'confirmado', creado: 'x' };
+    SEED['hermanos/h-ana2'] = { nombre: 'Ana', apellido: 'Benítez', congregacion: 'San Agustín (Paraná)', celular: '343 411-4444', cod: 'ANAB0001', uid: 'anon-ab', ultimo: '2026-09-30T10:42:00Z', disp: 'Android · Chrome', aviso: true, creado: '2026-09-20T10:00:00Z', por: 'coord@x.com', porNombre: 'Carlos Vega' };
+    SEED['links/ANAB0001'] = { hid: 'h-ana2', nombre: 'Ana' };
+    const k = await open([{ uid: 'u-co', email: 'coord@x.com', displayName: 'Carlos Vega' }], '');
+    await entrar(k, 300); await k.click('#coordBtn'); await k.waitForTimeout(300);
+    check('Coordinar: tarjeta con habilitados, sin entrar, los que usaban Google y el aviso', /Hermanos habilitados\s*1 aviso[\s\S]*habilitados · 2 todavía no entraron · 1 usaba Google/.test(await text(k, '.hcard')), await text(k, '.hcard'));
+    await k.click('.hcard'); await k.waitForTimeout(300);
+    let tk = await text(k, '#app');
+    check('lista: aviso, "Todavía no entraron", "Usaban la página con Google" y "Habilitados"', /Ana Benítez entró desde otro celular[\s\S]*Todavía no entraron[\s\S]*Luis Gómez[\s\S]*Marta Gómez[\s\S]*Usaban la página con Google[\s\S]*Elsa Vieja[\s\S]*1 turno[\s\S]*Habilitados[\s\S]*Ana Benítez/.test(tk) && /Hermanos habilitados/.test(await text(k, '#tbTitle')), tk);
+    await k.fill('#hBus', 'marta'); await k.waitForTimeout(400);
+    check('el buscador filtra por nombre', /Marta Gómez/.test(await text(k, '#app')) && !/Luis Gómez|Ana Benítez/.test(await text(k, '#app')));
+    await k.fill('#hBus', ''); await k.waitForTimeout(400);
+    await k.click('[data-hok="h-ana2"]'); await k.waitForTimeout(200);
+    check('"Ya está, fue ella" saca el aviso', await k.evaluate(() => window.__store['hermanos/h-ana2'].aviso === false) && !/entró desde otro celular/.test(await text(k, '#app')));
+    await k.click('[data-hnuevo]'); await k.waitForTimeout(150);
+    await k.fill('#hNom', 'Raúl'); await k.fill('#hApe', 'Schmidt'); await k.selectOption('#hCong', 'Paraná Centro (Paraná)'); await k.fill('#hCel', '0343 15 444-1111');
+    await k.click('#hGo'); await k.waitForTimeout(100);
+    check('habilitar pide confirmar que lo aprobó el comité de servicio', /comité de servicio/.test(await text(k, '#hErr')));
+    await k.fill('#hCel', '343 412-3412'); await k.check('#hOk'); await k.click('#hGo'); await k.waitForTimeout(100);
+    check('NO habilita dos veces el mismo celular', /ya es de Marta Gómez/.test(await text(k, '#hErr')));
+    await k.fill('#hCel', '0343 15 444-1111'); await k.click('#hGo'); await k.waitForTimeout(250);
+    const nh = await k.evaluate(() => { const s = window.__store, id = Object.keys(s).find(x => x.startsWith('hermanos/') && s[x].apellido === 'Schmidt'); const h = s[id]; return { id, h, l: s['links/' + (h && h.cod)], wa: (document.querySelector('#hWa') || {}).href || '' }; });
+    check('habilitado: hermano con su código y el link que lo saluda', nh.h && /^[A-Z2-9]{8}$/.test(nh.h.cod) && nh.h.celular === '343 444-1111' && nh.h.por === 'coord@x.com' && !nh.h.uid && nh.l && nh.l.hid === nh.id.slice(9) && nh.l.nombre === 'Raúl', nh);
+    check('"Mandarle su link por WhatsApp" a su celular, con el link personal', /wa\.me\/5493434441111\?text=/.test(nh.wa) && decodeURIComponent(nh.wa).includes('#/?cod=' + nh.h.cod) && /Guardá este mensaje/.test(decodeURIComponent(nh.wa)), nh.wa);
+    await k.click('.sheet [data-cerrar]'); await k.waitForTimeout(100);
+    await k.click('[data-hviejo="u-vieja"]'); await k.waitForTimeout(150);
+    check('"Habilitar" a quien usaba Google trae sus datos', await k.evaluate(() => document.querySelector('#hNom').value === 'Elsa' && document.querySelector('#hCel').value === '343 555-7777') && /1 turno por delante/.test(await text(k, '.sheet')));
+    await k.check('#hOk'); await k.click('#hGo'); await k.waitForTimeout(250);
+    check('…con su mismo id (sus turnos quedan) y el link dice cuántos turnos pasan', await k.evaluate(() => { const h = window.__store['hermanos/u-vieja']; return h && window.__store['links/' + h.cod].turnos === 1 && window.__store['links/' + h.cod].hid === 'u-vieja'; }));
+    await k.click('.sheet [data-cerrar]'); await k.waitForTimeout(100);
+    await k.click('.arow[data-hfic="h-ana2"]'); await k.waitForTimeout(150);
+    check('ficha: celular, quién lo habilitó, último ingreso y las acciones', /Ana Benítez[\s\S]*343 411-4444[\s\S]*Carlos Vega[\s\S]*Android · Chrome[\s\S]*Reenviarle su link[\s\S]*Mandarle un link nuevo[\s\S]*Cambiar datos[\s\S]*Dar de baja/.test(await text(k, '.sheet')), await text(k, '.sheet'));
+    await k.click('#fNuevo'); await k.waitForTimeout(250);
+    const ln = await k.evaluate(() => { const h = window.__store['hermanos/h-ana2']; return { cod: h.cod, uid: h.uid, viejo: !!window.__store['links/ANAB0001'], nuevo: window.__store['links/' + h.cod] }; });
+    check('link nuevo: cambia el código, cierra el celular que estaba y anula el link viejo', ln.cod !== 'ANAB0001' && ln.uid === null && !ln.viejo && ln.nuevo && ln.nuevo.hid === 'h-ana2', ln);
+    await k.click('.sheet [data-cerrar]'); await k.waitForTimeout(100);
+    await k.click('.arow[data-hfic="h-ana2"]'); await k.waitForTimeout(150); await k.click('#fBaja'); await k.waitForTimeout(100);
+    check('dar de baja pide confirmar y explica que no se borran sus turnos', /¿Dar de baja a Ana Benítez\?[\s\S]*No se borran sus datos ni sus turnos/.test(await text(k, '.sheet')));
+    await k.click('#bOk'); await k.waitForTimeout(250);
+    check('dado de baja: marcado, sin celular y sin link', await k.evaluate(() => { const h = window.__store['hermanos/h-ana2']; return h.baja === true && h.uid === null && h.bajaPor === 'coord@x.com' && !window.__store['links/' + h.cod]; }) && /Dados de baja \(1\)/.test(await text(k, '#app')));
+    check('sin errores (panel de hermanos)', k.errs.length === 0, k.errs);
+    ['hermanos/h-marta', 'links/MARTA001', 'hermanos/u-luis', 'links/LUIS0001', 'pedidos/parana-terminal__2026-10-03__t3__u-vieja', 'hermanos/h-ana2', 'links/ANAB0001'].forEach(x => delete SEED[x]);
+  }
+
   console.log('\nCampaña corta: solo sus días');
   {
     SEED['campanas/corta'] = { nombre: 'Fin de semana', ciudad: 'Crespo', desde: '2026-11-06', hasta: '2026-11-07', activa: true,
       puntos: { p1: { nombre: 'Carrito 1', tipo: 'carrito', cupo: 2 }, p2: { nombre: 'Carrito 2', tipo: 'carrito', cupo: 2 } },
       turnos: { t1: { punto: 'p1', desde: '09:00', hasta: '11:00', dias: [1, 5, 6] } } };
     const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/corta');
-    await k.click('#userBtn'); await k.waitForTimeout(300); await k.evaluate(() => { location.hash = '#/coord/corta'; }); await k.waitForTimeout(300);
+    await entrar(k, 300); await k.evaluate(() => { location.hash = '#/coord/corta'; }); await k.waitForTimeout(300);
     await k.click('[data-tab="config"]'); await k.waitForTimeout(150);
     const ajt = await text(k, '#app');
     check('aviso: un turno con días fuera de la campaña (Lun)', /Un turno tiene días fuera de la campaña\s*\(Lun\)/.test(ajt) && /Días fuera/.test(ajt), ajt);

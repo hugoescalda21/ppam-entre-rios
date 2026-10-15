@@ -72,9 +72,9 @@ window.PPAM_COORD = function (K) {
     if (!S.user) { $('app').innerHTML = '<div class="empty">Iniciá sesión para coordinar.</div><button type="button" class="btn" data-login>Iniciar sesión con Google</button>'; return; }
     const mias = misCampanas();
     if (!S.route.cid) {
-      if (mias.length === 1 && !S.isAdmin && !S.isSoporte) { go('#/coord/' + mias[0].id); return; }
       if (!mias.length && !S.isAdmin && S.isSoporte) { go('#/soporte'); return; }
-      let h = S.isSoporte && !S.isAdmin ? `<button type="button" class="coordbar" data-go="#/soporte"><span class="n">${I('alert', 'width:15px;height:15px')}</span><span class="tx">Reportes y errores<small>Equipo de soporte</small></span>${I('chev')}</button>` : '';
+      let h = tarjetaHermanos();
+      h += S.isSoporte && !S.isAdmin ? `<button type="button" class="coordbar" data-go="#/soporte"><span class="n">${I('alert', 'width:15px;height:15px')}</span><span class="tx">Reportes y errores<small>Equipo de soporte</small></span>${I('chev')}</button>` : '';
       h += S.isAdmin ? `<button type="button" class="coordbar" data-go="#/admin"><span class="n">${I('grid', 'width:15px;height:15px')}</span><span class="tx">Administración<small>Campañas, coordinadores y congregaciones</small></span>${I('chev')}</button><div class="sec">Campañas</div>` : '';
       h += !mias.length && !S.isAdmin && S.isSoporte ? '' : mias.length ? mias.map(c => `<button type="button" class="cc camp" data-go="#/coord/${esc(c.id)}"><span class="th"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc(c.ciudad || '')} · ${esc(campRango(c))}</small></span>${I('chev')}</button>`).join('') : '<div class="card"><div class="empty">No coordinás ninguna campaña todavía.</div></div>';
       $('app').innerHTML = h; return;
@@ -1015,5 +1015,160 @@ window.PPAM_COORD = function (K) {
   const lev = (a, b) => { if (Math.abs(a.length - b.length) > 2) return 9; const d = Array.from({ length: a.length + 1 }, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j; for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
   const capNombre = (x) => String(x || '').trim().replace(/\s+/g, ' ').split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w).join(' ');
 
-  return { renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };
+
+  /* ---------- Hermanos habilitados (entran con su link personal) ----------
+     hermanos/{hid}: los carga un coordinador cuando el comité de servicio de la congregación lo aprobó.
+     links/{cod}: la llave del link. Un celular a la vez; "link nuevo" anula el anterior. */
+  const LETRAS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const nuevoCod = () => { const a = new Uint32Array(8); crypto.getRandomValues(a); return Array.from(a, x => LETRAS[x % 32]).join(''); };
+  const linkHermano = (cod) => location.origin + location.pathname + '#/?cod=' + cod;
+  const msgLink = (h, cod) => `Hola ${h.nombre}, ya estás habilitado para la predicación pública. Tocá este link para entrar:\n${linkHermano(cod || h.cod)}\n\nGuardá este mensaje: si cambiás de celular, entrás con este mismo link. Es solo para vos, no lo reenvíes.`;
+  const waTxt = (cel, txt) => waUrl(cel) + '?text=' + encodeURIComponent(txt);
+  const celSolo = (c) => String(c || '').replace(/\D/g, '');
+  const cuandoH = (ts) => { const d = ts && (ts.toDate ? ts.toDate() : new Date(ts)); if (!d || isNaN(d)) return ''; const f = isoOf(d), hh = `${d.getHours()}:${pad(d.getMinutes())}`; return f === hoy() ? `hoy ${hh}` : f === addDays(hoy(), -1) ? `ayer ${hh}` : `el ${fmtCorto(f)}`; };
+  const yoFirma = () => ({ por: S.user.email.toLowerCase(), porNombre: (S.user.displayName || '').slice(0, 80) });
+  function escucharHermanos() {
+    if (!S.herm) S.herm = { lista: {}, ok: false, q: '', cong: 'todas', viejos: null, unsub: null };
+    if (S.herm.unsub) return;
+    S.herm.unsub = () => {};   // ya se está escuchando (el primer aviso puede llegar antes de que vuelva onSnapshot)
+    const un = S.db.collection('hermanos').onSnapshot((qs) => {
+      const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.herm.lista = o; S.herm.ok = true;
+      if (S.route.name === 'hermanos') refrescar(renderHermanos); else if (S.route.name === 'coord' && !S.route.cid) refrescar(renderCoord);
+    }, (e) => { console.error(e); S.herm.err = true; if (S.route.name === 'hermanos') renderHermanos(); });
+    if (S.herm) S.herm.unsub = un;
+  }
+  // Quienes ya pidieron turnos con Google en las campañas que coordino: se habilitan con su mismo id (así sus turnos quedan)
+  async function cargarViejos() {
+    if (S.herm.viejos || S.herm.cargandoViejos) return;
+    S.herm.cargandoViejos = true;
+    const v = {};
+    try {
+      for (const c of misCampanas()) {
+        const qs = await S.db.collection('pedidos').where('cid', '==', c.id).get();
+        qs.forEach(d => { const p = d.data(); if (!p.email || !p.uid || /^m-/.test(p.uid)) return; const x = v[p.uid] || (v[p.uid] = { uid: p.uid, nombre: p.nombre, apellido: p.apellido, congregacion: p.congregacion, celular: p.celular, turnos: 0 }); if (p.fecha >= hoy() && p.estado !== 'rechazado') x.turnos++; });
+      }
+    } catch (e) { console.error(e); }
+    S.herm.viejos = v; S.herm.cargandoViejos = false;
+    if (S.route.name === 'hermanos') refrescar(renderHermanos); else if (S.route.name === 'coord' && !S.route.cid) refrescar(renderCoord);
+  }
+  const listaHermanos = () => Object.keys(S.herm.lista).map(id => Object.assign({ id }, S.herm.lista[id]));
+  const viejosPend = () => Object.values(S.herm.viejos || {}).filter(v => !S.herm.lista[v.uid]).sort((a, b) => (a.apellido + a.nombre).localeCompare(b.apellido + b.nombre, 'es'));
+  function tarjetaHermanos() {
+    if (!(S.isAdmin || S.coordDe.length)) return '';
+    escucharHermanos(); cargarViejos();
+    const L = listaHermanos().filter(h => !h.baja), av = L.filter(h => h.aviso).length, sin = L.filter(h => !h.ultimo).length, vj = viejosPend().length;
+    const sub = S.herm.ok ? [`${L.length} ${L.length === 1 ? 'habilitado' : 'habilitados'}`, sin ? `${sin} todavía no ${sin === 1 ? 'entró' : 'entraron'}` : '', vj ? `${vj} ${vj === 1 ? 'usaba' : 'usaban'} Google` : ''].filter(Boolean).join(' · ') : 'Cargando…';
+    return `<button type="button" class="hcard" data-go="#/hermanos"><span class="ii">${I('users', 'width:24px;height:24px')}</span><span class="tx"><b>Hermanos habilitados${av ? ` <span class="bdg">${av} ${av === 1 ? 'aviso' : 'avisos'}</span>` : ''}</b><small>${esc(sub)}</small></span>${I('chev')}</button>`;
+  }
+  const filaH = (h, acts) => `<div class="arow" data-hfic="${esc(h.id || '')}"><span class="av">${esc(iniciales(h.nombre + ' ' + h.apellido))}</span><span class="tx"><b>${esc(h.nombre)} ${esc(h.apellido)}</b><small>${esc(h.sub)}</small></span><span class="acts">${acts}</span></div>`;
+  function renderHermanos() {
+    if (!S.user || !(S.isAdmin || S.coordDe.length)) { $('app').innerHTML = '<div class="empty">Esta parte es para coordinadores.</div>'; return; }
+    escucharHermanos(); cargarViejos();
+    const H = S.herm, q = sinTilde(H.q || '').toLowerCase(), qd = celSolo(H.q);
+    const pasa = (h) => (H.cong === 'todas' || h.congregacion === H.cong) && (!q || sinTilde(h.nombre + ' ' + h.apellido).toLowerCase().includes(q) || (qd.length >= 3 && celSolo(h.celular).includes(qd)));
+    const L = listaHermanos(), congs = [...new Set(L.map(h => h.congregacion))].sort((a, b) => a.localeCompare(b, 'es'));
+    const vis = L.filter(pasa);
+    const avisos = vis.filter(h => h.aviso && !h.baja), sinEntrar = vis.filter(h => !h.baja && !h.ultimo), activos = vis.filter(h => !h.baja && h.ultimo), bajas = vis.filter(h => h.baja);
+    const ord = (a, b) => (a.apellido + a.nombre).localeCompare(b.apellido + b.nombre, 'es');
+    sinEntrar.sort(ord); activos.sort(ord); bajas.sort(ord);
+    const viejos = viejosPend().filter(pasa);
+    let h = `<div id="herm"><button type="button" class="btn" data-hnuevo>${I('plus', 'width:18px;height:18px')}Habilitar a un hermano</button>
+      <div class="srch2">${I('search', 'width:16px;height:16px')}<input id="hBus" type="search" placeholder="Buscar por nombre o celular" value="${esc(H.q || '')}" aria-label="Buscar hermano"></div>
+      ${congs.length > 1 ? `<div class="cg">${['todas', ...congs].map(c => `<button type="button" class="${H.cong === c ? 'on' : ''}" data-hcong="${esc(c)}">${c === 'todas' ? 'Todas' : esc(congCorta(c))}</button>`).join('')}</div>` : ''}`;
+    if (!H.ok) h += H.err ? '<div class="empty">No se pudo cargar la lista. Revisá la conexión.</div>' : '<div class="empty">Cargando…</div>';
+    h += avisos.map(a => `<div class="codok warn">${I('alert', 'width:18px;height:18px')}<span><b>${esc(a.nombre)} ${esc(a.apellido)} entró desde otro celular</b>${esc(cap(cuandoH(a.ultimo) || ''))}${a.disp ? ' · ' + esc(a.disp) : ''}. Si no lo cambió ${esc(a.nombre)}, mandale un link nuevo: el viejo deja de servir.<br><button type="button" class="linkish fuerte" data-hfic="${esc(a.id)}">Ver a ${esc(a.nombre)}</button> · <button type="button" class="linkish" data-hok="${esc(a.id)}">Ya está, fue ${esc(a.nombre)}</button></span></div>`).join('');
+    const reenviar = (x) => `<a class="sbtn" href="${esc(waTxt(x.celular, msgLink(x)))}" target="_blank" rel="noopener" aria-label="Reenviarle el link por WhatsApp">${I('chat', 'width:15px;height:15px')}</a>`;
+    if (sinEntrar.length) h += `<div class="sec">Todavía no entraron <span class="tag pendiente">${sinEntrar.length}</span></div><div class="card">${sinEntrar.map(x => filaH(Object.assign({ sub: `${congCorta(x.congregacion)} · link enviado ${cuandoH(x.creado) || ''}`.trim() }, x), reenviar(x))).join('')}</div>`;
+    if (viejos.length) h += `<div class="sec">Usaban la página con Google <span class="tag">${viejos.length}</span></div><div class="card">${viejos.map(v => `<div class="arow"><span class="av">${esc(iniciales(v.nombre + ' ' + v.apellido))}</span><span class="tx"><b>${esc(v.nombre)} ${esc(v.apellido)}</b><small>${esc(congCorta(v.congregacion))} · ${esc(v.celular || '')}${v.turnos ? ` · ${v.turnos} ${v.turnos === 1 ? 'turno' : 'turnos'}` : ''}</small></span><span class="acts"><button type="button" class="sbtn pri" data-hviejo="${esc(v.uid)}">Habilitar</button></span></div>`).join('')}</div><p class="fine izq">Al habilitarlos se cargan solos sus datos y, cuando tocan el link, sus turnos pasan al acceso nuevo.</p>`;
+    h += `<div class="sec">Habilitados <span class="tag confirmado">${activos.length}</span></div><div class="card">${activos.length ? activos.map(x => filaH(Object.assign({ sub: `${congCorta(x.congregacion)} · entró ${cuandoH(x.ultimo)}` }, x), I('chev'))).join('') : '<div class="empty">Todavía nadie entró con su link.</div>'}</div>`;
+    if (bajas.length) h += `<details class="hbajas"><summary>Dados de baja (${bajas.length})</summary><div class="card">${bajas.map(x => filaH(Object.assign({ sub: congCorta(x.congregacion) }, x), I('chev'))).join('')}</div></details>`;
+    $('app').innerHTML = h + '</div>';
+    const box = $('herm');
+    const bus = $('hBus'); bus.addEventListener('input', () => { H.q = bus.value; clearTimeout(H.t); H.t = setTimeout(() => { renderHermanos(); const b = $('hBus'); if (b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); } }, 250); });
+    box.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-hnuevo],[data-hcong],[data-hok],[data-hviejo],[data-hfic]'); if (!t || t.tagName === 'A' || e.target.closest('a')) return;
+      const d = t.dataset;
+      if (d.hnuevo !== undefined) return habilitarHermano();
+      if (d.hcong !== undefined) { H.cong = d.hcong; return renderHermanos(); }
+      if (d.hok) return S.db.doc('hermanos/' + d.hok).update({ aviso: false }).catch(() => toast('No se pudo guardar. Probá de nuevo.'));
+      if (d.hviejo) return habilitarHermano((S.herm.viejos || {})[d.hviejo]);
+      if (d.hfic) return fichaHermano(d.hfic);
+    });
+  }
+  function formHermano(x, titulo, boton, extra) {
+    const congs = (S.publico.congregaciones || []).slice().sort((a, b) => a.localeCompare(b, 'es'));
+    const cg = x.congregacion || '', otra = cg && !congs.includes(cg);
+    return sheet(`<h3>${titulo}</h3>${extra || ''}<div class="two"><div class="fld"><label for="hNom">Nombre</label><input id="hNom" value="${esc(x.nombre || '')}"></div><div class="fld"><label for="hApe">Apellido</label><input id="hApe" value="${esc(x.apellido || '')}"></div></div>
+      <div class="fld"><label for="hCong">Congregación</label><select id="hCong"><option value="">Elegí la congregación</option>${congs.map(c => `<option${c === cg ? ' selected' : ''}>${esc(c)}</option>`).join('')}<option value="__otra"${otra ? ' selected' : ''}>Otra…</option></select></div>
+      <div class="fld${otra ? '' : ' hidden'}" id="hOtraF"><label for="hOtra">¿Cuál?</label><input id="hOtra" value="${esc(otra ? cg : '')}" placeholder="Nombre de la congregación y ciudad"></div>
+      <div class="fld"><label for="hCel">Celular (para mandarle el WhatsApp)</label><input id="hCel" type="tel" value="${esc(x.celular || '')}" placeholder="343 555-0000"><small class="celok" id="hCelOk"></small></div>
+      ${x.id ? '' : '<label class="ck"><input type="checkbox" id="hOk"> <span>El comité de servicio de su congregación lo aprobó para la predicación pública.</span></label>'}
+      <p class="err hidden" id="hErr"></p><button type="button" class="btn" id="hGo">${boton}</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+  }
+  function leerForm(ov) {
+    const q = (s) => ov.querySelector(s), err = (m) => { q('#hErr').textContent = m; q('#hErr').classList.remove('hidden'); return null; };
+    const nombre = q('#hNom').value.trim(), apellido = q('#hApe').value.trim(), cel = normCel(q('#hCel').value);
+    const congregacion = q('#hCong').value === '__otra' ? q('#hOtra').value.trim() : q('#hCong').value;
+    if (!nombre || !apellido) return err('Completá nombre y apellido.');
+    if (!congregacion) return err('Elegí la congregación.');
+    if (!cel.ok) return err(cel.vacio ? 'Escribí el celular con característica (por ejemplo 343 555-0000).' : CEL_ERR);
+    if (q('#hOk') && !q('#hOk').checked) return err('Confirmá que el comité de servicio lo aprobó.');
+    return { nombre: nombre.slice(0, 60), apellido: apellido.slice(0, 60), congregacion: congregacion.slice(0, 80), celular: cel.txt };
+  }
+  function bindForm(ov) { const q = (s) => ov.querySelector(s); q('#hCong').addEventListener('change', () => q('#hOtraF').classList.toggle('hidden', q('#hCong').value !== '__otra')); bindCel(q('#hCel'), q('#hCelOk')); }
+  function listoLink(h, cod, titulo) {
+    sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>${titulo}</h3><p>Mandale su link por WhatsApp. Es personal: sirve en un celular a la vez.</p></div><a class="btn" id="hWa" href="${esc(waTxt(h.celular, msgLink(h, cod)))}" target="_blank" rel="noopener">${I('chat')}Mandarle su link por WhatsApp</a><button type="button" class="btn alt" id="hCopy">${I('copy')}Copiar el link</button><button type="button" class="btn alt" data-cerrar>Listo</button>`)
+      .querySelector('#hCopy').addEventListener('click', () => copiar(linkHermano(cod)));
+  }
+  // Nuevo hermano (o quien usaba Google: con su mismo id, así sus turnos quedan)
+  function habilitarHermano(viejo) {
+    const ov = formHermano(viejo || {}, 'Habilitar a un hermano', `${I('chat', 'width:18px;height:18px')}Habilitar y mandarle su link`, viejo ? `<p class="hint">Usaba la página con Google${viejo.turnos ? ` y tiene ${viejo.turnos} ${viejo.turnos === 1 ? 'turno' : 'turnos'} por delante` : ''}. Revisá sus datos.</p>` : '<p class="hint">Cargá sus datos como figuran en la congregación.</p>');
+    bindForm(ov);
+    ov.querySelector('#hGo').addEventListener('click', async () => {
+      const x = leerForm(ov); if (!x) return;
+      const dup = listaHermanos().find(h => !h.baja && celSolo(h.celular) === celSolo(x.celular) && h.id !== (viejo && viejo.uid));
+      if (dup) { const e = ov.querySelector('#hErr'); e.textContent = `Ese celular ya es de ${dup.nombre} ${dup.apellido}, que ya está habilitado.`; e.classList.remove('hidden'); return; }
+      const hid = viejo ? viejo.uid : 'h-' + uidGen() + uidGen(), cod = nuevoCod(), creado = new Date().toISOString();
+      const b = S.db.batch();
+      b.set(S.db.doc('hermanos/' + hid), Object.assign({}, x, { cod, creado }, yoFirma()));
+      b.set(S.db.doc('links/' + cod), Object.assign({ hid, nombre: x.nombre, congregacion: x.congregacion, creado, por: S.user.email.toLowerCase() }, viejo && viejo.turnos ? { turnos: viejo.turnos } : {}));
+      const bt = ov.querySelector('#hGo'); bt.disabled = true;
+      try { await b.commit(); ov.remove(); listoLink(x, cod, `${esc(x.nombre)} quedó habilitado`); }
+      catch (e) { console.error(e); bt.disabled = false; const er = ov.querySelector('#hErr'); er.textContent = 'No se pudo guardar. Revisá la conexión y probá de nuevo.'; er.classList.remove('hidden'); }
+    });
+  }
+  async function linkNuevo(h, reactivar) {
+    const cod = nuevoCod(), b = S.db.batch();
+    b.update(S.db.doc('hermanos/' + h.id), Object.assign({ cod, uid: null, aviso: false }, reactivar ? { baja: false } : {}));
+    b.set(S.db.doc('links/' + cod), { hid: h.id, nombre: h.nombre, congregacion: h.congregacion, creado: new Date().toISOString(), por: S.user.email.toLowerCase() });
+    b.delete(S.db.doc('links/' + h.cod));
+    await b.commit();
+    listoLink(h, cod, reactivar ? `${esc(h.nombre)} volvió a estar habilitado` : 'Listo: el link anterior ya no sirve');
+  }
+  function fichaHermano(hid) {
+    const h0 = S.herm.lista[hid]; if (!h0) return; const h = Object.assign({ id: hid }, h0);
+    const firm = h.porNombre || h.por || '';
+    const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(h.nombre + ' ' + h.apellido))}</span><div><h3>${esc(h.nombre)} ${esc(h.apellido)}</h3><p class="hint">${esc(h.congregacion)}</p></div></div>
+      <dl class="dl"><dt>Celular</dt><dd>${esc(h.celular)}</dd><dt>Habilitado</dt><dd>${esc(h.creado ? fmtCorto(String(h.creado).slice(0, 10)) : '')}${firm ? ', por ' + esc(firm) : ''}</dd><dt>Último ingreso</dt><dd>${h.ultimo ? esc(cap(cuandoH(h.ultimo))) + (h.disp ? ' · ' + esc(h.disp) : '') : 'Todavía no entró'}</dd>${h.baja ? `<dt>Estado</dt><dd class="mal">Dado de baja${h.bajaAt ? ' el ' + esc(fmtCorto(String(h.bajaAt).slice(0, 10))) : ''}</dd>` : ''}</dl>
+      ${h.baja ? `<button type="button" class="btn" id="fRe">${I('link', 'width:18px;height:18px')}Volver a habilitar</button>` : `<a class="btn" href="${esc(waTxt(h.celular, msgLink(h)))}" target="_blank" rel="noopener">${I('chat', 'width:18px;height:18px')}Reenviarle su link</a><button type="button" class="btn alt" id="fNuevo">${I('link', 'width:18px;height:18px')}Mandarle un link nuevo</button><button type="button" class="btn alt" id="fEd">${I('edit', 'width:18px;height:18px')}Cambiar datos</button><button type="button" class="btn alt peligro" id="fBaja">Dar de baja</button>`}
+      <p class="fine">${h.baja ? 'Al volver a habilitarlo recibe un link nuevo.' : '“Link nuevo” anula el anterior y cierra el celular donde esté. “Dar de baja” le cierra el acceso; sus turnos quedan para que los revises.'}</p>`);
+    const q = (s) => ov.querySelector(s), falla = () => toast('No se pudo guardar. Revisá la conexión y probá de nuevo.');
+    if (q('#fRe')) q('#fRe').addEventListener('click', async () => { ov.remove(); try { await linkNuevo(h, true); } catch (e) { console.error(e); falla(); } });
+    if (q('#fNuevo')) q('#fNuevo').addEventListener('click', async () => { if (!confirm(`¿Mandarle un link nuevo a ${h.nombre}? El que tiene deja de servir y se le cierra la página en el celular donde esté.`)) return; ov.remove(); try { await linkNuevo(h); } catch (e) { console.error(e); falla(); } });
+    if (q('#fEd')) q('#fEd').addEventListener('click', () => {
+      ov.remove(); const f = formHermano(h, 'Cambiar datos', 'Guardar'); bindForm(f);
+      f.querySelector('#hGo').addEventListener('click', async () => { const x = leerForm(f); if (!x) return; try { await S.db.doc('hermanos/' + hid).update(x); f.remove(); toast('Datos guardados'); } catch (e) { console.error(e); falla(); } });
+    });
+    if (q('#fBaja')) q('#fBaja').addEventListener('click', () => {
+      ov.remove();
+      const c = sheet(`<h3>¿Dar de baja a ${esc(h.nombre)} ${esc(h.apellido)}?</h3><p class="hint">Se le cierra el acceso en el celular donde esté y su link deja de servir. No se borran sus datos ni sus turnos: los vas a ver en cada campaña para reasignarlos.</p><button type="button" class="btn danger" id="bOk">Dar de baja</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+      c.querySelector('#bOk').addEventListener('click', async () => {
+        const b = S.db.batch();
+        b.update(S.db.doc('hermanos/' + hid), { baja: true, bajaPor: S.user.email.toLowerCase(), bajaAt: new Date().toISOString(), uid: null, aviso: false });
+        b.delete(S.db.doc('links/' + h.cod));
+        try { await b.commit(); c.remove(); toast(`${h.nombre} quedó dado de baja`); } catch (e) { console.error(e); falla(); }
+      });
+    });
+  }
+  return { renderHermanos, renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };
 };

@@ -11,8 +11,12 @@
      coordinadores/{cid}   {emails}          roles/{email}  {campanas: [cid]}
      config/publico        {congregaciones: ['Nombre (Ciudad)'], ciudades: [...]}
      config/admins         {emails}
-     fotos/{cid}__{id}     {cid, data (imagen JPEG achicada, data:…), creado}   ← público
-   Mirar es libre; para pedir un turno hay que iniciar sesión con Google.
+     fotos/{cid}__{id}     {cid, data (imagen JPEG achicada, data:…), creado}
+     hermanos/{hid}        hermano habilitado: nombre, apellido, congregacion, celular, cod (código de su link), uid (celular en uso)
+     links/{cod}           {hid, nombre, congregacion, turnos, usado}  ← lo lee quien conoce el código
+     sesiones/{uid}        {hid, cod, at}: qué hermano usa este celular (sesión anónima de Firebase)
+   La web está cerrada: entran los hermanos habilitados con su link personal (un celular a la vez)
+   y los coordinadores, administradores y soporte con Google.
    ===================================================================== */
 (function () {
   'use strict';
@@ -40,6 +44,7 @@
   /* ---------- Estado ---------- */
   const S = {
     db: null, auth: null, user: null, isAdmin: false, coordDe: [],
+    acceso: 'cargando', yo: null, esHermano: false, hermano: null, otro: null, herUnsub: null, datosUnsub: null, canje: null,
     campanas: {}, loaded: false, publico: { congregaciones: [], ciudades: [] },
     ciudad: 'todas', route: { name: 'home' }, dia: null,
     cc: {}, ccUnsub: {}, fotos: {},
@@ -48,14 +53,21 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '46';
+  const VERSION = '47';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
   // Datos del formulario recordados en este celular, separados por cuenta (en un celular compartido nadie ve los del otro)
-  const perfilKey = () => (S.user ? 'ppam-perfil:' + S.user.uid : '');
+  const perfilKey = () => (S.yo ? 'ppam-perfil:' + S.yo : '');
   try { localStorage.removeItem('ppam-perfil'); } catch (e) { /* el formato viejo no sabía de quién era: se descarta */ }
-  function perfil() { const k = perfilKey(); if (!k) return {}; try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } }
+  // Para un hermano habilitado, sus datos vienen de lo que cargó el coordinador (lo guardado en el celular manda)
+  function perfil() {
+    const h = S.hermano, base = h ? { nombre: h.nombre, apellido: h.apellido, congregacion: h.congregacion, celular: h.celular } : {};
+    const k = perfilKey(); if (!k) return base;
+    try { return Object.assign(base, JSON.parse(localStorage.getItem(k) || '{}')); } catch (e) { return base; }
+  }
+  // Nombre de quien usa la app (hermano o cuenta de Google)
+  const nombreYo = () => (S.hermano ? (S.hermano.nombre + ' ' + S.hermano.apellido).trim() : S.user ? (S.user.displayName || S.user.email || '') : '');
   function guardarPerfil(p) { const k = perfilKey(); if (!k) return; try { localStorage.setItem(k, JSON.stringify(p)); } catch (e) { /* nada */ } }
   // Cerrar sesión también borra la copia local de Firebase (pedidos con nombres y celulares que vio un coordinador).
   async function cerrarSesion() {
@@ -79,32 +91,82 @@
     }
     // Copia local de lo leído: abre más rápido, se ve sin señal y al volver pide solo lo que cambió (menos lecturas)
     try { if (S.db.enablePersistence) S.db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch (e) { /* navegador sin soporte */ }
-    S.db.collection('campanas').onSnapshot((qs) => {
-      const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; const primera = !S.loaded; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); if (primera) { render(); setTimeout(() => { if (S.route.name === 'home') bienvenida(); else if (S.route.name === 'camp' && S.campanas[S.route.cid]) introCampana(S.campanas[S.route.cid]); }, 60); } else refrescar(render);
-    }, (e) => { console.error(e); if (S.loaded) return; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); $('app').innerHTML = '<div class="empty carga-err"><b>No pudimos cargar las campañas.</b><br>Revisá la conexión y probá de nuevo.</div><button type="button" class="btn" id="reintentar">Reintentar</button>'; $('reintentar').addEventListener('click', () => location.reload()); });
-    S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin' || (S.route.name === 'home' && S.loaded)) render(); }, () => {});
     S.auth.onAuthStateChanged(onUser);
-    setInterval(() => { if (S.route.name === 'home') renderHome(); }, 60000);
+    setInterval(() => { if (S.route.name === 'home' && S.acceso === 'si') renderHome(); }, 60000);
     window.addEventListener('hashchange', () => { S.sucio = false; S.pendRender = false; const antes = S.route; readRoute(); transicion(antes, S.route); if (S.route.name !== 'coord' && S.coord.unsub.length) { S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = null; S.coord.pedidos = {}; S.coord.cupos = {}; S.coord.aud = {}; } render(); });
     readRoute();
+    // Si en 12 segundos no se sabe quién es, se avisa (mala señal)
+    setTimeout(() => { if (S.acceso === 'cargando' && S.route.name !== 'canje') { window.__ppamOk = true; $('app').removeAttribute('aria-busy'); $('app').innerHTML = '<div class="empty carga-err"><b>No pudimos cargar las campañas.</b><br>Revisá la conexión y probá de nuevo.</div><button type="button" class="btn" id="reintentar">Reintentar</button>'; $('reintentar').addEventListener('click', () => location.reload()); } }, 12000);
+  }
+  // Campañas y lista de congregaciones: solo con acceso (las reglas no las entregan a nadie más)
+  function iniciarDatos() {
+    if (S.datosUnsub) return;
+    const u1 = S.db.collection('campanas').onSnapshot((qs) => {
+      const o = {}; qs.forEach(d => { o[d.id] = Object.assign({ id: d.id }, d.data()); }); S.campanas = o; const primera = !S.loaded; S.loaded = true; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); if (primera) { render(); setTimeout(() => { if (S.route.name === 'home') bienvenida(); else if (S.route.name === 'camp' && S.campanas[S.route.cid]) introCampana(S.campanas[S.route.cid]); }, 60); } else refrescar(render);
+    }, (e) => { console.error(e); if (S.loaded) return; window.__ppamOk = true; $('app').removeAttribute('aria-busy'); $('app').innerHTML = '<div class="empty carga-err"><b>No pudimos cargar las campañas.</b><br>Revisá la conexión y probá de nuevo.</div><button type="button" class="btn" id="reintentar">Reintentar</button>'; $('reintentar').addEventListener('click', () => location.reload()); });
+    const u2 = S.db.doc('config/publico').onSnapshot((d) => { S.publico = Object.assign({ congregaciones: [], ciudades: [] }, d.exists ? d.data() : {}); if (S.route.name === 'admin' || (S.route.name === 'home' && S.loaded)) render(); }, () => {});
+    S.datosUnsub = () => { u1(); u2(); };
+  }
+  function pararDatos() {
+    if (S.datosUnsub) { S.datosUnsub(); S.datosUnsub = null; }
+    Object.keys(S.ccUnsub).forEach(k => { if (typeof S.ccUnsub[k] === 'function') S.ccUnsub[k](); }); S.ccUnsub = {}; S.cc = {};
+    S.campanas = {}; S.loaded = false;
   }
   async function onUser(u) {
     S.user = u || null; S.isAdmin = false; S.coordDe = []; S.isSoporte = false;
+    S.yo = null; S.esHermano = !!(u && u.isAnonymous); S.hermano = null; S.otro = null; S.acceso = 'cargando';
+    if (S.herUnsub) { S.herUnsub(); S.herUnsub = null; }
+    if (S.herm && S.herm.unsub) S.herm.unsub(); S.herm = null;   // lista de hermanos (coordinadores)
     S.sop.unsub.forEach(f => f()); S.sop.unsub = []; S.sop.on = false; S.sop.okR = S.sop.okE = false; S.sop.reportes = {}; S.sop.errores = {};
     if (S.misUnsub) { S.misUnsub(); S.misUnsub = null; } S.mis = {};
     // lo que vio la cuenta anterior no queda en memoria
     S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = null; S.coord.pedidos = {}; S.coord.cupos = {}; S.coord.aud = {};
     Object.keys(S.pendUnsub).forEach(k => { if (typeof S.pendUnsub[k] === 'function') S.pendUnsub[k](); }); S.pendUnsub = {}; S.pend = {};
     S.bus = { t: 0, peds: {}, cupos: {}, cargando: null };
-    if (u) {
-      S.misUnsub = S.db.collection('pedidos').where('uid', '==', u.uid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.mis = o; S.misErr = false; refrescar(render); }, (e) => { console.error(e); registrarError('aviso', 'Mis turnos: ' + (e.code || e.message || e)); S.misErr = true; if (S.route.name === 'mis' || S.route.name === 'home') render(); });
+    if (!u) { S.acceso = 'no'; pararDatos(); }
+    else if (u.isAnonymous) {
+      // Celular de un hermano: ¿qué hermano es y sigue siendo este su celular?
+      let ses = null;
+      try { const d = await S.db.doc('sesiones/' + u.uid).get(); ses = d.exists ? d.data() : null; } catch (e) { /* sin sesión */ }
+      if (S.user !== u) return;
+      if (ses) { escucharHermano(u, ses); return; }
+      if (S.entrando) return;   // está entrando con su link: la sesión se crea en un momento
+      S.acceso = 'no'; pararDatos();
+    } else {
       try { const r = await S.db.doc('roles/' + u.email.toLowerCase()).get(); S.coordDe = (r.exists && r.data().campanas) || []; } catch (e) { /* sin rol */ }
       try { const a = await S.db.doc('config/admins').get(); S.isAdmin = true; S.admins = (a.exists && a.data().emails) || []; } catch (e) { S.isAdmin = false; }
       try { const so = await S.db.doc('config/soporte').get(); S.soporteEmails = (so.exists && so.data().emails) || []; S.isSoporte = S.soporteEmails.includes(u.email.toLowerCase()); } catch (e) { S.isSoporte = false; }
+      if (S.user !== u) return;
+      if (S.isAdmin || S.coordDe.length || S.isSoporte) { S.acceso = 'si'; S.yo = u.uid; iniciarDatos(); escucharMis(); }
+      else { S.acceso = 'nocoord'; pararDatos(); }
     }
     renderTop(); render();
     // coordinadores, administradores y soporte: su parte de la app se baja enseguida, en segundo plano
     if (S.user && (S.isAdmin || S.coordDe.length || S.isSoporte)) cargarCoord().catch(() => {});
+  }
+  // El hermano entra solo si este celular es el que tiene atado (un celular a la vez) y no está dado de baja
+  function escucharHermano(u, ses) {
+    if (S.herUnsub) S.herUnsub();
+    let primera = true;
+    S.herUnsub = S.db.doc('hermanos/' + ses.hid).onSnapshot((d) => {
+      const h = d.exists ? d.data() : null, ok = !!(h && h.uid === u.uid && h.cod === ses.cod && !h.baja);
+      const antes = S.acceso;
+      if (ok) {
+        S.hermano = h; S.otro = null; S.acceso = 'si';
+        if (S.yo !== ses.hid) { S.yo = ses.hid; escucharMis(); }
+        iniciarDatos();
+      } else {
+        S.acceso = h && h.baja ? 'baja' : h ? 'otro' : 'no'; S.otro = h; S.hermano = null; S.yo = null;
+        if (S.misUnsub) { S.misUnsub(); S.misUnsub = null; } S.mis = {};
+        pararDatos();
+      }
+      if (primera || antes !== S.acceso) { primera = false; renderTop(); render(); }
+    }, () => { S.acceso = 'no'; pararDatos(); renderTop(); render(); });
+  }
+  function escucharMis() {
+    if (S.misUnsub) { S.misUnsub(); S.misUnsub = null; }
+    if (!S.yo) return;
+    S.misUnsub = S.db.collection('pedidos').where('uid', '==', S.yo).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.mis = o; S.misErr = false; refrescar(render); }, (e) => { console.error(e); registrarError('aviso', 'Mis turnos: ' + (e.code || e.message || e)); S.misErr = true; if (S.route.name === 'mis' || S.route.name === 'home') render(); });
   }
   async function login() {
     if (window.__ppamMock) return window.__ppamMock.login();
@@ -121,11 +183,14 @@
   /* ---------- Rutas: #/ · #/c/{cid} · #/t/{pedido} · #/mis · #/coord/{cid} · #/admin ---------- */
   function readRoute() {
     const h = (location.hash || '#/').slice(1).split('/').filter(Boolean);
-    if (h[0] === 'c' && h[1]) S.route = h[2] && h[3] ? { name: 'camp', cid: h[1], fecha: h[2], tid: decodeURIComponent(h[3]) } : { name: 'camp', cid: h[1] };
+    const cod = (location.hash || '').match(/[?&]cod=([A-Za-z0-9-]+)/);
+    if (cod) S.route = { name: 'canje', cod: cod[1].toUpperCase().replace(/[^A-Z0-9]/g, '') };
+    else if (h[0] === 'c' && h[1]) S.route = h[2] && h[3] ? { name: 'camp', cid: h[1], fecha: h[2], tid: decodeURIComponent(h[3]) } : { name: 'camp', cid: h[1] };
     else if (h[0] === 't' && h[1]) S.route = { name: 'turno', pid: decodeURIComponent(h[1]) };
     else if (h[0] === 'mis') S.route = { name: 'mis' };
     else if (h[0] === 'coord') S.route = { name: 'coord', cid: h[1] || null };
     else if (h[0] === 'admin') S.route = { name: 'admin' };
+    else if (h[0] === 'hermanos') S.route = { name: 'hermanos' };
     else if (h[0] === 'soporte') S.route = { name: 'soporte' };
     else if (h[0] === 'ayuda') S.route = { name: 'ayuda', q: h[1] || '' };
     else S.route = { name: 'home' };
@@ -135,25 +200,28 @@
 
   function renderTop() {
     const r = S.route, c = r.cid && S.campanas[r.cid];
-    document.body.className = 'r-' + r.name;
+    document.body.className = 'r-' + r.name + (S.acceso === 'si' || r.name === 'ayuda' ? '' : ' cerrado');
     const esCoord = !!(S.user && (S.isAdmin || S.coordDe.length || S.isSoporte));
-    const atras = r.name === 'camp' || r.name === 'turno' || r.name === 'ayuda' || r.name === 'admin' || (r.name === 'soporte' && (S.isAdmin || S.coordDe.length)) || (r.name === 'coord' && r.cid && (S.isAdmin || S.coordDe.length > 1));
+    const atras = r.name === 'camp' || r.name === 'turno' || r.name === 'ayuda' || r.name === 'admin' || (r.name === 'soporte' && (S.isAdmin || S.coordDe.length)) || (r.name === 'coord' && r.cid) || r.name === 'hermanos';
     $('backBtn').classList.toggle('hidden', !atras);
     $('brand').classList.toggle('hidden', r.name !== 'home' && S.loaded);
     $('shareBtn').classList.toggle('hidden', r.name !== 'camp' || !c);
     const ub = $('userBtn');
-    ub.className = S.user ? 'av' : 'login';
-    ub.textContent = S.user ? iniciales(S.user.displayName || S.user.email) : 'Ingresar';
-    ub.setAttribute('aria-label', S.user ? 'Mi cuenta' : 'Ingresar');
+    const conCuenta = S.acceso === 'si' || S.acceso === 'nocoord';
+    ub.className = conCuenta ? 'av' : 'login';
+    ub.textContent = conCuenta ? iniciales(nombreYo()) : 'Coordinadores';
+    ub.setAttribute('aria-label', conCuenta ? 'Mi cuenta' : 'Ingresar como coordinador');
+    ub.classList.toggle('hidden', !conCuenta && (S.esHermano || r.name === 'canje'));
     $('coordBtn').classList.toggle('hidden', !esCoord);
-    $('busBtn').classList.toggle('hidden', !S.user);
-    [['tabHome', ['home', 'camp']], ['tabMis', ['mis', 'turno']], ['tabAyuda', ['ayuda']], ['coordBtn', ['coord', 'admin', 'soporte']]].forEach(([id, rs]) => $(id).classList.toggle('on', rs.includes(r.name)));
+    $('busBtn').classList.toggle('hidden', S.acceso !== 'si');
+    [['tabHome', ['home', 'camp']], ['tabMis', ['mis', 'turno']], ['tabAyuda', ['ayuda']], ['coordBtn', ['coord', 'admin', 'soporte', 'hermanos']]].forEach(([id, rs]) => $(id).classList.toggle('on', rs.includes(r.name)));
     let k = '', t = '', s = '';
     if (r.name === 'camp' && c) { k = c.ciudad || ''; t = c.nombre; s = campRango(c); }
     else if (r.name === 'mis') { t = 'Mis turnos'; s = 'Tus turnos, su estado y cómo llegar.'; }
     else if (r.name === 'turno') { t = 'Tu turno'; }
     else if (r.name === 'coord') { k = 'Coordinación'; t = c ? c.nombre : 'Tus campañas'; s = c ? (c.ciudad || '') + ' · ' + campRango(c) : ''; }
     else if (r.name === 'admin') { k = 'Administración'; t = 'Campañas y equipo'; }
+    else if (r.name === 'hermanos') { k = 'Coordinación'; t = 'Hermanos habilitados'; s = 'De todas las congregaciones'; }
     else if (r.name === 'ayuda') { k = 'Ayuda'; t = 'Preguntas frecuentes'; s = 'Cómo anotarte, tus turnos y tus datos.'; }
     else if (r.name === 'soporte') { k = 'Soporte'; t = 'Reportes y errores'; s = 'Lo que avisan los hermanos y lo que la página anota sola.'; }
     $('tbKicker').textContent = k; $('tbTitle').textContent = t; $('tbSub').textContent = s;
@@ -282,12 +350,17 @@
     }
     renderTop();
     const r = S.route;
+    if (r.name === 'canje') return renderCanje();
+    if (r.name === 'ayuda' && S.acceso !== 'cargando') return renderAyuda();
+    if (S.acceso === 'cargando') { $('app').innerHTML = esqueleto(); return; }
+    if (S.acceso !== 'si') return renderCerrado();
     if (!S.loaded) { $('app').innerHTML = esqueleto(); return; }
     if (r.name === 'camp') return renderCamp();
     if (r.name === 'mis') return renderMis();
     if (r.name === 'turno') return renderTurno();
     if (r.name === 'coord') return renderCoord();
     if (r.name === 'admin') return renderAdmin();
+    if (r.name === 'hermanos') return renderHermanos();
     if (r.name === 'soporte') return renderSoporte();
     if (r.name === 'ayuda') return renderAyuda();
     renderHome();
@@ -386,7 +459,7 @@
   const PASOS = [
     { t: 'Elegí una campaña', d: 'En el inicio están las campañas de toda la provincia. Tocá la de tu ciudad.' },
     { t: 'Elegí día y horario', d: 'Tocá un día y después un horario que tenga lugar.' },
-    { t: 'Anotate con tu cuenta de Google', d: 'Dejás tu nombre, congregación y celular. Solo los ven los coordinadores de esa campaña.' },
+    { t: 'Confirmá tus datos y anotate', d: 'Tu nombre, congregación y celular ya los cargó el responsable. Solo los ven los coordinadores de esa campaña.' },
     { t: 'Un coordinador te confirma', d: 'Lo ves en Mis turnos. Desde ahí lo agendás, ves cómo llegar o lo cancelás si no podés ir.' }
   ];
   function bienvenida(forzar) {
@@ -416,10 +489,11 @@
   /* ---------- Ayuda: preguntas frecuentes (texto fijo, sin lecturas a Firebase) ---------- */
   const AYUDA = [
     { g: 'Anotarme', qs: [
-      ['google', '¿Por qué tengo que entrar con Google?', 'Para saber que sos vos: así nadie puede anotarse a tu nombre y podés ver tus turnos desde cualquier celular. Usamos tu cuenta solo para eso; no vemos tus correos ni tus contactos.'],
+      ['link', '¿Cómo entro a la página?', 'Con el link personal que te mandó por WhatsApp el responsable de tu congregación: lo tocás, confirmás y listo, sin contraseña ni cuenta de Google. Guardá ese mensaje: si cambiás de celular o se te cierra, tocás el mismo link y entrás de nuevo. Funciona en un celular a la vez.'],
+      ['reenvio', '¿Puedo pasarle mi link a otro hermano?', 'No: es solo para vos. Si otra persona lo usa, a vos se te cierra la página en tu celular y el responsable lo ve. Cada hermano recibe su propio link cuando el comité de servicio de su congregación lo aprueba.'],
       ['espera', 'Mi turno dice "Esperando confirmación", ¿qué significa?', 'Que tu pedido llegó bien y un coordinador de la campaña lo tiene que confirmar. Mientras tanto el lugar queda guardado para vos. Cuando lo confirme, en Mis turnos va a decir "Confirmado".'],
       ['completo', 'Un horario dice "Completo", ¿qué hago?', 'Elegí otro horario u otro día: los que tienen lugar dicen cuántos quedan libres. Con el filtro "Con lugar" ves solo esos, y con la lupa de arriba buscás lugares libres para hoy o mañana en toda la provincia.'],
-      ['acompanado', '¿Puedo anotarme con mi esposa o con otro hermano?', 'Sí. Cada uno se anota con su propia cuenta en el mismo horario. Al anotarte podés dejar una nota para el coordinador, por ejemplo "Voy con mi esposa". Desde tu turno, "Invitar a alguien a este turno" le manda el enlace por WhatsApp.'],
+      ['acompanado', '¿Puedo anotarme con mi esposa o con otro hermano?', 'Sí. Cada uno se anota con su propio link en el mismo horario. Al anotarte podés dejar una nota para el coordinador, por ejemplo "Voy con mi esposa". Desde tu turno, "Invitar a alguien a este turno" le manda el enlace por WhatsApp.'],
       ['varios', '¿Puedo anotarme en más de un turno?', 'Sí, en los que quieras. Si dos turnos se superponen en el horario, la app te avisa antes de confirmar.']
     ] },
     { g: 'Mis turnos', qs: [
@@ -440,6 +514,69 @@
       ['recuperar', 'Borré algo por error, ¿se puede recuperar?', 'En Ajustes › Historial ves quién cambió qué y cuándo; los puntos y turnos borrados se pueden volver con "Restaurar". Para cualquier otra cosa, avisale al administrador: hay copias de seguridad diarias.']
     ] }
   ];
+  /* ---------- Web cerrada: sin acceso no se ve nada ---------- */
+  function cerrada(h) { window.__ppamOk = true; $('app').removeAttribute('aria-busy'); $('app').innerHTML = `<div class="cerr">${h}</div>`; }
+  const cuando = (ts) => { const d = ts && (ts.toDate ? ts.toDate() : new Date(ts)); if (!d || isNaN(d)) return ''; const f = isoOf(d), hh = `${d.getHours()}:${pad(d.getMinutes())}`; return f === hoy() ? `Hoy a las ${hh}` : f === addDays(hoy(), -1) ? `Ayer a las ${hh}` : `El ${cap(fmtDia(f))} a las ${hh}`; };
+  function renderCerrado() {
+    const coord = '<p class="fine cerr-co"><button type="button" class="linkish" data-login>Soy coordinador · entrar con Google</button></p>';
+    if (S.acceso === 'otro') {
+      const h = S.otro || {};
+      return cerrada(`<div class="lk warn">${I('alert', 'width:30px;height:30px')}</div><h2>Tu acceso se abrió en otro celular</h2><p>${esc(cuando(h.ultimo) || 'Hace un rato')} alguien entró con tu link desde otro teléfono${h.disp ? ` (${esc(h.disp)})` : ''}, así que en este se cerró.</p>
+        <div class="codok">${I('check', 'width:18px;height:18px')}<span><b>¿Fuiste vos?</b>Tocá el link del WhatsApp para volver a usar este celular.</span></div>
+        <div class="codok mal">${I('x', 'width:18px;height:18px')}<span><b>¿No fuiste vos?</b>Avisale al responsable de tu congregación: te manda un link nuevo y el viejo deja de servir.</span></div>`);
+    }
+    if (S.acceso === 'baja') return cerrada(`<div class="lk warn">${I('alert', 'width:30px;height:30px')}</div><h2>Tu acceso fue dado de baja</h2><p>Si creés que es un error, hablá con el responsable de tu congregación.</p>`);
+    if (S.acceso === 'nocoord') return cerrada(`<div class="lk warn">${I('users', 'width:30px;height:30px')}</div><h2>Esta cuenta no coordina ninguna campaña</h2><p>${esc(S.user.email)} no está como coordinador. Los publicadores entran con el link personal que les manda el responsable de su congregación, sin cuenta de Google.</p><button type="button" class="btn alt" id="ncOut">Salir</button>`), $('ncOut').addEventListener('click', () => cerrarSesion());
+    cerrada(`<div class="lk">${I('link', 'width:30px;height:30px')}</div><h2>Predicación pública en Entre Ríos</h2><p>Para entrar, tocá el link que te mandó por WhatsApp el responsable de tu congregación.</p>
+      <div class="codok">${I('help', 'width:18px;height:18px')}<span><b>¿Cambiaste de celular o se te cerró?</b>Buscá ese mismo mensaje en WhatsApp y tocá el link otra vez. Si no lo encontrás, pedile uno nuevo al responsable.</span></div>${coord}`);
+  }
+  /* ---------- Entrar con el link personal (#/?cod=XXXXXXXX) ---------- */
+  async function cargarCanje(cod) {
+    S.canje = { cod, estado: 'cargando' };
+    try {
+      if (!S.auth.currentUser) await S.auth.signInAnonymously();
+      const d = await S.db.doc('links/' + cod).get();
+      if (!S.canje || S.canje.cod !== cod) return;
+      if (!d.exists) S.canje.estado = 'malo';
+      else { S.canje.link = d.data(); S.canje.estado = 'listo'; }
+    } catch (e) { console.error(e); if (S.canje && S.canje.cod === cod) S.canje.estado = /permission|insufficient/i.test(e && (e.code || e.message) || '') ? 'malo' : 'error'; }
+    if (S.route.name === 'canje') render();
+  }
+  function renderCanje() {
+    const cod = S.route.cod;
+    if (!S.canje || S.canje.cod !== cod) { cargarCanje(cod); }
+    const k = S.canje;
+    if (k.estado === 'cargando' || k.estado === 'entrando') { $('app').innerHTML = `<div class="cerr"><div class="lk">${I('link', 'width:30px;height:30px')}</div><h2>${k.estado === 'entrando' ? 'Entrando…' : 'Un momento…'}</h2></div>`; return; }
+    if (k.estado === 'malo') return cerrada(`<div class="lk warn">${I('alert', 'width:30px;height:30px')}</div><h2>Este link ya no sirve</h2><p>Puede ser que el responsable te haya mandado uno más nuevo, o que se haya dado de baja. Buscá el último mensaje o pedile uno nuevo al responsable de tu congregación.</p>`);
+    if (k.estado === 'error') return cerrada(`<div class="lk warn">${I('alert', 'width:30px;height:30px')}</div><h2>No pudimos revisar tu link</h2><p>Revisá la conexión y probá de nuevo.</p><button type="button" class="btn" id="cjRe">Reintentar</button>`), $('cjRe').addEventListener('click', () => { S.canje = null; render(); });
+    const l = k.link, ya = S.esHermano && S.acceso === 'si' && S.yo === l.hid;
+    if (ya) { history.replaceState(null, '', location.pathname + '#/'); readRoute(); render(); return; }
+    const ini = iniciales((l.nombre || '') + ' ' + (l.apellido || ''));
+    const otra = l.usado ? `<h2>Hola de nuevo, ${esc(l.nombre)}</h2><p>Ya entraste antes desde otro celular.</p>` : `<h2>¡Hola, ${esc(l.nombre)}!</h2><p>Tu congregación te habilitó para la predicación pública.</p>`;
+    const migra = !l.usado && l.turnos ? `<div class="codok">${I('cal', 'width:18px;height:18px')}<span><b>${l.turnos === 1 ? 'Tu turno pasa' : `Tus ${l.turnos} turnos pasan`} a tu acceso nuevo</b>Los pediste con tu cuenta de Google. Desde ahora entrás solo con este link.</span></div>` : '';
+    cerrada(`<div class="lk">${I(l.usado ? 'users' : 'check', 'width:30px;height:30px;stroke-width:2.2')}</div>${otra}<div class="yoc"><span class="av">${esc(ini)}</span><span><b>${esc(l.nombre)}</b><small>${esc(l.congregacion || '')}</small></span></div>${migra}
+      <button type="button" class="btn" id="cjOk">${l.usado ? 'Entrar desde este celular' : 'Confirmar ingreso'}</button><p class="fine">${l.usado ? 'Tu acceso se pasa a este celular y el otro se cierra. Tus turnos siguen igual.' : 'Sin contraseña ni cuenta de Google.'}</p>`);
+    $('cjOk').addEventListener('click', () => entrarConLink(cod, l));
+  }
+  async function entrarConLink(cod, l) {
+    S.canje.estado = 'entrando'; S.entrando = true; render();
+    try {
+      // quien usaba la página con Google (o un coordinador probando su link) deja su cuenta en este celular
+      if (S.auth.currentUser && !S.auth.currentUser.isAnonymous) await S.auth.signOut();
+      if (!S.auth.currentUser) await S.auth.signInAnonymously();
+      const u = S.auth.currentUser, b = S.db.batch();
+      b.set(S.db.doc('sesiones/' + u.uid), { hid: l.hid, cod, at: S.ahora() });
+      b.update(S.db.doc('hermanos/' + l.hid), Object.assign({ uid: u.uid, ultimo: S.ahora(), disp: dispositivo().slice(0, 80) }, l.usado ? { aviso: true } : {}));
+      b.update(S.db.doc('links/' + cod), { usado: true });
+      await conTiempo(b.commit());
+      S.canje = null; history.replaceState(null, '', location.pathname + '#/'); readRoute();
+      S.user = u; S.esHermano = true; S.acceso = 'cargando'; render();
+      escucharHermano(u, { hid: l.hid, cod });
+    } catch (e) {
+      console.error(e); registrarError('aviso', 'Entrar con link: ' + (e.code || e.message || e));
+      S.canje.estado = /permission|insufficient/i.test(e && (e.code || e.message) || '') ? 'malo' : 'error'; render();
+    } finally { S.entrando = false; }
+  }
   function renderAyuda() {
     const esCoord = !!(S.user && (S.isAdmin || S.coordDe.length));
     let h = `<button type="button" class="btn alt" id="ayBv" style="margin:4px 0 6px">${I('star', 'width:18px;height:18px')}Ver la bienvenida otra vez</button>`;
@@ -458,7 +595,7 @@
     const ciudades = [...new Set(list.map(c => c.ciudad).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
     if (S.ciudad !== 'todas' && !ciudades.includes(S.ciudad)) S.ciudad = 'todas';
     const vis = list.filter(c => S.ciudad === 'todas' || c.ciudad === S.ciudad);
-    const prox = S.user ? misProximos() : [];
+    const prox = S.yo ? misProximos() : [];
     let h = instalarHTML();
     if (prox.length) {
       h += `<div class="lbl">${prox[0].fecha === hoy() ? 'Hoy' : 'Tu próximo turno'}</div>` + ticket(prox[0]);
@@ -469,8 +606,8 @@
     } else if (!(S.vista === 'mapa' && S.publico.mapa !== false && vis.length)) {   // en modo Mapa, el mapa es el protagonista
       const { n, mejor } = libresSemana(vis);
       const donde = S.ciudad !== 'todas' ? 'En ' + S.ciudad : 'En Entre Ríos';
-      h += `${S.user ? '<div class="lbl">Todavía no tenés turnos</div>' : '<div style="height:6px"></div>'}<div class="welcome">`;
-      h += S.user ? `<h4>¿Te sumás esta semana?</h4><p>${esc(donde)} ${n === 1 ? 'hay <b>1 lugar libre</b>' : `hay <b>${n} lugares libres</b>`} en los próximos 7 días.</p>`
+      h += `${S.yo ? '<div class="lbl">Todavía no tenés turnos</div>' : '<div style="height:6px"></div>'}<div class="welcome">`;
+      h += S.yo ? `<h4>¿Te sumás esta semana?</h4><p>${esc(donde)} ${n === 1 ? 'hay <b>1 lugar libre</b>' : `hay <b>${n} lugares libres</b>`} en los próximos 7 días.</p>`
         : `<h4>Sumate a un turno</h4><p>Elegí una campaña, un día y un horario. Un coordinador te confirma.</p><div class="stats"><div><b class="num">${vis.length}</b><small>${vis.length === 1 ? 'campaña activa' : 'campañas activas'}${S.ciudad !== 'todas' ? ' en ' + esc(S.ciudad) : ''}</small></div><div><b class="num">${n}</b><small>lugares libres esta semana</small></div></div>`;
       if (mejor) h += `<button type="button" class="btn p" data-go="#/c/${esc(mejor.id)}">Ver turnos libres</button>`;
       h += '</div>';
@@ -541,7 +678,7 @@
     const filas = orden.map(pid => {
       const p = c.puntos[pid], items = ts.filter(t => t.punto === pid).map(t => {
         const oc = ocupDe(c.id, S.dia, t.id), n = cupoDe(c, t), vals = Object.values(oc), conf = vals.filter(v => v === 'c').length;
-        const mio = S.user && oc[S.user.uid], paso = yaEmpezo(S.dia, t), falta = paso || cargando || errCupos ? 0 : Math.max(0, n - vals.length);
+        const mio = S.yo && oc[S.yo], paso = yaEmpezo(S.dia, t), falta = paso || cargando || errCupos ? 0 : Math.max(0, n - vals.length);
         return { t, n, conf, pend: vals.length - conf, mio, falta, paso };
       });
       return { pid, p, items, libres: items.reduce((a, x) => a + x.falta, 0) };
@@ -571,7 +708,7 @@
     });
     if (filas.length && !vistos) h += '<div class="card"><div class="empty">Ese día ya no quedan lugares. Probá con otro día.</div></div>';
     $('app').innerHTML = h;
-    if (enlace && (S.ccOk || {})[c.id]) { enlace.hecho = true; setTimeout(() => { const oc = ocupDe(c.id, S.dia, enlace.tid); if (S.user && oc[S.user.uid]) return; if (Object.keys(oc).length >= cupoDe(c, Object.assign({ id: enlace.tid }, c.turnos[enlace.tid]))) { toast('Ese turno ya se completó. Elegí otro horario.'); return; } pedir(enlace.tid); }, 0); }
+    if (enlace && (S.ccOk || {})[c.id]) { enlace.hecho = true; setTimeout(() => { const oc = ocupDe(c.id, S.dia, enlace.tid); if (S.yo && oc[S.yo]) return; if (Object.keys(oc).length >= cupoDe(c, Object.assign({ id: enlace.tid }, c.turnos[enlace.tid]))) { toast('Ese turno ya se completó. Elegí otro horario.'); return; } pedir(enlace.tid); }, 0); }
   }
   function verLugar(cid, pid) {
     const c = S.campanas[cid], p = c && c.puntos && c.puntos[pid];
@@ -687,11 +824,7 @@
     if (!t) return;
     if (yaEmpezo(S.dia, t)) { toast('Ese turno ya empezó. Elegí otro horario.'); return; }
     if (!(S.ccOk || {})[c.id]) { toast('Esperá un segundo: estamos consultando los lugares libres.'); return; }
-    if (!S.user) {
-      const ov = sheet(`<h3>Ingresá para anotarte</h3><p class="hint">Usamos tu cuenta de Google solo para saber que sos vos: así nadie puede anotarse a tu nombre y podés ver tus turnos.</p><button type="button" class="btn" id="lgBtn">Ingresar con Google</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
-      ov.querySelector('#lgBtn').addEventListener('click', async () => { await login(); ov.remove(); if (S.user) pedir(tid); });
-      return;
-    }
+    if (!S.yo) return;
     const pf = perfil(), p = c.puntos[t.punto];
     const congs = (S.publico.congregaciones || []).slice().sort((a, b) => a.localeCompare(b, 'es'));
     const opts = congs.map(x => `<option${x === pf.congregacion ? ' selected' : ''}>${esc(x)}</option>`).join('') + `<option value="__otra"${pf.congregacion && !congs.includes(pf.congregacion) ? ' selected' : ''}>Otra…</option>`;
@@ -700,8 +833,8 @@
     const avisoChoca = choca.length ? `<div class="aviso-mapa choca">${I('alert', 'width:16px;height:16px;flex-shrink:0;margin-top:2px')}<span><b>Se superpone con otro turno tuyo</b>${choca.map(m => `${esc(m.desde)} a ${esc(m.hasta)} · ${esc((((S.campanas[m.cid] || {}).puntos || {})[m.punto] || {}).nombre || '')}`).join('; ')}. Si igual querés este, después cancelá el otro desde Mis turnos.</span></div>` : '';
     const ov = sheet(`<h3>Confirmá tu turno</h3><p class="hint">Un coordinador lo revisa y te confirma.</p>${avisoChoca}
       <div class="sum"><div>${I('cal')}${esc(cap(fmtDia(S.dia)))}</div><div>${I('clock')}<span class="num">${esc(t.desde)} – ${esc(t.hasta)}</span><small>${libres === 1 ? 'Queda 1 lugar' : `Quedan ${libres} lugares`}</small></div><div>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}${esc(p.nombre)} · ${esc(c.nombre)}</div></div>
-      <div class="two"><div class="fld"><label for="pNom">Nombre</label><input id="pNom" autocomplete="given-name" value="${esc(pf.nombre || (S.user.displayName || '').split(' ')[0] || '')}"></div>
-      <div class="fld"><label for="pApe">Apellido</label><input id="pApe" autocomplete="family-name" value="${esc(pf.apellido || (S.user.displayName || '').split(' ').slice(1).join(' ') || '')}"></div></div>
+      <div class="two"><div class="fld"><label for="pNom">Nombre</label><input id="pNom" autocomplete="given-name" value="${esc(pf.nombre || nombreYo().split(' ')[0] || '')}"></div>
+      <div class="fld"><label for="pApe">Apellido</label><input id="pApe" autocomplete="family-name" value="${esc(pf.apellido || nombreYo().split(' ').slice(1).join(' ') || '')}"></div></div>
       <div class="fld"><label for="pCong">Congregación</label><select id="pCong">${congs.length ? '<option value="">Elegí tu congregación</option>' : ''}${opts}</select></div>
       <div class="fld${pf.congregacion && !congs.includes(pf.congregacion) ? '' : ' hidden'}" id="pOtraF"><label for="pOtra">¿Cuál?</label><input id="pOtra" value="${esc(pf.congregacion && !congs.includes(pf.congregacion) ? pf.congregacion : '')}" placeholder="Nombre de tu congregación y ciudad"></div>
       <div class="fld"><label for="pCel">Celular (WhatsApp)</label><input id="pCel" type="tel" autocomplete="tel" value="${esc(pf.celular || '')}" placeholder="343 555-0000"><small class="celok" id="pCelOk"></small></div>
@@ -728,7 +861,7 @@
       try {
         await conTiempo(enviarPedido(c, t, S.dia, { nombre, apellido, congregacion, celular, nota }));
         ov.remove();
-        const pid = cupoId(c.id, S.dia, t.id) + '__' + S.user.uid;
+        const pid = cupoId(c.id, S.dia, t.id) + '__' + S.yo;
         sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>¡Listo! Te anotaste</h3><p>${esc(cap(fmtDia(S.dia)))} · ${esc(t.desde)} a ${esc(t.hasta)} · ${esc(p.nombre)}</p><p><span class="tag pendiente">Esperando confirmación</span><br>Cuando un coordinador lo confirme lo vas a ver en el inicio y en Mis turnos.</p></div><div class="okacts"><button type="button" class="sbtn" data-ics="${esc(pid)}">${I('cal', 'width:16px;height:16px')}Agendar</button><button type="button" class="sbtn" data-comp="${esc(pid)}">${I('share', 'width:16px;height:16px')}Compartir</button><button type="button" class="sbtn" data-invitar="${esc(pid)}">${I('chat', 'width:16px;height:16px')}Invitar</button></div><button type="button" class="btn" data-go="#/t/${esc(pid)}" data-cerrar>Ver mi turno</button><button type="button" class="btn alt" data-cerrar>Listo</button>`);
       } catch (e) {
         if (e && e.code === 'sin-respuesta') { ov.remove(); sheet(`<h3>Todavía no hay respuesta</h3><p class="hint">Parece que hay poca señal. Tu pedido queda guardado en este celular y se manda solo cuando vuelva la conexión.</p><p class="hint">Fijate en <b>Mis turnos</b> en un rato: si aparece "Esperando confirmación", llegó bien.</p><button type="button" class="btn" data-cerrar>Entendido</button>`); return; }
@@ -741,11 +874,11 @@
   const SIN_RESPUESTA = 15000;
   const conTiempo = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('sin respuesta'), { code: 'sin-respuesta' })), SIN_RESPUESTA))]);
   async function enviarPedido(c, t, fecha, datos) {
-    const u = S.user, id = cupoId(c.id, fecha, t.id);
+    const yo = S.yo, id = cupoId(c.id, fecha, t.id);
     const batch = S.db.batch();
-    batch.set(S.db.doc('cupos/' + id), { cid: c.id, fecha, tid: t.id, ocupados: { [u.uid]: 'p' } }, { merge: true });
-    batch.set(S.db.doc('pedidos/' + id + '__' + u.uid), {
-      cid: c.id, fecha, tid: t.id, punto: t.punto, desde: t.desde, hasta: t.hasta, uid: u.uid, email: u.email.toLowerCase(),
+    batch.set(S.db.doc('cupos/' + id), { cid: c.id, fecha, tid: t.id, ocupados: { [yo]: 'p' } }, { merge: true });
+    batch.set(S.db.doc('pedidos/' + id + '__' + yo), {
+      cid: c.id, fecha, tid: t.id, punto: t.punto, desde: t.desde, hasta: t.hasta, uid: yo, ...(S.esHermano ? {} : { email: S.user.email.toLowerCase() }),
       nombre: datos.nombre.slice(0, 60), apellido: datos.apellido.slice(0, 60), congregacion: datos.congregacion.slice(0, 80), celular: datos.celular.slice(0, 30),
       estado: 'pendiente', creado: new Date().toISOString(), ...(datos.nota ? { nota: String(datos.nota).slice(0, NOTA_MAX) } : {})
     });
@@ -763,7 +896,7 @@
       batch.update(S.db.doc('cupos/' + cupoId(p.cid, p.fecha, p.tid)), { ['ocupados.' + p.uid]: S.del() });
       batch.delete(S.db.doc('pedidos/' + pid));
       // la línea del historial va en el mismo envío: las reglas solo la aceptan si de verdad se borra el pedido
-      batch.set(S.db.collection('auditoria').doc(Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), { cid: p.cid, tipo: 'cancelo', texto: ('canceló su turno: ' + pTxt(c, p)).slice(0, 400), por: S.user.email.toLowerCase(), uid: S.user.uid, at: S.ahora(), ref: pid });
+      batch.set(S.db.collection('auditoria').doc(Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), { cid: p.cid, tipo: 'cancelo', texto: ('canceló su turno: ' + pTxt(c, p)).slice(0, 400), por: S.esHermano ? 'link' : S.user.email.toLowerCase(), uid: S.yo, at: S.ahora(), ref: pid });
       try { await conTiempo(batch.commit()); ov.remove(); toast('Turno cancelado'); if (S.route.name === 'turno') go('#/mis'); }
       catch (e) { if (e && e.code === 'sin-respuesta') { ov.remove(); toast('Hay poca señal: la cancelación se manda sola cuando vuelva la conexión.'); return; } console.error(e); b.disabled = false; b.textContent = 'Sí, cancelar el turno'; toast('No se pudo cancelar. Probá de nuevo.'); }
     });
@@ -775,7 +908,7 @@
 
   /* ---------- Mis turnos ---------- */
   function renderMis() {
-    if (!S.user) { $('app').innerHTML = '<div class="welcome"><h4>Tus turnos</h4><p>Ingresá con tu cuenta de Google para ver los turnos que pediste.</p><button type="button" class="btn p" data-login>Ingresar con Google</button></div>'; return; }
+    if (!S.yo) return renderCerrado();
     if (S.misErr && !Object.keys(S.mis).length) { $('app').innerHTML = '<div class="empty carga-err"><b>No pudimos cargar tus turnos.</b><br>Revisá la conexión y probá de nuevo.</div><button type="button" class="btn" id="misRe">Reintentar</button>'; $('misRe').addEventListener('click', () => { S.misErr = false; onUser(S.user); }); return; }
     const ahora = new Date(), m = ahora.getHours() * 60 + ahora.getMinutes(), h0 = hoy(), mes = h0.slice(0, 7);
     const hecho = (p) => p.fecha < h0 || (p.fecha === h0 && minutos(p.hasta) <= m);
@@ -815,7 +948,7 @@
     return `<div class="tc ${modo}"><div class="tcl"><div class="cal ${done ? 'd' : conf ? '' : 'p'}"><small>${DOW[d.getDay()]}</small><b class="num">${d.getDate()}</b><i>${MES[d.getMonth()].slice(0, 3)}</i></div>${foto ? `<div class="thumb"${fotoAttr(p.cid, foto)}></div>` : ''}</div><div class="bd">${modo === 'hoy' ? `<span class="hoyb">${I('clock')}${esc(cuandoTexto(p).replace(/^Hoy · /, ''))}</span>` : ''}<div class="h num">${esc(p.desde)} – ${esc(p.hasta)}</div><div class="m">${I(pt.tipo === 'carrito' ? 'cart' : pt.tipo === 'stand' ? 'stand' : 'pin')}<span>${esc([c.nombre, pt.nombre, c.ciudad].filter(Boolean).join(' · '))}</span></div><div class="st1">${chip}</div></div><div class="acts3">${acts}</div></div>`;
   }
   function renderTurno() {
-    if (!S.user) { $('app').innerHTML = '<div class="welcome"><h4>Tu turno</h4><p>Ingresá con tu cuenta para ver el detalle.</p><button type="button" class="btn p" data-login>Ingresar con Google</button></div>'; return; }
+    if (!S.yo) return renderCerrado();
     const pid = S.route.pid, p = S.mis[pid] && Object.assign({ id: pid }, S.mis[pid]);
     if (!p) { $('app').innerHTML = '<div class="card"><div class="empty">Ese turno ya no está en tu lista.</div></div><button type="button" class="btn" data-go="#/mis">Ver mis turnos</button>'; return; }
     const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, conf = p.estado === 'confirmado', rech = p.estado === 'rechazado';
@@ -876,10 +1009,10 @@
   /* ---------- Lupa para hermanos: lugares, días y horarios con lugar (nunca personas) ---------- */
   function campsPub() { return Object.values(S.campanas).filter(c => c.activa !== false && (!c.hasta || c.hasta >= hoy())); }
   function pubFila(c, d, t) {
-    const p = (c.puntos || {})[t.punto] || {}, oc = ocupDe(c.id, d, t.id), n = cupoDe(c, t), falta = Math.max(0, n - Object.keys(oc).length), mio = S.user && oc[S.user.uid], x = parseIso(d);
+    const p = (c.puntos || {})[t.punto] || {}, oc = ocupDe(c.id, d, t.id), n = cupoDe(c, t), falta = Math.max(0, n - Object.keys(oc).length), mio = S.yo && oc[S.yo], x = parseIso(d);
     return `<button type="button" class="bsr" data-bpedir="${esc(c.id)}|${d}|${esc(t.id)}"${!mio && !falta ? ' disabled' : ''}><span class="f"><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><small>${MES[x.getMonth()].slice(0, 3)}</small></span><span class="tx"><b class="num">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))} · ${esc(p.nombre || '')}</b><small>${esc(c.nombre)}${c.ciudad ? ' · ' + esc(c.ciudad) : ''}</small></span><span class="st ${mio ? 'ok' : falta ? 'lib' : ''}">${mio ? 'Tu turno' : falta ? (falta === 1 ? 'Queda 1' : 'Quedan ' + falta) : 'Completo'}</span></button>`;
   }
-  const libre = (c, d, t) => { if (yaEmpezo(d, t)) return false; const oc = ocupDe(c.id, d, t.id); return Object.keys(oc).length < cupoDe(c, t) && !(S.user && oc[S.user.uid]); };
+  const libre = (c, d, t) => { if (yaEmpezo(d, t)) return false; const oc = ocupDe(c.id, d, t.id); return Object.keys(oc).length < cupoDe(c, t) && !(S.yo && oc[S.yo]); };
   function pubAtajo(k) {
     const d = k === 'hoy' ? hoy() : addDays(hoy(), 1), filas = [];
     campsPub().forEach(c => { listenCC(c.id); if (diasDe(c).includes(d)) turnosDelDia(c, d).filter(t => libre(c, d, t)).forEach(t => filas.push([c, t])); });
@@ -934,7 +1067,7 @@
       if (d.bscerrar !== undefined) { cerrar(); return; }
       if (d.bsat) { atajo = atajo === d.bsat ? null : d.bsat; pinta(); return; }
       if (d.bsrec) { inp.value = d.bsrec; pinta(); return; }
-      if (d.bpedir) { e.stopPropagation(); busGuardar(inp.value); const [cid, f, tid] = d.bpedir.split('|'); cerrar(); const c = S.campanas[cid]; if (c && S.user && ocupDe(cid, f, tid)[S.user.uid]) { go('#/mis'); return; } irAPedir(cid, f, tid); return; }
+      if (d.bpedir) { e.stopPropagation(); busGuardar(inp.value); const [cid, f, tid] = d.bpedir.split('|'); cerrar(); const c = S.campanas[cid]; if (c && S.yo && ocupDe(cid, f, tid)[S.yo]) { go('#/mis'); return; } irAPedir(cid, f, tid); return; }
       if (d.go) { busGuardar(inp.value); cerrar(); }
     });
     ov.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrar(); });
@@ -976,9 +1109,9 @@
   function privacidad() {
     sheet(`<h3>Cómo se usan tus datos</h3><div class="hint" style="font-size:13.5px;line-height:1.55;">
       <p>Para pedir un turno te pedimos <b>nombre, apellido, congregación y celular</b>. Los ven <b>solo los coordinadores de esa campaña</b> (y los administradores), para organizar los turnos y avisarte si hay un cambio.</p>
-      <p>En la página pública solo se ve cuántos lugares quedan en cada turno, nunca quién los ocupa.</p>
+      <p>Los demás hermanos solo ven cuántos lugares quedan en cada turno, nunca quién los ocupa. Sin estar habilitado no se ve nada.</p>
       <p>No se usan para nada más ni se comparten con nadie. Podés cancelar tu turno cuando quieras desde "Mis turnos", y así se borran tus datos de ese turno.</p>
-      <p>Iniciás sesión con Google solo para que nadie pueda pedir turnos a tu nombre.</p>
+      <p>Entrás con tu link personal, que te mandó el responsable de tu congregación: así nadie puede pedir turnos a tu nombre. Tus datos los cargó él cuando el comité de servicio te aprobó.</p>
       <p>Si mandás un reporte de problema, lo ve el equipo de soporte de la PPAM, con tu cuenta y tu celular si los dejaste, para poder responderte. Cuando algo falla, la página anota solo el error, la pantalla y el tipo de celular, sin tus datos.</p></div><button type="button" class="btn" data-cerrar>Entendido</button>`);
   }
 
@@ -1039,7 +1172,7 @@
       <div class="fld"><label for="rpTx">Contalo con tus palabras</label><textarea id="rpTx" rows="3" maxlength="1000" placeholder="Qué estabas haciendo, qué tocaste y qué apareció"></textarea></div>
       <div class="fld"><label for="rpCel">Tu celular <span class="opc">(opcional, para responderte)</span></label><input id="rpCel" type="tel" value="${esc(pf.celular || '')}" placeholder="343 555-0000"></div>
       <div class="fld"><label>Se envía también</label></div>
-      <div class="rp-tec"><b>Pantalla:</b> ${esc(pantallaLabel(pantallaActual()))}<br><b>Celular:</b> ${esc(dispositivo())}<br><b>Versión:</b> ${VERSION}${ult ? ` · <b>Último error:</b> "${esc(ult.msg.slice(0, 80))}"` : ''}${S.user ? `<br><b>Tu cuenta:</b> ${esc(S.user.email)}` : ''}</div>
+      <div class="rp-tec"><b>Pantalla:</b> ${esc(pantallaLabel(pantallaActual()))}<br><b>Celular:</b> ${esc(dispositivo())}<br><b>Versión:</b> ${VERSION}${ult ? ` · <b>Último error:</b> "${esc(ult.msg.slice(0, 80))}"` : ''}${S.yo ? `<br><b>Tu cuenta:</b> ${esc(S.esHermano ? nombreYo() : S.user.email)}` : ''}</div>
       <p class="err hidden" id="rpErr"></p>
       <button type="button" class="btn" id="rpGo">Enviar reporte</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
     const q = (x) => ov.querySelector(x);
@@ -1054,7 +1187,7 @@
       const d = { tipo, texto, pantalla: pantallaActual(), disp: dispositivo(), ver: VERSION, estado: 'nuevo', creado: new Date().toISOString() };
       if (ult) d.ultErr = ult.msg.slice(0, 300);
       if (cel) d.celular = cel;
-      if (S.user) { d.uid = S.user.uid; d.email = S.user.email.toLowerCase(); const n = [pf.nombre, pf.apellido].filter(Boolean).join(' ') || S.user.displayName || ''; if (n) d.nombre = n.slice(0, 80); }
+      if (S.yo) { d.uid = S.yo; if (!S.esHermano) d.email = S.user.email.toLowerCase(); const n = [pf.nombre, pf.apellido].filter(Boolean).join(' ') || nombreYo(); if (n) d.nombre = n.slice(0, 80); }
       const b = q('#rpGo'); b.disabled = true; b.textContent = 'Enviando…';
       try { await S.db.collection('reportes').doc(Date.now().toString(36) + uidGen()).set(d); ov.remove(); toast('¡Gracias! Lo recibió el equipo de soporte.'); }
       catch (e) { console.error(e); b.disabled = false; b.textContent = 'Enviar reporte'; err('No se pudo enviar. Revisá la conexión y probá de nuevo.'); }
@@ -1314,7 +1447,7 @@
   document.addEventListener('click', (e) => {
     const t = e.target.closest('button, a[data-go]'); if (!t) return;
     const ds = t.dataset;
-    if (t.id === 'backBtn') { const r = S.route; go((r.name === 'coord' && r.cid) || r.name === 'admin' || r.name === 'soporte' ? '#/coord' : r.name === 'turno' ? '#/mis' : '#/'); return; }
+    if (t.id === 'backBtn') { const r = S.route; go((r.name === 'coord' && r.cid) || r.name === 'admin' || r.name === 'soporte' || r.name === 'hermanos' ? '#/coord' : r.name === 'turno' ? '#/mis' : '#/'); return; }
     if (t.id === 'shareBtn') {
       const c = S.campanas[S.route.cid]; if (!c) return;
       const link = linkCampana(c), txt = `PPAM · ${c.nombre} (${c.ciudad || ''}). Anotate en un turno: ${link}`;
@@ -1325,11 +1458,12 @@
       return;
     }
     if (t.id === 'userBtn') {
-      if (!S.user) { login(); return; }
-      const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(S.user.displayName || S.user.email))}</span><div><h3>${esc(S.user.displayName || 'Mi cuenta')}</h3><p class="hint">${esc(S.user.email)}</p></div></div><button type="button" class="btn" id="uMis">Mis turnos</button>${puedeInstalar() ? '<button type="button" class="btn alt" id="uInst">Instalar la app</button>' : ''}<button type="button" class="btn alt" id="uOut">Cerrar sesión</button><button type="button" class="linkish ubor" id="uBor">Borrar mis datos de este celular</button>`);
+      if (S.acceso !== 'si' && S.acceso !== 'nocoord') { login(); return; }
+      const sub = S.esHermano ? (S.hermano.congregacion || '') : S.user.email;
+      const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(nombreYo()))}</span><div><h3>${esc(nombreYo() || 'Mi cuenta')}</h3><p class="hint">${esc(sub)}</p></div></div>${S.acceso === 'si' ? '<button type="button" class="btn" id="uMis">Mis turnos</button>' : ''}${puedeInstalar() ? '<button type="button" class="btn alt" id="uInst">Instalar la app</button>' : ''}<button type="button" class="btn alt" id="uOut">${S.esHermano ? 'Salir de este celular' : 'Cerrar sesión'}</button><button type="button" class="linkish ubor" id="uBor">Borrar mis datos de este celular</button>`);
       if (ov.querySelector('#uInst')) ov.querySelector('#uInst').addEventListener('click', () => { ov.remove(); instalar(); });
-      ov.querySelector('#uMis').addEventListener('click', () => { ov.remove(); go('#/mis'); });
-      ov.querySelector('#uOut').addEventListener('click', async () => { ov.remove(); await cerrarSesion(); });
+      if (ov.querySelector('#uMis')) ov.querySelector('#uMis').addEventListener('click', () => { ov.remove(); go('#/mis'); });
+      ov.querySelector('#uOut').addEventListener('click', async () => { if (S.esHermano && !confirm('Para volver a entrar en este celular vas a necesitar tu link de WhatsApp. ¿Salir?')) return; ov.remove(); await cerrarSesion(); });
       ov.querySelector('#uBor').addEventListener('click', () => { if (!confirm('¿Borrar de este celular tus datos guardados (nombre, celular, congregación) y tus búsquedas? Tus turnos no se tocan.')) return; borrarDatosLocales(); ov.remove(); toast('Listo: se borraron tus datos de este celular'); });
       return;
     }
@@ -1419,10 +1553,11 @@
   // Llama a una función de coord.js (si todavía no se cargó, la carga primero)
   function enCoord(n, args) {
     if (coordMod) return coordMod[n](...args);
-    if (['renderCoord', 'renderAdmin', 'renderSoporte'].includes(n)) $('app').innerHTML = '<div class="empty">Cargando…</div>';
+    if (['renderCoord', 'renderAdmin', 'renderSoporte', 'renderHermanos'].includes(n)) $('app').innerHTML = '<div class="empty">Cargando…</div>';
     cargarCoord().then(mm => mm[n](...args)).catch((e) => { console.error(e); toast('No se pudo cargar esta parte. Revisá la conexión y probá de nuevo.'); });
   }
   function renderCoord(...a) { return enCoord('renderCoord', a); }
+  function renderHermanos(...a) { return enCoord('renderHermanos', a); }
   function renderAdmin(...a) { return enCoord('renderAdmin', a); }
   function renderSoporte(...a) { return enCoord('renderSoporte', a); }
   function anotarHermano(...a) { return enCoord('anotarHermano', a); }
