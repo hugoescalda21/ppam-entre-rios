@@ -1158,6 +1158,14 @@ const SEED = {
     await c1.check('#pOk'); await c1.click('#pGo'); await c1.waitForTimeout(250);
     check('el pedido queda a nombre de su id de hermano, sin email', await c1.evaluate(() => { const p = window.__store['pedidos/parana-terminal__2026-10-01__t2__h-marta']; return p && p.uid === 'h-marta' && !p.email && p.congregacion === 'Crespo Sur (Crespo)' && window.__store['cupos/parana-terminal__2026-10-01__t2'].ocupados['h-marta'] === 'p'; }));
     await c1.evaluate(() => document.querySelectorAll('.ov').forEach(x => x.remove()));
+    // La copia del celular dice que sigue adentro, pero en la base el link ya se usó en otro navegador: antes de anotarse se revisa
+    await c1.evaluate(() => { window.__store['hermanos/h-marta'].uid = 'anon-otro-navegador'; window.__writes.length = 0; });   // sin avisar a la página (como una copia vieja)
+    await c1.click('[data-pedir="t1"]').catch(() => {}); await c1.waitForTimeout(150);
+    if (!(await c1.$('#pGo'))) { await c1.click('[data-dia="2026-10-02"]'); await c1.waitForTimeout(80); await c1.click('[data-pedir="t1"]'); await c1.waitForTimeout(150); }
+    await c1.check('#pOk'); await c1.click('#pGo'); await c1.waitForTimeout(300);
+    check('con la sesión cerrada en la base: no manda el pedido, lo dice claro y muestra que su acceso se abrió en otro lado', await c1.evaluate(() => !window.__writes.some(w => w[0] === 'batch')) && /Tu acceso se cerró en este celular/.test(await text(c1, '#toast')) && /Tu acceso se abrió en otro celular/.test(await text(c1, '#app')), await text(c1, '#app'));
+    check('…y queda anotado en los errores automáticos', await c1.evaluate(() => Object.values(window.__store).some(d => d && /Pedir turno: acceso cerrado/.test(d.msg || ''))));
+    await c1.evaluate(() => { window.__store['hermanos/h-marta'].uid = window.__store[Object.keys(window.__store).find(k => k.startsWith('sesiones/') && window.__store[k].hid === 'h-marta')] ? Object.keys(window.__store).find(k => k.startsWith('sesiones/') && window.__store[k].hid === 'h-marta').slice(9) : ''; });
     // Alguien entra con el mismo link en otro celular: en este se cierra
     await c1.evaluate(() => window.__ppamMock.db.doc('hermanos/h-marta').update({ uid: 'anon-otro', ultimo: '2026-09-30T14:42:00Z', disp: 'iPhone · Safari', aviso: true })); await c1.waitForTimeout(250);
     let t1 = await text(c1, '#app');

@@ -53,7 +53,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '49';
+  const VERSION = '50';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -145,28 +145,48 @@
     if (S.user && (S.isAdmin || S.coordDe.length || S.isSoporte)) cargarCoord().catch(() => {});
   }
   // El hermano entra solo si este celular es el que tiene atado (un celular a la vez) y no está dado de baja
+  const sesionOk = (h, u, ses) => !!(h && h.uid === u.uid && h.cod === ses.cod && !h.baja);
+  // Aplica lo que dice el hermano (de la base o de la copia del celular): adentro, o afuera porque su link se usó en otro lado / lo dieron de baja
+  function aplicarHermano(h, u, ses) {
+    if (sesionOk(h, u, ses)) {
+      S.hermano = h; S.otro = null; S.acceso = 'si';
+      if (S.yo !== ses.hid) { S.yo = ses.hid; escucharMis(); }
+      iniciarDatos();
+    } else {
+      S.acceso = h && h.baja ? 'baja' : h ? 'otro' : 'no'; S.otro = h; S.hermano = null; S.yo = null;
+      if (S.misUnsub) { S.misUnsub(); S.misUnsub = null; } S.mis = {};
+      pararDatos();
+    }
+  }
   function escucharHermano(u, ses) {
     if (S.herUnsub) S.herUnsub();
+    S.ses = ses;
     let primera = true;
     S.herUnsub = S.db.doc('hermanos/' + ses.hid).onSnapshot((d) => {
-      const h = d.exists ? d.data() : null, ok = !!(h && h.uid === u.uid && h.cod === ses.cod && !h.baja);
-      const antes = S.acceso;
-      if (ok) {
-        S.hermano = h; S.otro = null; S.acceso = 'si';
-        if (S.yo !== ses.hid) { S.yo = ses.hid; escucharMis(); }
-        iniciarDatos();
-      } else {
-        S.acceso = h && h.baja ? 'baja' : h ? 'otro' : 'no'; S.otro = h; S.hermano = null; S.yo = null;
-        if (S.misUnsub) { S.misUnsub(); S.misUnsub = null; } S.mis = {};
-        pararDatos();
-      }
-      if (primera || antes !== S.acceso) { primera = false; renderTop(); render(); }
+      const h = d.exists ? d.data() : null, antes = S.acceso;
+      aplicarHermano(h, u, ses);
+      if (primera || antes !== S.acceso || S.acceso !== 'si') { primera = false; renderTop(); render(); }
+      // Lo que vino de la copia del celular puede estar viejo (por ejemplo, si el link se usó después en otro navegador): se confirma con la base
+      if (S.acceso === 'si' && d.metadata && d.metadata.fromCache) revisarSesion();
     }, () => { S.acceso = 'no'; pararDatos(); renderTop(); render(); });
+  }
+  // Pregunta a la base (no a la copia del celular) si este celular sigue siendo el del hermano. Sin señal, se da por buena.
+  async function revisarSesion() {
+    if (!S.esHermano || !S.ses || !S.user) return true;
+    const u = S.user, ses = S.ses;
+    let d;
+    try { d = await S.db.doc('hermanos/' + ses.hid).get({ source: 'server' }); } catch (e) { return true; }
+    if (S.user !== u) return false;
+    const h = d.exists ? d.data() : null;
+    if (sesionOk(h, u, ses)) return true;
+    const antes = S.acceso; aplicarHermano(h, u, ses);
+    if (antes !== S.acceso) { document.querySelectorAll('.ov').forEach(x => x.remove()); renderTop(); render(); }
+    return false;
   }
   function escucharMis() {
     if (S.misUnsub) { S.misUnsub(); S.misUnsub = null; }
     if (!S.yo) return;
-    S.misUnsub = S.db.collection('pedidos').where('uid', '==', S.yo).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.mis = o; S.misErr = false; refrescar(render); }, (e) => { console.error(e); registrarError('aviso', 'Mis turnos: ' + (e.code || e.message || e)); S.misErr = true; if (S.route.name === 'mis' || S.route.name === 'home') render(); });
+    S.misUnsub = S.db.collection('pedidos').where('uid', '==', S.yo).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.mis = o; S.misErr = false; refrescar(render); }, (e) => { console.error(e); S.misUnsub = null; if (S.esHermano && /permission/i.test(e.code || '')) { revisarSesion().then((ok) => { if (ok) registrarError('aviso', 'Mis turnos: ' + e.code + ' (con acceso)'); }); } else registrarError('aviso', 'Mis turnos: ' + (e.code || e.message || e)); S.misErr = true; if (S.route.name === 'mis' || S.route.name === 'home') render(); });
   }
   async function login() {
     if (window.__ppamMock) return window.__ppamMock.login();
@@ -396,7 +416,7 @@
       if (S.route.name === 'home' || (S.route.name === 'camp' && S.route.cid === cid)) luego();
     }, (e) => {
       if (conFecha && e && e.code === 'failed-precondition') { if (!S.sinIndice) registrarError('aviso', 'Cupos: falta el índice cid+fecha en Firebase (se leen todos)'); S.sinIndice = true; S.ccUnsub[cid] = escuchar(false); return; }
-      console.error(e); registrarError('aviso', 'Cupos: ' + (e.code || e.message || e)); S.ccErr[cid] = true; S.ccUnsub[cid] = null; if (S.route.name === 'camp' && S.route.cid === cid) luego();
+      console.error(e); if (S.esHermano && /permission/i.test(e.code || '')) { revisarSesion().then((ok) => { if (ok) registrarError('aviso', 'Cupos: ' + e.code + ' (con acceso)'); }); } else registrarError('aviso', 'Cupos: ' + (e.code || e.message || e)); S.ccErr[cid] = true; S.ccUnsub[cid] = null; if (S.route.name === 'camp' && S.route.cid === cid) luego();
     });
     S.ccUnsub[cid] = escuchar(!S.sinIndice);
   }
@@ -858,6 +878,8 @@
       if (!q('#pOk').checked) return err('Para pedir el turno tenés que aceptar que los coordinadores vean tus datos.');
       guardarPerfil({ nombre, apellido, congregacion, celular, acepto: true });
       const b = q('#pGo'); b.disabled = true; b.textContent = 'Enviando…';
+      // Antes de mandar: ¿este celular sigue siendo el del hermano? (si su link se usó en otro navegador, acá ya no vale)
+      if (S.esHermano && !(await revisarSesion())) { ov.remove(); toast('Tu acceso se cerró en este celular. Tocá tu link de WhatsApp para volver a entrar.'); registrarError('aviso', 'Pedir turno: acceso cerrado en este celular'); return; }
       try {
         await conTiempo(enviarPedido(c, t, S.dia, { nombre, apellido, congregacion, celular, nota }));
         ov.remove();
@@ -866,7 +888,11 @@
       } catch (e) {
         if (e && e.code === 'sin-respuesta') { ov.remove(); sheet(`<h3>Todavía no hay respuesta</h3><p class="hint">Parece que hay poca señal. Tu pedido queda guardado en este celular y se manda solo cuando vuelva la conexión.</p><p class="hint">Fijate en <b>Mis turnos</b> en un rato: si aparece "Esperando confirmación", llegó bien.</p><button type="button" class="btn" data-cerrar>Entendido</button>`); return; }
         console.error(e); b.disabled = false; b.textContent = 'Anotarme en este turno';
-        err(/permission|insufficient/i.test(e && (e.code || e.message) || '') ? 'Ese turno se acaba de completar. Elegí otro.' : 'No se pudo enviar. Revisá la conexión y probá de nuevo.');
+        const negado = /permission|insufficient/i.test(e && (e.code || e.message) || '');
+        if (negado && S.esHermano && !(await revisarSesion())) { ov.remove(); toast('Tu acceso se cerró en este celular. Tocá tu link de WhatsApp para volver a entrar.'); registrarError('aviso', 'Pedir turno: acceso cerrado en este celular'); return; }
+        const lleno = Object.keys(ocupDe(c.id, S.dia, t.id)).length >= cupoDe(c, t);
+        registrarError('aviso', 'Pedir turno: ' + ((e && (e.code || e.message)) || e) + (lleno ? ' (turno completo)' : ''));
+        err(negado && lleno ? 'Ese turno se acaba de completar. Elegí otro.' : negado ? 'No se pudo anotar en este turno. Probá de nuevo; si vuelve a pasar, avisale al coordinador.' : 'No se pudo enviar. Revisá la conexión y probá de nuevo.');
       }
     });
   }

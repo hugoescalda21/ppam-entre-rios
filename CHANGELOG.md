@@ -9,6 +9,13 @@
 
 
 
+## Versión 50 — anotarse con la sesión al día
+
+- Antes de mandar un pedido, la página confirma con la base que ese celular sigue siendo el del hermano (si su link se usó después en otro navegador, ya no vale). Si se cerró, no manda nada y lo dice claro: "Tu acceso se cerró en este celular. Tocá tu link de WhatsApp para volver a entrar".
+- Al abrir la página, lo que el celular tenía guardado se confirma enseguida con la base: si el acceso se cerró, se muestra "Tu acceso se abrió en otro celular" en vez de dejarlo adentro con datos viejos.
+- Si un pedido falla, el mensaje dice el motivo real (antes decía siempre "Ese turno se acaba de completar") y queda anotado en "Errores automáticos".
+- Las lecturas negadas por una sesión ya cerrada no se anotan como errores (solo si el acceso sigue activo).
+
 ## Versión 49 — "Usaban Google" completo y botón para quitar
 
 - "Usaban la página con Google" vuelve a mostrar a todos los que pidieron turnos con Google y todavía no tienen link, tengan o no turnos por delante (como en la versión 47). Así se los habilita con sus datos ya cargados.
