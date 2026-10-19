@@ -57,6 +57,48 @@
             "value": "strict-origin-when-cross-origin"
           }
         ]
+      },
+      {
+        "source": "/",
+        "headers": [
+          {
+            "key": "X-Frame-Options",
+            "value": "SAMEORIGIN"
+          },
+          {
+            "key": "Content-Security-Policy",
+            "value": "frame-ancestors 'self'"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "geolocation=(self), camera=(), microphone=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), browsing-topics=()"
+          },
+          {
+            "key": "Cross-Origin-Opener-Policy",
+            "value": "same-origin-allow-popups"
+          }
+        ]
+      },
+      {
+        "source": "**/*.html",
+        "headers": [
+          {
+            "key": "X-Frame-Options",
+            "value": "SAMEORIGIN"
+          },
+          {
+            "key": "Content-Security-Policy",
+            "value": "frame-ancestors 'self'"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "geolocation=(self), camera=(), microphone=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), browsing-topics=()"
+          },
+          {
+            "key": "Cross-Origin-Opener-Policy",
+            "value": "same-origin-allow-popups"
+          }
+        ]
       }
     ]
   }
