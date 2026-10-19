@@ -1026,6 +1026,8 @@ window.PPAM_COORD = function (K) {
   const waTxt = (cel, txt) => waUrl(cel) + '?text=' + encodeURIComponent(txt);
   const celSolo = (c) => String(c || '').replace(/\D/g, '');
   const cuandoH = (ts) => { const d = ts && (ts.toDate ? ts.toDate() : new Date(ts)); if (!d || isNaN(d)) return ''; const f = isoOf(d), hh = `${d.getHours()}:${pad(d.getMinutes())}`; return f === hoy() ? `hoy ${hh}` : f === addDays(hoy(), -1) ? `ayer ${hh}` : `el ${fmtCorto(f)}`; };
+  // Fecha en horario argentino (las guardadas en horario de Greenwich daban un día de más si eran de noche)
+  const fechaLocal = (x) => { const d = x && (x.toDate ? x.toDate() : new Date(x)); return d && !isNaN(d) ? isoOf(d) : String(x || '').slice(0, 10); };
   const yoFirma = () => ({ por: S.user.email.toLowerCase(), porNombre: (S.user.displayName || '').slice(0, 80) });
   function escucharHermanos() {
     if (!S.herm) S.herm = { lista: {}, ok: false, q: '', cong: 'todas', viejos: null, unsub: null };
@@ -1101,7 +1103,11 @@ window.PPAM_COORD = function (K) {
       if (d.hcong !== undefined) { H.cong = d.hcong; return renderHermanos(); }
       if (d.hok) return S.db.doc('hermanos/' + d.hok).update({ aviso: false }).catch(() => toast('No se pudo guardar. Probá de nuevo.'));
       if (d.hviejo) return habilitarHermano((S.herm.viejos || {})[d.hviejo]);
-      if (d.hquitar) { const v = (S.herm.viejos || {})[d.hquitar] || {}; return S.db.doc('descartados/' + d.hquitar).set({ nombre: ((v.nombre || '') + ' ' + (v.apellido || '')).trim().slice(0, 120), por: S.user.email.toLowerCase(), at: S.ahora() }).then(() => toast(`${v.nombre || 'Quitado'}: ya no aparece en esta lista`)).catch((er) => { console.error(er); toast('No se pudo guardar. Revisá la conexión y probá de nuevo.'); }); }
+      if (d.hquitar) { const v = (S.herm.viejos || {})[d.hquitar] || {}; const nom = ((v.nombre || '') + ' ' + (v.apellido || '')).trim();
+        const c = sheet(`<h3>¿Quitar a ${esc(nom)} de esta lista?</h3><p class="hint">Sus datos y sus turnos no se borran. Si te equivocás, lo volvés a mostrar desde “Quitados de la lista”, al final.</p><button type="button" class="btn" id="qOk">Quitar de la lista</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+        c.querySelector('#qOk').addEventListener('click', () => { c.remove(); quitar(); });
+        function quitar() { return S.db.doc('descartados/' + d.hquitar).set({ nombre: ((v.nombre || '') + ' ' + (v.apellido || '')).trim().slice(0, 120), por: S.user.email.toLowerCase(), at: S.ahora() }).then(() => toast(`${v.nombre || 'Quitado'}: ya no aparece en esta lista`)).catch((er) => { console.error(er); toast('No se pudo guardar. Revisá la conexión y probá de nuevo.'); }); }
+        return; }
       if (d.hvolver) return S.db.doc('descartados/' + d.hvolver).delete().catch(() => toast('No se pudo guardar. Probá de nuevo.'));
       if (d.hfic) return fichaHermano(d.hfic);
     });
@@ -1160,7 +1166,7 @@ window.PPAM_COORD = function (K) {
     const h0 = S.herm.lista[hid]; if (!h0) return; const h = Object.assign({ id: hid }, h0);
     const firm = h.porNombre || h.por || '';
     const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(h.nombre + ' ' + h.apellido))}</span><div><h3>${esc(h.nombre)} ${esc(h.apellido)}</h3><p class="hint">${esc(h.congregacion)}</p></div></div>
-      <dl class="dl"><dt>Celular</dt><dd>${esc(h.celular)}</dd><dt>Habilitado</dt><dd>${esc(h.creado ? fmtCorto(String(h.creado).slice(0, 10)) : '')}${firm ? ', por ' + esc(firm) : ''}</dd><dt>Último ingreso</dt><dd>${h.ultimo ? esc(cap(cuandoH(h.ultimo))) + (h.disp ? ' · ' + esc(h.disp) : '') : 'Todavía no entró'}</dd>${h.baja ? `<dt>Estado</dt><dd class="mal">Dado de baja${h.bajaAt ? ' el ' + esc(fmtCorto(String(h.bajaAt).slice(0, 10))) : ''}</dd>` : ''}</dl>
+      <dl class="dl"><dt>Celular</dt><dd>${esc(h.celular)}</dd><dt>Habilitado</dt><dd>${esc(h.creado ? fmtCorto(fechaLocal(h.creado)) : '')}${firm ? ', por ' + esc(firm) : ''}</dd><dt>Último ingreso</dt><dd>${h.ultimo ? esc(cap(cuandoH(h.ultimo))) + (h.disp ? ' · ' + esc(h.disp) : '') : 'Todavía no entró'}</dd>${h.baja ? `<dt>Estado</dt><dd class="mal">Dado de baja${h.bajaAt ? ' el ' + esc(fmtCorto(fechaLocal(h.bajaAt))) : ''}</dd>` : ''}</dl>
       ${h.baja ? `<button type="button" class="btn" id="fRe">${I('link', 'width:18px;height:18px')}Volver a habilitar</button>` : `<a class="btn" href="${esc(waTxt(h.celular, msgLink(h)))}" target="_blank" rel="noopener">${I('chat', 'width:18px;height:18px')}Reenviarle su link</a><button type="button" class="btn alt" id="fNuevo">${I('link', 'width:18px;height:18px')}Mandarle un link nuevo</button><button type="button" class="btn alt" id="fEd">${I('edit', 'width:18px;height:18px')}Cambiar datos</button><button type="button" class="btn alt peligro" id="fBaja">Dar de baja</button>`}
       ${h.baja && S.isAdmin ? '<button type="button" class="btn alt peligro" id="fBorrar">Borrar para siempre</button>' : ''}
       <p class="fine">${h.baja ? 'Al volver a habilitarlo recibe un link nuevo.' + (S.isAdmin ? ' “Borrar” lo saca de la lista; sus turnos viejos no se tocan.' : '') : '“Link nuevo” anula el anterior y cierra el celular donde esté. “Dar de baja” le cierra el acceso; sus turnos quedan para que los revises.'}</p>`);

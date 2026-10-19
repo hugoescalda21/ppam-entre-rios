@@ -1190,7 +1190,7 @@ const SEED = {
     // Panel del coordinador
     SEED['pedidos/parana-terminal__2026-10-03__t3__u-vieja'] = { cid: 'parana-terminal', fecha: '2026-10-03', tid: 't3', punto: 'p2', desde: '16:00', hasta: '18:00', uid: 'u-vieja', email: 'vieja@x.com', nombre: 'Elsa', apellido: 'Vieja', congregacion: 'San Agustín (Paraná)', celular: '343 555-7777', estado: 'confirmado', creado: 'x' };
     SEED['pedidos/parana-terminal__2026-09-02__t1__u-prueba'] = { cid: 'parana-terminal', fecha: '2026-09-02', tid: 't1', punto: 'p1', desde: '08:00', hasta: '10:00', uid: 'u-prueba', email: 'prueba@x.com', nombre: 'Hugo', apellido: 'Prueba', congregacion: 'San Agustín (Paraná)', celular: '343 555-1111', estado: 'confirmado', creado: 'x' };
-    SEED['hermanos/h-ana2'] = { nombre: 'Ana', apellido: 'Benítez', congregacion: 'San Agustín (Paraná)', celular: '343 411-4444', cod: 'ANAB0001', uid: 'anon-ab', ultimo: '2026-09-30T10:42:00Z', disp: 'Android · Chrome', aviso: true, creado: '2026-09-20T10:00:00Z', por: 'coord@x.com', porNombre: 'Carlos Vega' };
+    SEED['hermanos/h-ana2'] = { nombre: 'Ana', apellido: 'Benítez', congregacion: 'San Agustín (Paraná)', celular: '343 411-4444', cod: 'ANAB0001', uid: 'anon-ab', ultimo: '2026-09-30T10:42:00Z', disp: 'Android · Chrome', aviso: true, creado: '2026-09-20T01:00:00Z', por: 'coord@x.com', porNombre: 'Carlos Vega' };
     SEED['links/ANAB0001'] = { hid: 'h-ana2', nombre: 'Ana' };
     const k = await open([{ uid: 'u-co', email: 'coord@x.com', displayName: 'Carlos Vega' }], '');
     await entrar(k, 300); await k.click('#coordBtn'); await k.waitForTimeout(300);
@@ -1198,7 +1198,9 @@ const SEED = {
     await k.click('.hcard'); await k.waitForTimeout(300);
     let tk = await text(k, '#app');
     check('lista: aviso, "Todavía no entraron", "Usaban la página con Google" (también sin turnos por delante) y "Habilitados"', /Ana Benítez entró desde otro celular[\s\S]*Todavía no entraron[\s\S]*Luis Gómez[\s\S]*Marta Gómez[\s\S]*Usaban la página con Google[\s\S]*Elsa Vieja[\s\S]*1 turno[\s\S]*Habilitados[\s\S]*Ana Benítez/.test(tk) && /Usaban la página con Google\s*2[\s\S]*Hugo Prueba[\s\S]*Habilitados/.test(tk) && /Hermanos habilitados/.test(await text(k, '#tbTitle')), tk);
-    await k.click('[data-hquitar="u-prueba"]'); await k.waitForTimeout(250);
+    await k.click('[data-hquitar="u-prueba"]'); await k.waitForTimeout(150);
+    check('la ✕ pide confirmar y aclara que no se borra nada', /¿Quitar a Hugo Prueba de esta lista\?[\s\S]*no se borran/.test(await text(k, '.sheet')) && await k.evaluate(() => !window.__store['descartados/u-prueba']));
+    await k.click('#qOk'); await k.waitForTimeout(250);
     check('la ✕ quita a alguien de "Usaban Google" (queda guardado para todos los coordinadores)', await k.evaluate(() => { const d = window.__store['descartados/u-prueba']; return d && d.por === 'coord@x.com' && d.nombre === 'Hugo Prueba'; }) && !/Usaban la página con Google[\s\S]*Hugo Prueba[\s\S]*Habilitados/.test(await text(k, '#app')) && /Quitados de la lista \(1\)/.test(await text(k, '#app')));
     await k.click('.hbajas summary'); await k.waitForTimeout(80); await k.click('[data-hvolver="u-prueba"]'); await k.waitForTimeout(250);
     check('"Volver a mostrar" lo devuelve a la lista', await k.evaluate(() => !window.__store['descartados/u-prueba']) && /Usaban la página con Google[\s\S]*Hugo Prueba[\s\S]*Habilitados/.test(await text(k, '#app')));
@@ -1224,6 +1226,7 @@ const SEED = {
     check('…con su mismo id (sus turnos quedan) y el link dice cuántos turnos pasan', await k.evaluate(() => { const h = window.__store['hermanos/u-vieja']; return h && window.__store['links/' + h.cod].turnos === 1 && window.__store['links/' + h.cod].hid === 'u-vieja'; }));
     await k.click('.sheet [data-cerrar]'); await k.waitForTimeout(100);
     await k.click('.arow[data-hfic="h-ana2"]'); await k.waitForTimeout(150);
+    check('ficha: la fecha de habilitado va en horario argentino (habilitado el 19/9 a las 22 hs, no "20/9")', /Habilitado\s*Sáb 19\/9, por Carlos Vega/.test(await text(k, '.sheet')), await text(k, '.sheet'));
     check('ficha: celular, quién lo habilitó, último ingreso y las acciones', /Ana Benítez[\s\S]*343 411-4444[\s\S]*Carlos Vega[\s\S]*Android · Chrome[\s\S]*Reenviarle su link[\s\S]*Mandarle un link nuevo[\s\S]*Cambiar datos[\s\S]*Dar de baja/.test(await text(k, '.sheet')), await text(k, '.sheet'));
     await k.click('#fNuevo'); await k.waitForTimeout(250);
     const ln = await k.evaluate(() => { const h = window.__store['hermanos/h-ana2']; return { cod: h.cod, uid: h.uid, viejo: !!window.__store['links/ANAB0001'], nuevo: window.__store['links/' + h.cod] }; });

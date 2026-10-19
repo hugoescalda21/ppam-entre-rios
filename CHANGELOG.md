@@ -9,6 +9,12 @@
 
 
 
+## Versión 52 — detalles
+
+- Ficha del hermano: la fecha de "Habilitado" y de "Dado de baja" va en horario argentino (antes, si era de noche, mostraba el día siguiente).
+- La ✕ de "Usaban la página con Google" pide confirmar y aclara que no se borra nada.
+- Ícono nuevo del carrito: un exhibidor de publicaciones con cartel (antes era un carrito de supermercado).
+
 ## Versión 51 — tarjeta del inicio cuando no hay turnos esta semana
 
 - Si ninguna campaña tiene turnos en los próximos 7 días, la tarjeta del inicio ya no dice "0 lugares libres": muestra "La próxima campaña empieza en N días", con nombre, ciudad, fechas y lugares libres de su primera semana, y "Ver turnos" lleva directo a esa campaña.
