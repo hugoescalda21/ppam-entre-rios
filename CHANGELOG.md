@@ -9,6 +9,13 @@
 
 
 
+## Versión 51 — tarjeta del inicio cuando no hay turnos esta semana
+
+- Si ninguna campaña tiene turnos en los próximos 7 días, la tarjeta del inicio ya no dice "0 lugares libres": muestra "La próxima campaña empieza en N días", con nombre, ciudad, fechas y lugares libres de su primera semana, y "Ver turnos" lleva directo a esa campaña.
+- Si hay turnos esta semana pero están todos ocupados: "Esta semana ya está todo cubierto", y ofrece la campaña siguiente si la hay.
+- Si no hay ninguna campaña por delante, la tarjeta no aparece y la lista dice "Por ahora no hay campañas programadas".
+- Con turnos libres esta semana, sigue igual ("¿Te sumás esta semana?").
+
 ## Versión 50 — anotarse con la sesión al día
 
 - Antes de mandar un pedido, la página confirma con la base que ese celular sigue siendo el del hermano (si su link se usó después en otro navegador, ya no vale). Si se cerró, no manda nada y lo dice claro: "Tu acceso se cerró en este celular. Tocá tu link de WhatsApp para volver a entrar".

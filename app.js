@@ -53,7 +53,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '50';
+  const VERSION = '51';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -471,10 +471,20 @@
     return `<div class="ticket${conf ? '' : ' pend'}"><div class="top">${top}</div><div class="t num">${esc(p.desde)} – ${esc(p.hasta)}</div>${esHoy ? '' : `<div class="cuando">${esc(cuando)}</div>`}<div class="p">${I('pin')}${esc(c.nombre || '')}${pt.nombre ? ' · ' + esc(pt.nombre) : ''}</div>${hint}<div class="sep"></div><div class="acts">${acts}</div></div>`;
   }
   function libresSemana(cs) {
-    let n = 0, mejor = null, max = 0;
-    cs.forEach(c => { const ds = diasDe(c).filter(d => d <= addDays(hoy(), 6)); if (!ds.length) return; listenCC(c.id); const k = cobertura(c, ds); n += k.faltan; if (k.faltan > max) { max = k.faltan; mejor = c; } });
-    return { n, mejor };
+    let n = 0, mejor = null, max = 0, semana = false;
+    cs.forEach(c => { const ds = diasDe(c).filter(d => d <= addDays(hoy(), 6)); if (!ds.length) return; semana = true; listenCC(c.id); const k = cobertura(c, ds); n += k.faltan; if (k.faltan > max) { max = k.faltan; mejor = c; } });
+    return { n, mejor, semana };
   }
+  // La campaña que tiene turnos primero después de esta semana (con sus lugares libres de esa primera semana, como en su tarjeta)
+  function proximaCampana(cs) {
+    let mejor = null;
+    cs.forEach(c => { const ds = diasDe(c); if (!ds.length || ds[0] <= addDays(hoy(), 6)) return; if (!mejor || ds[0] < mejor.dia) mejor = { c, dia: ds[0], ds }; });
+    if (!mejor) return null;
+    listenCC(mejor.c.id);
+    const n = Math.round((parseIso(mejor.dia) - parseIso(hoy())) / 864e5);
+    return Object.assign(mejor, { n, libres: cobertura(mejor.c, mejor.ds.filter(d => d <= addDays(mejor.dia, 6))).faltan });
+  }
+  const nombreCorto = (c) => String(c.nombre || '').replace(/^Campaña (de Predicación Pública|Especial)\s*[-–]?\s*/i, '').replace(/^.*?"(.+)"$/, '$1').trim() || c.nombre;
   /* ---------- Bienvenida: 3 pasos, solo la primera vez (se vuelve a ver con "¿Cómo funciona?") ---------- */
   const PASOS = [
     { t: 'Elegí una campaña', d: 'En el inicio están las campañas de toda la provincia. Tocá la de tu ciudad.' },
@@ -624,13 +634,26 @@
         h += `<button type="button" class="more" data-go="#/mis"><span><b>Tenés ${prox.length - 1} ${prox.length === 2 ? 'turno' : 'turnos'} más</b><small>${esc(cap(otros.join(' y ')))}${prox.length > 3 ? '…' : ''}</small></span><span class="lk">Ver todos${I('chev', 'width:15px;height:15px')}</span></button>`;
       }
     } else if (!(S.vista === 'mapa' && S.publico.mapa !== false && vis.length)) {   // en modo Mapa, el mapa es el protagonista
-      const { n, mejor } = libresSemana(vis);
+      const { n, mejor, semana } = libresSemana(vis);
       const donde = S.ciudad !== 'todas' ? 'En ' + S.ciudad : 'En Entre Ríos';
+      const px = (!semana || !n) ? proximaCampana(vis) : null;
+      const pxTxt = (p) => `<b>${esc(nombreCorto(p.c))}</b> · ${esc(p.c.ciudad || '')} · ${esc(campRango(p.c).split(' · ')[0])}`;
+      const pxLib = (p) => p.libres > 0 ? ` Hay <b>${p.libres === 1 ? '1 lugar libre' : p.libres + ' lugares libres'}</b> la primera semana.` : '';
+      if (S.yo && !semana && !px) { /* sin campañas por delante: la lista lo explica */ }
+      else {
       h += `${S.yo ? '<div class="lbl">Todavía no tenés turnos</div>' : '<div style="height:6px"></div>'}<div class="welcome">`;
+      if (S.yo && !semana) {
+        h += `<h4>${px.c.desde > hoy() ? 'La próxima campaña empieza' : 'Los próximos turnos son'} ${px.n === 1 ? 'mañana' : `en ${px.n} días`}</h4><p>${pxTxt(px)}.<br>Ya podés anotarte.${pxLib(px)}</p><button type="button" class="btn p" data-go="#/c/${esc(px.c.id)}">Ver turnos</button></div>`;
+      } else if (S.yo && !n) {
+        const llenas = vis.filter(c => diasDe(c).some(d => d <= addDays(hoy(), 6)));
+        h += `<h4>Esta semana ya está todo cubierto</h4><p>${llenas.length === 1 ? `Los turnos de <b>${esc(nombreCorto(llenas[0]))}</b>${llenas[0].ciudad ? ' (' + esc(llenas[0].ciudad) + ')' : ''} ya están completos.` : 'Todos los turnos de esta semana ya están completos.'}${px ? `<br>La próxima: ${pxTxt(px)}, ${px.n === 1 ? 'mañana' : `en ${px.n} días`}.${pxLib(px)}` : ''}</p>${px ? `<button type="button" class="btn p" data-go="#/c/${esc(px.c.id)}">Ver la próxima campaña</button>` : ''}</div>`;
+      } else {
       h += S.yo ? `<h4>¿Te sumás esta semana?</h4><p>${esc(donde)} ${n === 1 ? 'hay <b>1 lugar libre</b>' : `hay <b>${n} lugares libres</b>`} en los próximos 7 días.</p>`
         : `<h4>Sumate a un turno</h4><p>Elegí una campaña, un día y un horario. Un coordinador te confirma.</p><div class="stats"><div><b class="num">${vis.length}</b><small>${vis.length === 1 ? 'campaña activa' : 'campañas activas'}${S.ciudad !== 'todas' ? ' en ' + esc(S.ciudad) : ''}</small></div><div><b class="num">${n}</b><small>lugares libres esta semana</small></div></div>`;
       if (mejor) h += `<button type="button" class="btn p" data-go="#/c/${esc(mejor.id)}">Ver turnos libres</button>`;
       h += '</div>';
+      }
+      }
     }
     // Coordinadores: pedidos por confirmar
     if (S.user && (S.isAdmin || S.coordDe.length)) {
@@ -650,7 +673,7 @@
       const fuera = fueraDelMapa(vis);
       if (fuera.length) h += `<div class="lbl" style="margin-top:4px">${fuera.length === 1 ? 'Sin ubicación en el mapa' : fuera.length + ' campañas sin ubicación en el mapa'}</div>` + fuera.map(campCard).join('');
     }
-    else h += vis.length ? vis.map(campCard).join('') : '<div class="card"><div class="empty">Todavía no hay campañas publicadas.</div></div>';
+    else h += vis.length ? vis.map(campCard).join('') : '<div class="card"><div class="empty"><b>Por ahora no hay campañas programadas.</b><br>Cuando haya una, la vas a ver acá y te vas a poder anotar.</div></div>';
     $('app').innerHTML = h;
     if (vis.length && S.vista === 'mapa') dibujarMapa(vis);
   }

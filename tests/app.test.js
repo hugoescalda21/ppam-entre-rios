@@ -508,7 +508,7 @@ const SEED = {
   await a.screenshot({ path: SHOTS + '/admin.png', fullPage: true });
   await a.click('[data-nueva]'); await a.fill('#ncNom', 'Plaza San Martín'); await a.fill('#ncCiu', 'Gualeguaychú'); await a.click('#ncOk'); await a.waitForFunction(() => /#\/coord\//.test(location.hash), null, { timeout: 5000 }).catch(() => {}); await a.waitForTimeout(200);
   const nueva = await a.evaluate(() => Object.keys(window.__store).find(k => k.startsWith('campanas/gualeguaychu-plaza-san-martin')));
-  check('crea una campaña y va a configurarla', !!nueva && /#\/coord\/gualeguaychu-plaza-san-martin/.test(await a.evaluate(() => location.hash)), nueva);
+  check('crea una campaña y va a configurarla', !!nueva && /#\/coord\/gualeguaychu-plaza-san-martin/.test(await a.evaluate(() => location.hash)), [nueva, await a.evaluate(() => location.hash), await text(a, '.sheet'), a.errs]);
   await a.evaluate(() => { location.hash = '#/admin'; }); await a.waitForTimeout(250);
   await a.click('[data-coords="parana-terminal"]'); await a.waitForTimeout(80);
   await a.fill('#coEm', 'coord@x.com\nNUEVO@x.com\nno-es-email'); await a.click('#coOk'); await a.waitForTimeout(200);
@@ -1246,6 +1246,36 @@ const SEED = {
       check('sin errores (borrar hermano)', ad.errs.length === 0, ad.errs);
     }
     ['hermanos/h-marta', 'links/MARTA001', 'hermanos/u-luis', 'links/LUIS0001', 'pedidos/parana-terminal__2026-10-03__t3__u-vieja', 'pedidos/parana-terminal__2026-09-02__t1__u-prueba', 'hermanos/h-ana2', 'links/ANAB0001'].forEach(x => delete SEED[x]);
+  }
+
+  console.log('\nTarjeta del inicio cuando no hay turnos esta semana');
+  {
+    const D = [5, 6, 0];
+    const camp = (nombre, ciudad, desde, hasta) => ({ nombre, ciudad, desde, hasta, activa: true, puntos: { p1: { nombre: 'Carrito 1', tipo: 'carrito', cupo: 2 }, p2: { nombre: 'Carrito 2', tipo: 'carrito', cupo: 2 } }, turnos: { a: { punto: 'p1', desde: '08:30', hasta: '10:30', dias: D }, b: { punto: 'p2', desde: '10:30', hasta: '12:30', dias: D } } });
+    const base = { 'config/publico': SEED['config/publico'], 'config/admins': SEED['config/admins'] };
+    const ver = async (seed, cuando) => {
+      const cx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+      await cx.clock.install({ time: new Date(cuando) }); await cx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+      await cx.addInitScript(`(${mock.toString()})(${JSON.stringify(seed)}, [])`);
+      const q = await cx.newPage(); q.errs = []; q.on('pageerror', e => q.errs.push(e.message)); await q.goto(FILE); await q.waitForTimeout(400); return q;
+    };
+    const dos = Object.assign({}, base, { 'campanas/crespo': camp('Campaña de Predicación Pública Fiesta Nacional de la Avicultura', 'Crespo', '2026-11-06', '2026-11-08'), 'campanas/viale': camp('Campaña Especial - Viale "Fiesta Nacional Asado con Cuero"', 'Viale', '2026-11-20', '2026-11-22') });
+    let q = await ver(dos, '2026-10-18T14:30:00-03:00');
+    let w = await text(q, '.welcome');
+    check('sin turnos esta semana: "La próxima campaña empieza en 19 días", con nombre, ciudad, fechas y lugares libres', /La próxima campaña empieza en 19 días\s*Fiesta Nacional de la Avicultura · Crespo · 6 al 8 de noviembre\.\s*Ya podés anotarte\. Hay 12 lugares libres la primera semana\.\s*Ver turnos/.test(w) && !/0 lugares libres/.test(w), w);
+    check('"Ver turnos" lleva a esa campaña', await q.evaluate(() => document.querySelector('.welcome [data-go]').dataset.go === '#/c/crespo'));
+    check('sin errores (próxima campaña)', q.errs.length === 0, q.errs);
+    const llena = JSON.parse(JSON.stringify(dos));
+    ['2026-11-06', '2026-11-07', '2026-11-08'].forEach(f => ['a', 'b'].forEach(t => { llena[`cupos/crespo__${f}__${t}`] = { cid: 'crespo', fecha: f, tid: t, ocupados: { x1: 'c', x2: 'c' } }; }));
+    q = await ver(llena, '2026-11-03T14:30:00-03:00');
+    w = await text(q, '.welcome');
+    check('turnos esta semana pero todo ocupado: "Esta semana ya está todo cubierto" y ofrece la siguiente', /Esta semana ya está todo cubierto\s*Los turnos de Fiesta Nacional de la Avicultura \(Crespo\) ya están completos\.\s*La próxima: Fiesta Nacional Asado con Cuero · Viale · 20 al 22 de noviembre, en 17 días\. Hay 12 lugares libres la primera semana\.\s*Ver la próxima campaña/.test(w), w);
+    check('…y el botón lleva a la siguiente', await q.evaluate(() => document.querySelector('.welcome [data-go]').dataset.go === '#/c/viale'));
+    q = await ver(dos, '2026-11-03T14:30:00-03:00');
+    check('con lugar esta semana: sigue "¿Te sumás esta semana?"', /¿Te sumás esta semana\?\s*En Entre Ríos hay 12 lugares libres en los próximos 7 días\./.test(await text(q, '.welcome')), await text(q, '.welcome'));
+    q = await ver(base, '2026-10-18T14:30:00-03:00');
+    check('sin campañas por delante: sin tarjeta y la lista lo explica', !(await q.$('.welcome')) && /Por ahora no hay campañas programadas\.\s*Cuando haya una, la vas a ver acá/.test(await text(q, '#app')), await text(q, '#app'));
+    check('sin errores (tarjeta del inicio)', q.errs.length === 0, q.errs);
   }
 
   console.log('\nCampaña corta: solo sus días');
