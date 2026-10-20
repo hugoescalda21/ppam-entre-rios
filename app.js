@@ -57,7 +57,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '54';
+  const VERSION = '55';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -211,6 +211,7 @@
     if (cod) S.route = { name: 'canje', cod: cod[1].toUpperCase().replace(/[^A-Z0-9]/g, '') };
     else if (h[0] === 'c' && h[1]) S.route = h[2] && h[3] ? { name: 'camp', cid: h[1], fecha: h[2], tid: decodeURIComponent(h[3]) } : { name: 'camp', cid: h[1] };
     else if (h[0] === 't' && h[1]) S.route = { name: 'turno', pid: decodeURIComponent(h[1]) };
+    else if (h[0] === 'k' && h[1]) S.route = { name: 'carrito', cod: h[1].toUpperCase().replace(/[^A-Z0-9]/g, '') };
     else if (h[0] === 'mis') S.route = { name: 'mis' };
     else if (h[0] === 'coord') S.route = { name: 'coord', cid: h[1] || null };
     else if (h[0] === 'admin') S.route = { name: 'admin' };
@@ -326,7 +327,17 @@
     const xs = COMOD.filter(([k]) => cm[k]).map(([k, txt, ic]) => lugarDe(p, k)
       ? `<button type="button" class="cmd ir" data-comod="${esc(cid)}|${esc(pid)}|${k}">${I(ic, 'width:15px;height:15px')}${k === 'bano' ? 'Baño' : txt}<span class="go">${I('chev', 'width:12px;height:12px')}</span></button>`
       : `<span class="cmd">${I(ic, 'width:15px;height:15px')}${txt}</span>`);
-    return (xs.length ? `<div class="cmds">${xs.join('')}</div>` : '') + (p.pubs ? `<div class="info pubs"><b>Publicaciones en el ${tipoTxt(p) === 'punto' ? 'lugar' : tipoTxt(p)}</b>${esc(p.pubs)}</div>` : '');
+    const pc = pubsCarritoHTML(S.campanas[cid], pid);
+    return (xs.length ? `<div class="cmds">${xs.join('')}</div>` : '') + (pc || (p.pubs ? `<div class="info pubs"><b>Publicaciones en el ${tipoTxt(p) === 'punto' ? 'lugar' : tipoTxt(p)}</b>${esc(p.pubs)}</div>` : ''));
+  }
+  // Con la cuenta de publicaciones prendida: las tapas de lo que lleva el carrito habitual del punto
+  function pubsCarritoHTML(c, pid) {
+    if (!conPubs(c)) return '';
+    const k = Object.values(c.carritos || {}).find(x => x.habitual === pid && Object.keys(x.items || {}).length); if (!k) return '';
+    const ids = Object.keys(k.items);
+    if (!S.pubs) return '<div class="info pubs" id="vlPubs"><b>Publicaciones en el carrito</b>Cargando…</div>';
+    const vis = ids.filter(x => S.pubs[x]); if (!vis.length) return '';
+    return `<div class="info pubs tps"><b>Publicaciones en el ${esc(tipoTxt(c.puntos[pid]) === 'punto' ? 'lugar' : tipoTxt(c.puntos[pid]))}</b><div class="tapas">${vis.map(x => `<figure>${tapaHTML(x, 'g')}<figcaption>${esc(pubNombre(x))}</figcaption></figure>`).join('')}</div></div>`;
   }
   function verComod(cid, pid, k) {
     const c = S.campanas[cid], p = c && c.puntos && c.puntos[pid], l = p && lugarDe(p, k); if (!l) return;
@@ -419,6 +430,173 @@
     h += `<div class="cyo"><span>${mio ? '✓ Tus compañeros de este turno ven tu nombre' : 'Tus compañeros de este turno no ven tu nombre'}</span><button type="button" class="sbtn" data-compartir="${esc(p.id)}|${mio ? 0 : 1}">${mio ? 'Dejar de mostrarlo' : 'Mostrarlo'}</button></div>`;
     return h;
   }
+
+  /* ---------- Publicaciones y carritos (se prende por campaña: "Llevar la cuenta de las publicaciones") ----------
+     publicaciones/{id}: la lista de toda la provincia (nombre, tipo, idioma, edición, foto de la tapa). La carga el administrador.
+     campanas/{cid}.carritos.{k}: cada carrito físico con su número, color, código del QR, lugar habitual y cantidades.
+     entregas/{turno}: lo que se dejó en cada turno (un registro por turno, solo cantidades). */
+  const KCOLORES = [['azul', '#2563EB'], ['verde', '#16A34A'], ['rojo', '#DC2626'], ['amarillo', '#CA8A04'], ['violeta', '#7C3AED'], ['naranja', '#EA580C'], ['celeste', '#0891B2'], ['rosa', '#DB2777'], ['gris', '#4B5563'], ['marrón', '#92400E']];
+  const TIPOS_PUB = ['Revista', 'Folleto', 'Libro', 'Tarjeta', 'Otro'];
+  const colorHex = (k) => (KCOLORES.find(x => x[0] === (k && k.color)) || KCOLORES[0])[1];
+  const kNombre = (k) => k ? `Carrito ${k.n}${k.color ? ' · ' + k.color : ''}` : 'Carrito';
+  const kNum = (k, cls) => `<span class="knum ${cls || ''}" style="background:${colorHex(k)}" aria-hidden="true">${esc(String(k ? k.n : '?'))}</span>`;
+  const conPubs = (c) => !!(c && c.pubsOn);
+  S.pubs = null; S.ent = {};
+  function cargarPubs(forzar) {
+    if (S.pubs && !forzar) return Promise.resolve(S.pubs);
+    if (cargarPubs.p && !forzar) return cargarPubs.p;
+    cargarPubs.p = S.db.collection('publicaciones').get().then(qs => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.pubs = o; cargarPubs.p = null; return o; }).catch(e => { cargarPubs.p = null; console.error(e); S.pubs = S.pubs || {}; return S.pubs; });
+    return cargarPubs.p;
+  }
+  const pubNombre = (id) => ((S.pubs || {})[id] || {}).nombre || 'Publicación';
+  const pubSub = (x) => [x.tipo, x.idioma, x.edicion].filter(Boolean).join(' · ');
+  function tapaHTML(id, cls) {
+    const x = (S.pubs || {})[id] || {};
+    return x.foto ? `<span class="tapa ${cls || ''}" style="background-image:url('${x.foto}')" role="img" aria-label="${esc(x.nombre || '')}"></span>`
+      : `<span class="tapa sin t-${esc(String(x.tipo || 'Otro').toLowerCase())} ${cls || ''}" aria-hidden="true">${I('libro', 'width:16px;height:16px')}</span>`;
+  }
+  const resumenItems = (items) => { const xs = Object.keys(items || {}).filter(id => items[id] > 0); return xs.length ? xs.map(id => `${items[id]} ${pubNombre(id)}`).join(' · ') : 'No se dejó nada'; };
+  // Un carrito por el código de su QR (en las campañas que este celular ve)
+  function carritoDe(cod) {
+    cod = String(cod || '').toUpperCase();
+    for (const c of Object.values(S.campanas)) { const ks = c.carritos || {}; for (const kid of Object.keys(ks)) if (ks[kid].cod === cod) return { c, kid, k: ks[kid] }; }
+    return null;
+  }
+  // Turnos en los que se puede contar lo entregado: confirmados, en una campaña con la cuenta prendida,
+  // desde 15 minutos antes de terminar hasta el final del día siguiente.
+  function turnosParaContar() {
+    const ahora = new Date(), h0 = hoy(), m = ahora.getHours() * 60 + ahora.getMinutes();
+    return Object.keys(S.mis || {}).map(id => Object.assign({ id }, S.mis[id])).filter(p => p.estado === 'confirmado' && conPubs(S.campanas[p.cid]) &&
+      ((p.fecha === h0 && m >= minutos(p.hasta) - 15) || p.fecha === addDays(h0, -1))).sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
+  }
+  async function cargarEnt(p, forzar) {
+    const id = cupoId(p.cid, p.fecha, p.tid), ya = S.ent[id];
+    if (ya && !forzar && Date.now() - ya.t < 60000) return ya;
+    try { const sn = await S.db.doc('entregas/' + id).get(); S.ent[id] = { t: Date.now(), d: sn.exists ? sn.data() : null }; }
+    catch (e) { S.ent[id] = { t: Date.now(), err: true }; }
+    return S.ent[id];
+  }
+  // Inicio: "Terminó tu turno: escaneá el carrito y contá lo que se dejó"
+  function avisoContarHTML() {
+    const ps = turnosParaContar().filter(p => { const e = S.ent[cupoId(p.cid, p.fecha, p.tid)]; return e && !e.err && !e.d; });
+    return ps.map(p => { const pt = ((S.campanas[p.cid] || {}).puntos || {})[p.punto] || {}; return `<div class="avcont"><span class="ii">${I('qr', 'width:22px;height:22px')}</span><span class="tx"><b>Terminó tu turno · ${esc(pt.nombre || '')}</b><small>Escaneá el carrito y contá lo que se dejó</small></span><button type="button" class="sbtn pri" data-contar="${esc(p.id)}">Escanear</button></div>`; }).join('');
+  }
+  function revisarAvisoContar() {
+    const ps = turnosParaContar().filter(p => !S.ent[cupoId(p.cid, p.fecha, p.tid)]);
+    if (!ps.length) return;
+    cargarPubs();
+    Promise.all(ps.map(p => cargarEnt(p))).then(() => { if (S.route.name === 'home') renderHome(); });
+  }
+  // Detalle del turno: lo entregado (o el botón para contarlo)
+  function entregaHTML(p) {
+    const c = S.campanas[p.cid]; if (!conPubs(c) || p.estado !== 'confirmado') return '';
+    const id = cupoId(p.cid, p.fecha, p.tid), e = S.ent[id], abierto = turnosParaContar().some(x => x.id === p.id);
+    if (!e) return abierto || p.fecha <= hoy() ? '<div class="entr" id="entr"></div>' : '';
+    if (e.err) return '';
+    if (e.d) {
+      const k = (c.carritos || {})[e.d.k], hora = e.d.at && (e.d.at.toDate ? e.d.at.toDate() : new Date(e.d.at));
+      return `<div class="entr ok" id="entr"><div class="h">✓ Lo entregado en este turno</div><p class="res">${esc(resumenItems(e.d.items))}</p><div class="q"><span>${k ? esc(kNombre(k)) + ' · ' : ''}Lo cargó ${esc(e.d.porNombre || '')}${hora && !isNaN(hora) ? ' · ' + pad(hora.getHours()) + ':' + pad(hora.getMinutes()) : ''}</span>${abierto ? `<button type="button" class="sbtn" data-corregir="${esc(p.id)}">Corregir</button>` : ''}</div></div>`;
+    }
+    if (!abierto) return p.fecha === hoy() ? '<div class="entr" id="entr"><p class="nota0">Al terminar el turno vas a poder contar lo que se dejó en el carrito.</p></div>' : '';
+    return `<div class="entr pend" id="entr"><b>¿Cómo te fue? Contá lo que se dejó</b><p>Escaneá el QR del carrito que usaste. Lo carga uno solo por turno.</p><button type="button" class="btn" data-contar="${esc(p.id)}">${I('qr')}Escanear carrito</button></div>`;
+  }
+  /* El escáner: la cámara dentro de la app (así siempre está la sesión del hermano). Si no hay cámara, se elige el número. */
+  const JSQR = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+  function cargarJsQR() {
+    if (window.jsQR) return Promise.resolve(window.jsQR);
+    if (cargarJsQR.p) return cargarJsQR.p;
+    cargarJsQR.p = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = JSQR; sc.onload = () => (window.jsQR ? res(window.jsQR) : rej(new Error('jsqr'))); sc.onerror = () => { cargarJsQR.p = null; rej(new Error('jsqr')); }; document.head.appendChild(sc); });
+    return cargarJsQR.p;
+  }
+  const codDeTexto = (t) => { const m = String(t || '').match(/#\/k\/([A-Za-z0-9]{6,12})/) || String(t || '').trim().match(/^([A-Za-z0-9]{8})$/); return m ? m[1].toUpperCase() : ''; };
+  function escanear(c, listo) {
+    const ks = Object.keys((c && c.carritos) || {}).map(kid => [kid, c.carritos[kid]]).sort((a, b) => a[1].n - b[1].n);
+    const ov = document.createElement('div'); ov.className = 'esc';
+    ov.innerHTML = `<div class="top"><button type="button" data-esc-x>${I('x', 'width:16px;height:16px')}Cerrar</button><h3>Escanear carrito</h3></div>
+      <div class="cam"><video playsinline muted></video><div class="frame"></div><div class="msg" aria-live="polite">Abriendo la cámara…</div></div>
+      <div class="bot"><p>¿No funciona la cámara? Elegí el número que está debajo del QR:</p><div class="ch">${ks.map(([kid, k]) => `<button type="button" data-kman="${esc(kid)}" style="background:${colorHex(k)}" aria-label="${esc(kNombre(k))}">${esc(String(k.n))}</button>`).join('') || '<small>Esta campaña todavía no tiene carritos.</small>'}</div></div>`;
+    document.body.appendChild(ov);
+    const video = ov.querySelector('video'), msg = ov.querySelector('.msg');
+    let stream = null, vivo = true, det = null, cv = null;
+    const cerrar = () => { vivo = false; if (stream) stream.getTracks().forEach(t => t.stop()); ov.remove(); };
+    const listoCon = (kid, modo) => { cerrar(); listo(kid, modo); };
+    ov.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.escX !== undefined) cerrar(); else if (b.dataset.kman) listoCon(b.dataset.kman, 'mano'); });
+    ov.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrar(); });
+    modal(ov, ov);
+    const leido = (txt) => {
+      const cod = codDeTexto(txt); if (!cod) return false;
+      const r = carritoDe(cod);
+      if (!r) { msg.textContent = 'Ese QR no es de un carrito de la PPAM.'; return false; }
+      if (c && r.c.id !== c.id) { msg.textContent = `Ese carrito es de otra campaña (${r.c.nombre}).`; return false; }
+      listoCon(r.kid, 'qr'); return true;
+    };
+    const buscar = async () => {
+      if (!vivo) return;
+      try {
+        if (video.readyState >= 2) {
+          if (det) { const r = await det.detect(video); if (r && r[0] && leido(r[0].rawValue)) return; }
+          else if (window.jsQR) {
+            cv = cv || document.createElement('canvas'); const w = video.videoWidth, h = video.videoHeight;
+            if (w && h) { cv.width = w; cv.height = h; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(video, 0, 0, w, h); const r = window.jsQR(g.getImageData(0, 0, w, h).data, w, h); if (r && leido(r.data)) return; }
+          }
+        }
+      } catch (e) { /* sigue intentando */ }
+      setTimeout(buscar, 250);
+    };
+    (async () => {
+      try {
+        if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) throw new Error('sin cámara');
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        if (!vivo) { stream.getTracks().forEach(t => t.stop()); return; }
+        video.srcObject = stream; await video.play().catch(() => {});
+        if ('BarcodeDetector' in window) { try { const f = await window.BarcodeDetector.getSupportedFormats(); if (f.includes('qr_code')) det = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { det = null; } }
+        if (!det) await cargarJsQR();
+        msg.textContent = 'Apuntá al QR del carrito'; buscar();
+      } catch (e) { ov.classList.add('sincam'); msg.textContent = 'No se pudo abrir la cámara. Elegí el número del carrito abajo.'; }
+    })();
+  }
+  // Contar lo que se dejó (con el carrito ya elegido)
+  async function contar(p, kid, modo) {
+    const c = S.campanas[p.cid], k = ((c && c.carritos) || {})[kid]; if (!k) { toast('No encontramos ese carrito.'); return; }
+    await cargarPubs();
+    const id = cupoId(p.cid, p.fecha, p.tid), prev = ((S.ent[id] || {}).d) || null, ant = (prev && prev.items) || {};
+    const ids = [...new Set([...Object.keys(k.items || {}), ...Object.keys(ant)])].filter(x => (S.pubs || {})[x]);
+    const ov = sheet(`<div class="kok">${kNum(k, 'big')}<span class="tx"><b>${esc(kNombre(k))}</b><small>${modo === 'qr' ? '✓ Escaneado' : 'Elegido a mano'}</small></span><button type="button" class="sbtn" id="ctOtro">No es este</button></div>
+      <h3 style="margin-top:14px">¿Cuánto se dejó?</h3><p class="hint">${esc(cap(fmtDia(p.fecha)))} · ${esc(p.desde)} a ${esc(p.hasta)}${prev ? ` · ya lo cargó ${esc(prev.porNombre || '')}: si algo está mal, corregilo` : ''}</p>
+      <div class="ctl">${ids.length ? ids.map(x => `<div class="it">${tapaHTML(x)}<span class="tx"><b>${esc(pubNombre(x))}</b><small>${esc(pubSub(S.pubs[x]))}</small></span><span class="stp"><button type="button" data-mn="${esc(x)}" aria-label="Uno menos">−</button><input type="number" inputmode="numeric" min="0" max="999" value="${ant[x] || 0}" data-cnt="${esc(x)}" aria-label="Cantidad de ${esc(pubNombre(x))}"><button type="button" data-mas="${esc(x)}" aria-label="Uno más">+</button></span></div>`).join('') : '<p class="hint">Este carrito todavía no tiene publicaciones cargadas. Avisale al coordinador.</p>'}</div>
+      <button type="button" class="btn" id="ctOk"${ids.length ? '' : ' disabled'}>Guardar lo entregado</button><button type="button" class="btn alt" data-cerrar>Cancelar</button><p class="fine">Se cuenta en el ${esc(kNombre(k).toLowerCase())}. Solo cantidades, nunca datos de las personas.</p>`);
+    const q = (s) => ov.querySelector(s);
+    ov.addEventListener('click', (e) => { const b = e.target.closest('[data-mn],[data-mas]'); if (!b) return; const x = b.dataset.mn || b.dataset.mas, inp = ov.querySelector(`[data-cnt="${CSS.escape(x)}"]`); inp.value = Math.max(0, Math.min(999, (parseInt(inp.value, 10) || 0) + (b.dataset.mn ? -1 : 1))); });
+    q('#ctOtro').addEventListener('click', () => { ov.remove(); escanear(c, (k2, m2) => contar(p, k2, m2)); });
+    q('#ctOk').addEventListener('click', async () => {
+      const items = {}; ov.querySelectorAll('[data-cnt]').forEach(inp => { const n = Math.max(0, Math.min(999, parseInt(inp.value, 10) || 0)); if (n) items[inp.dataset.cnt] = n; });
+      const b = q('#ctOk'); b.disabled = true; b.textContent = 'Guardando…';
+      try {
+        await conTiempo(S.db.doc('entregas/' + id).set({ cid: p.cid, fecha: p.fecha, tid: p.tid, k: kid, modo, items, por: S.yo, porNombre: nombreYo().slice(0, 80), at: S.ahora() }));
+        S.ent[id] = { t: Date.now(), d: { cid: p.cid, fecha: p.fecha, tid: p.tid, k: kid, modo, items, por: S.yo, porNombre: nombreYo(), at: new Date().toISOString() } };
+        ov.remove(); toast('¡Gracias! Quedó guardado lo entregado'); render();
+      } catch (e) { console.error(e); b.disabled = false; b.textContent = 'Guardar lo entregado'; toast(e && e.code === 'sin-respuesta' ? 'Hay poca señal: se guarda solo cuando vuelva la conexión.' : 'No se pudo guardar. Probá de nuevo.'); }
+    });
+  }
+  // Empezar a contar desde un turno (o desde un QR escaneado afuera de la app)
+  function contarTurno(p) { const c = S.campanas[p.cid]; cargarPubs(); escanear(c, (kid, modo) => contar(p, kid, modo)); }
+  async function alAbrirCarrito(cod) {
+    const r = carritoDe(cod);
+    if (!r) { sheet(`<h3>No encontramos ese carrito</h3><p class="hint">Puede que lo hayan borrado o que sea de una campaña que ya terminó.</p><button type="button" class="btn alt" data-cerrar>Cerrar</button>`); return; }
+    if (S.isAdmin || S.coordDe.includes(r.c.id)) { fichaCarrito(r.c.id, r.kid); return; }
+    const ps = turnosParaContar().filter(p => p.cid === r.c.id);
+    if (!ps.length) { sheet(`<div class="kok">${kNum(r.k, 'big')}<span class="tx"><b>${esc(kNombre(r.k))}</b><small>${esc(r.c.nombre)}</small></span></div><p class="hint" style="margin-top:14px">No tenés un turno para cargar con este carrito. Se puede contar lo entregado desde 15 minutos antes de que termine tu turno confirmado hasta el día siguiente.</p><button type="button" class="btn alt" data-cerrar>Cerrar</button>`); return; }
+    await Promise.all(ps.map(p => cargarEnt(p)));
+    if (ps.length === 1) { contar(ps[0], r.kid, 'qr'); return; }
+    const ov = sheet(`<h3>¿De qué turno?</h3><p class="hint">${esc(kNombre(r.k))} · ${esc(r.c.nombre)}</p>${ps.map((p, i) => `<button type="button" class="btn alt" data-tq="${i}">${esc(cap(fmtDia(p.fecha)))} · ${esc(p.desde)} a ${esc(p.hasta)}</button>`).join('')}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    ov.querySelectorAll('[data-tq]').forEach(b => b.addEventListener('click', () => { ov.remove(); contar(ps[+b.dataset.tq], r.kid, 'qr'); }));
+  }
+  // Alguien que no tiene la app abierta escanea el QR de un carrito con la cámara del celular
+  function renderQRPublico() {
+    cerrada(`<div class="lk">${I('qr', 'width:30px;height:30px')}</div><h2>Este carrito es de la predicación pública</h2><p>¿Querés saber más sobre lo que enseña la Biblia? En jw.org encontrás la Biblia, artículos y videos gratis, en muchos idiomas.</p>
+      <a class="btn" href="https://www.jw.org/es/" target="_blank" rel="noopener">Ir a jw.org</a>
+      <div class="codok qrher">${I('help', 'width:18px;height:18px')}<span><b>¿Sos publicador?</b>Abrí la app PPAM con tu link y tocá "Escanear carrito" para cargar lo que se dejó.</span></div>`);
+  }
   const waLink = (cel, txt) => { let x = String(cel || '').replace(/\D/g, ''); if (x.length === 10) x = '549' + x; return 'https://wa.me/' + x + '?text=' + encodeURIComponent(txt); };
 
   // Varias novedades juntas (por ejemplo, los lugares de cada campaña) se dibujan una sola vez.
@@ -485,8 +663,10 @@
     if (r.name === 'canje') return renderCanje();
     if (r.name === 'ayuda' && S.acceso !== 'cargando') return renderAyuda();
     if (S.acceso === 'cargando') { $('app').innerHTML = esqueleto(); return; }
+    if (r.name === 'carrito' && S.acceso !== 'si') return renderQRPublico();
     if (S.acceso !== 'si') return renderCerrado();
     if (!S.loaded) { $('app').innerHTML = esqueleto(); return; }
+    if (r.name === 'carrito') { const cod = r.cod; go('#/'); setTimeout(() => alAbrirCarrito(cod), 0); return; }
     if (r.name === 'camp') return renderCamp();
     if (r.name === 'mis') return renderMis();
     if (r.name === 'turno') return renderTurno();
@@ -642,7 +822,8 @@
       ['confirmado', '¿Cómo sé si me confirmaron?', 'Entrá a Mis turnos: cada turno dice "Esperando confirmación" o "Confirmado". También lo ves en el inicio. La app no manda notificaciones; si hace falta, el coordinador te escribe por WhatsApp.'],
       ['llegar', '¿Cómo llego al lugar?', 'En tu turno, "Llegar" abre Google Maps con el lugar marcado. En la campaña, "Ver lugar" muestra fotos e indicaciones del punto.'],
       ['agendar', '¿Cómo lo agendo en el calendario del celular?', 'En tu turno tocá "Agendar": se descarga un archivo que tu celular abre con el calendario, con el día, el horario y el lugar.'],
-      ['cancelar', 'No puedo ir, ¿cómo cancelo?', 'Entrá a Mis turnos, tocá el turno y después "Cancelar". El lugar se libera enseguida para otro hermano. Avisá con tiempo: así el coordinador puede cubrirlo. Si la campaña tiene un WhatsApp de contacto, en el detalle del turno está el botón "Avisar al coordinador que no puedo ir", que le manda el mensaje ya escrito.']
+      ['cancelar', 'No puedo ir, ¿cómo cancelo?', 'Entrá a Mis turnos, tocá el turno y después "Cancelar". El lugar se libera enseguida para otro hermano. Avisá con tiempo: así el coordinador puede cubrirlo. Si la campaña tiene un WhatsApp de contacto, en el detalle del turno está el botón "Avisar al coordinador que no puedo ir", que le manda el mensaje ya escrito.'],
+      ['contar', '¿Cómo cargo lo que se dejó en el carrito?', 'Si tu campaña lleva la cuenta de las publicaciones, al terminar el turno aparece "Escaneá el carrito y contá lo que se dejó". Tocá Escanear, apuntá al QR pegado en el carrito y poné cuántas se dejaron de cada una. Lo carga uno solo por turno: si tu compañero ya lo hizo, ves lo que puso y lo podés corregir. Si la cámara no funciona, elegí el número del carrito, que está debajo del QR.']
     ] },
     { g: 'Mis datos y la app', qs: [
       ['datos', '¿Quién ve mis datos?', 'Solo los coordinadores de la campaña en la que te anotaste, para organizar los turnos. Los demás hermanos ven cuántos lugares quedan, pero no quién está anotado, salvo que elijas mostrar tu nombre a tus compañeros de turno.'],
@@ -743,7 +924,8 @@
     if (S.ciudad !== 'todas' && !ciudades.includes(S.ciudad)) S.ciudad = 'todas';
     const vis = list.filter(c => S.ciudad === 'todas' || c.ciudad === S.ciudad);
     const prox = S.yo ? misProximos() : [];
-    let h = instalarHTML();
+    let h = instalarHTML() + avisoContarHTML();
+    revisarAvisoContar();
     if (prox.length) {
       h += `<div class="lbl">${prox[0].fecha === hoy() ? 'Hoy' : 'Tu próximo turno'}</div>` + ticket(prox[0]);
       if (prox.length > 1) {
@@ -893,7 +1075,7 @@
     const tp = TIPOS[p.tipo] || TIPOS.otro, url = comoLlegarUrl(p, c);
     const dir = p.direccion || (p.lat != null ? `${p.lat}, ${p.lng}` : '');
     const fotos = (p.fotos || []).map(f => `<div${fotoAttr(cid, f)}></div>`).join('');
-    sheet(`${fotos ? `<div class="fotos">${fotos}</div>` : ''}<h3>${esc(p.nombre)}</h3><span class="sub">${esc(tp[1])} · ${cupoDe(c, { punto: pid })} por turno</span>
+    const ovL = sheet(`${fotos ? `<div class="fotos">${fotos}</div>` : ''}<h3>${esc(p.nombre)}</h3><span class="sub">${esc(tp[1])} · ${cupoDe(c, { punto: pid })} por turno</span>
       ${mapaLugar(p, c)}
       <div class="dir">${I('pin')}<div><b>${esc(c.nombre)}${c.ciudad ? ' · ' + esc(c.ciudad) : ''}</b>${dir ? '<br>' + esc(dir) : ''}${p.detalle ? '<br>' + esc(p.detalle) : ''}</div></div>
       ${comodHTML(cid, pid)}
@@ -901,6 +1083,7 @@
       ${p.indicaciones ? `<div class="info"><b>Cómo encontrarlo</b>${esc(p.indicaciones)}</div>` : ''}
       ${p.retiro ? `<div class="info"><b>${retiroLabel(p)}</b>${esc(p.retiro)}</div>` : ''}
       <button type="button" class="btn alt" data-cerrar style="margin-top:14px">Cerrar</button>`);
+    if (ovL.querySelector('#vlPubs') && !S.pubs) cargarPubs().then(() => { const el = ovL.querySelector('#vlPubs'); if (el) el.outerHTML = pubsCarritoHTML(c, pid); });
   }
   async function copiar(txt) {
     try { await navigator.clipboard.writeText(txt); toast('Dirección copiada'); }
@@ -1154,6 +1337,7 @@
     if (!conf && !rech && !pasado) h += `<p class="espera">${I('clock', 'width:15px;height:15px;flex-shrink:0;margin-top:2px')}<span>Un coordinador lo revisa y te confirma. Si falta poco para el turno y todavía no te confirmaron, avisale al coordinador de tu congregación.</span></p>`;
     if (!rech) h += `<div class="tl"><span class="ok"><span class="dot">${I('check')}</span>Pedido</span><span class="ln on"></span><span class="${conf ? 'ok' : ''}"><span class="dot">${conf ? I('check') : ''}</span>Confirmado</span><span class="ln${pasado ? ' on' : ''}"></span><span class="${pasado ? 'ok' : ''}"><span class="dot">${pasado ? I('check') : ''}</span>El día</span></div>`;
     if (conClima && !(climaK && !climaK.v)) h += `<div class="clima" id="clima" aria-live="polite">${climaK && climaK.v ? climaHTML(p, climaK.v) : ''}</div>`;
+    h += entregaHTML(p);
     h += '<div class="grid4">';
     h += url ? `<a class="pr" href="${esc(url)}" target="_blank" rel="noopener"${llegarAttr(p.cid, p.punto)}>${I('nav')}Llegar</a>` : `<button type="button" disabled>${I('nav')}Llegar</button>`;
     h += `<button type="button" data-ics="${esc(p.id)}">${I('cal')}Agendar</button><button type="button" data-comp="${esc(p.id)}">${I('share')}Compartir</button>`;
@@ -1171,6 +1355,8 @@
     $('app').innerHTML = h;
     if (conClima && !climaK) climaTurno(p, pt).then(v => { const el = $('clima'); if (!el || S.route.pid !== pid) return; if (v) el.innerHTML = climaHTML(p, v); else el.remove(); });
     if ($('comp')) cargarComp(p);
+    if (conPubs(c) && conf && !S.ent[cupoId(p.cid, p.fecha, p.tid)] && $('entr')) Promise.all([cargarEnt(p), cargarPubs()]).then(() => { if (S.route.pid === pid) renderTurno(); });
+    else if (conPubs(c) && conf && !S.pubs) cargarPubs().then(() => { if (S.route.pid === pid) renderTurno(); });
   }
   // "Anotate conmigo": link directo a ese turno (se abre listo para anotarse); no muestra datos de nadie
   function invitarTurno(pid) {
@@ -1684,6 +1870,7 @@
     if (ds.login !== undefined) { login(); return; }
     if (ds.ciudad) { S.ciudad = ds.ciudad; renderHome(); return; }
     if (ds.dia) { S.dia = ds.dia; renderCamp(); return; }
+    if (ds.contar || ds.corregir) { const p = S.mis[ds.contar || ds.corregir] && Object.assign({ id: ds.contar || ds.corregir }, S.mis[ds.contar || ds.corregir]); if (!p) return; const id = cupoId(p.cid, p.fecha, p.tid); if (ds.corregir && S.ent[id] && S.ent[id].d) { contar(p, S.ent[id].d.k, S.ent[id].d.modo || 'qr'); return; } contarTurno(p); return; }
     if (ds.comod) { const [cid, pid, k] = ds.comod.split('|'); verComod(cid, pid, k); return; }
     if (ds.compartir) { const [pid, si] = ds.compartir.split('|'), p = S.mis[pid]; if (!p) return; t.disabled = true; compartirNombre(p.cid, p.fecha, p.tid, si === '1', p).then(ok => { if (!ok) toast('No se pudo cambiar. Probá de nuevo.'); else toast(si === '1' ? 'Tus compañeros de este turno ven tu nombre' : 'Listo: tu nombre ya no se muestra'); render(); }); return; }
     if (ds.calmes) { const c = S.campanas[S.route.cid]; if (!c) return; const dias = diasDe(c).filter(d => turnosDelDia(c, d).some(t => !yaEmpezo(d, t))), meses = [...new Set(dias.map(d => d.slice(0, 7)))], m = meses[meses.indexOf(S.dia.slice(0, 7)) + (+ds.calmes)]; if (m) { S.dia = dias.find(d => d.slice(0, 7) === m); renderCamp(); } return; }
@@ -1746,7 +1933,7 @@
     if (coordMod) return Promise.resolve(coordMod);
     if (!coordCargando) coordCargando = new Promise((res, rej) => {
       const sc = document.createElement('script'); sc.src = './coord.js?v=' + VERSION;
-      sc.onload = () => { try { coordMod = window.PPAM_COORD({ DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt }); res(coordMod); } catch (e) { rej(e); } };
+      sc.onload = () => { try { coordMod = window.PPAM_COORD({ DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt, KCOLORES, TIPOS_PUB, colorHex, kNombre, kNum, conPubs, cargarPubs, pubNombre, pubSub, tapaHTML, resumenItems }); res(coordMod); } catch (e) { rej(e); } };
       sc.onerror = () => { coordCargando = null; rej(new Error('coord.js')); };
       document.head.appendChild(sc);
     });
@@ -1759,6 +1946,7 @@
     cargarCoord().then(mm => mm[n](...args)).catch((e) => { console.error(e); toast('No se pudo cargar esta parte. Revisá la conexión y probá de nuevo.'); });
   }
   function renderCoord(...a) { return enCoord('renderCoord', a); }
+  function fichaCarrito(...a) { return enCoord('fichaCarrito', a); }
   function renderHermanos(...a) { return enCoord('renderHermanos', a); }
   function renderAdmin(...a) { return enCoord('renderAdmin', a); }
   function renderSoporte(...a) { return enCoord('renderSoporte', a); }

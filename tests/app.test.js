@@ -114,8 +114,8 @@ const SEED = {
   const b = await chromium.launch();
   async function open(users, hash, opts) {
     const ctx = await b.newContext({ viewport: opts && opts.ancho ? { width: opts.ancho, height: 900 } : { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
-    await ctx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });   // miércoles 30 de septiembre
-    await ctx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    await ctx.clock.install({ time: new Date((opts && opts.reloj) || '2026-09-30T12:00:00-03:00') });   // miércoles 30 de septiembre
+    await ctx.route(/gstatic|googleapis|openstreetmap|cdnjs|jsdelivr/, r => r.abort());
     // Pronóstico del tiempo de prueba (Open-Meteo): 1 = mayormente soleado, máxima 22°, 10% de lluvia
     await ctx.route(/api\.open-meteo\.com/, r => { const f = new URL(r.request().url()).searchParams.get('start_date'); r.fulfill({ contentType: 'application/json', body: JSON.stringify({ hourly: { time: Array.from({ length: 24 }, (_, h) => `${f}T${String(h).padStart(2, '0')}:00`), temperature_2m: Array.from({ length: 24 }, (_, h) => 12 + Math.min(h, 14) * 0.7), precipitation_probability: Array.from({ length: 24 }, () => 10), weather_code: Array.from({ length: 24 }, () => 1) } }) }); });
     if (opts && opts.nuevo) await ctx.addInitScript(() => { window.__bvNueva = true; });   // ver la bienvenida como alguien nuevo
@@ -1036,7 +1036,7 @@ const SEED = {
     check('la pestaña Ayuda está siempre en la barra de abajo', await a.evaluate(() => { const b = document.getElementById('tabAyuda'); return b && !b.classList.contains('hidden') && /Ayuda/.test(b.textContent); }));
     await a.click('#tabAyuda'); await a.waitForTimeout(200);
     const at = await text(a, '#app');
-    check('Ayuda: 15 preguntas para publicadores, en 3 grupos, sin las de coordinadores', await a.evaluate(() => document.querySelectorAll('.faq details').length) === 15 && /Anotarme[\s\S]*Mis turnos[\s\S]*Mis datos y la app/.test(at) && !/Para coordinadores/.test(at), at.slice(0, 200));
+    check('Ayuda: 16 preguntas para publicadores, en 3 grupos, sin las de coordinadores', await a.evaluate(() => document.querySelectorAll('.faq details').length) === 16 && /Anotarme[\s\S]*Mis turnos[\s\S]*Mis datos y la app/.test(at) && !/Para coordinadores/.test(at), at.slice(0, 200));
     check('la pestaña queda marcada y el título dice "Preguntas frecuentes"', await a.evaluate(() => document.getElementById('tabAyuda').classList.contains('on')) && /Preguntas frecuentes/.test(await text(a, '#tbTitle')));
     await a.click('#faq-completo summary'); await a.waitForTimeout(80);
     check('tocar una pregunta muestra la respuesta', await a.evaluate(() => document.getElementById('faq-completo').open) && /Con lugar/.test(await text(a, '#faq-completo')));
@@ -1049,7 +1049,7 @@ const SEED = {
     if (fs.existsSync(ax2)) { await a.keyboard.press('Escape'); await a.waitForTimeout(100); await a.addScriptTag({ content: fs.readFileSync(ax2, 'utf8') }); const v = await a.evaluate(async () => (await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations.map(x => x.id + ' x' + x.nodes.length)); check('axe (WCAG 2.2 AA) sin problemas: Ayuda', v.length === 0, v); }
     const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '');
     await entrar(k, 300); await k.evaluate(() => { location.hash = '#/ayuda/recuperar'; }); await k.waitForTimeout(300);
-    check('el coordinador ve además "Para coordinadores", y un enlace abre esa respuesta', /Para coordinadores/.test(await text(k, '#app')) && await k.evaluate(() => document.getElementById('faq-recuperar').open) && await k.evaluate(() => document.querySelectorAll('.faq details').length) === 18);
+    check('el coordinador ve además "Para coordinadores", y un enlace abre esa respuesta', /Para coordinadores/.test(await text(k, '#app')) && await k.evaluate(() => document.getElementById('faq-recuperar').open) && await k.evaluate(() => document.querySelectorAll('.faq details').length) === 19);
     const u = await open([{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }], '');
     await entrar(u, 300);
     await u.evaluate(() => { const db = window.__ppamMock.db; db.doc('pedidos/parana-terminal__2026-10-02__t2__u-ana').set({ cid: 'parana-terminal', fecha: '2026-10-02', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-ana', email: 'ana@x.com', nombre: 'Ana', apellido: 'Paz', congregacion: 'X', celular: '343 555-0000', estado: 'pendiente', creado: 'x' }); });
@@ -1367,6 +1367,70 @@ const SEED = {
     Object.keys(SEED).forEach(x => delete SEED[x]); Object.assign(SEED, orig);
   }
   {
+    console.log('\nPublicaciones y carritos con QR');
+    const orig = JSON.parse(JSON.stringify(SEED));
+    const cp = SEED['campanas/parana-terminal'];
+    cp.pubsOn = true;
+    cp.carritos = { k1: { n: 1, color: 'azul', cod: 'K7Q2M9XA', habitual: 'p1', items: { pA: 40, pD: 40, pT: 100 } }, k2: { n: 2, color: 'verde', cod: 'P3ZT8WLC', habitual: 'p2', items: { pA: 20, pF: 15 } } };
+    SEED['publicaciones/pA'] = { nombre: 'La Atalaya', tipo: 'Revista', idioma: 'Español', edicion: 'N.º 1 de 2026' };
+    SEED['publicaciones/pD'] = { nombre: '¡Despertad!', tipo: 'Revista', idioma: 'Español' };
+    SEED['publicaciones/pT'] = { nombre: 'Tarjeta de contacto', tipo: 'Tarjeta', idioma: 'Español' };
+    SEED['publicaciones/pF'] = { nombre: 'Escuche a Dios', tipo: 'Folleto', idioma: 'Español' };
+    SEED['pedidos/parana-terminal__2026-10-01__t2__u-ana'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-ana', nombre: 'Ana', apellido: 'Paz', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', estado: 'confirmado', creado: '2026-09-29T10:00:00Z' };
+    SEED['cupos/parana-terminal__2026-10-01__t2'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', ocupados: { 'u-ana': 'c' } };
+    SEED['entregas/parana-terminal__2026-10-01__t1'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't1', k: 'k2', modo: 'qr', items: { pA: 3 }, por: 'otro1', porNombre: 'Luis Benítez', at: '2026-10-01T13:05:00Z' };
+    const pub = { uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' };
+    const k = await open([pub], '', { reloj: '2026-10-01T12:40:00-03:00' }); await k.waitForTimeout(500);
+    check('inicio: al terminar el turno, "Escaneá el carrito y contá lo que se dejó"', /Terminó tu turno · Andén 1\s*Escaneá el carrito y contá lo que se dejó/.test(await text(k, '#app')) && !!(await k.$('.avcont [data-contar]')), (await text(k, '#app')).slice(0, 200));
+    await k.click('.avcont [data-contar]'); await k.waitForTimeout(400);
+    check('el escáner se abre adentro de la app, con los números de los carritos por si falla la cámara', await k.evaluate(() => !!document.querySelector('.esc video') && [...document.querySelectorAll('.esc [data-kman]')].map(b => b.textContent).join() === '1,2'));
+    await k.click('.esc [data-kman="k1"]'); await k.waitForTimeout(300);
+    const ct = await text(k, '.ov .sheet');
+    check('contar: el carrito elegido y sus publicaciones (con tipo e idioma)', !(await k.$('.esc')) && /Carrito 1 · azul\s*Elegido a mano/.test(ct) && /La Atalaya\s*Revista · Español · N\.º 1 de 2026/.test(ct) && /¡Despertad!/.test(ct) && /Tarjeta de contacto/.test(ct) && !/Escuche a Dios/.test(ct), ct.slice(0, 300));
+    await k.click('[data-mas="pA"]'); await k.click('[data-mas="pA"]'); await k.click('[data-mas="pA"]'); await k.click('[data-mn="pA"]'); await k.fill('[data-cnt="pT"]', '12');
+    await k.click('#ctOk'); await k.waitForTimeout(300);
+    check('guarda lo entregado: solo cantidades, el carrito y quién lo cargó', await k.evaluate(() => { const e = window.__store['entregas/parana-terminal__2026-10-01__t2']; return e && e.k === 'k1' && e.modo === 'mano' && JSON.stringify(e.items) === '{"pA":2,"pT":12}' && e.por === 'u-ana' && e.porNombre === 'Ana Paz' && e.cid === 'parana-terminal' && e.tid === 't2' && !('celular' in e); }), await k.evaluate(() => window.__store['entregas/parana-terminal__2026-10-01__t2']));
+    check('y el aviso del inicio se va', !(await k.$('.avcont')));
+    await k.evaluate(() => { location.hash = '#/t/' + encodeURIComponent('parana-terminal__2026-10-01__t2__u-ana'); }); await k.waitForTimeout(400);
+    check('detalle del turno: lo entregado, el carrito, quién lo cargó y "Corregir"', /Lo entregado en este turno\s*2 La Atalaya · 12 Tarjeta de contacto\s*Carrito 1 · azul · Lo cargó Ana Paz/i.test(await text(k, '#entr')) && !!(await k.$('[data-corregir]')), await text(k, '#entr'));
+    await k.click('[data-corregir]'); await k.waitForTimeout(300);
+    check('"Corregir" abre lo cargado', await k.evaluate(() => document.querySelector('[data-cnt="pA"]').value === '2' && document.querySelector('[data-cnt="pT"]').value === '12' && /ya lo cargó Ana Paz/.test(document.querySelector('.ov .sheet').innerText)));
+    await k.evaluate(() => document.querySelectorAll('.ov').forEach(o => o.remove()));
+    await k.evaluate(() => { location.hash = '#/k/P3ZT8WLC'; }); await k.waitForTimeout(400);
+    check('abrir el QR de un carrito (link) lleva a contar con ese carrito', /Carrito 2 · verde\s*✓ Escaneado/.test(await text(k, '.ov .sheet')) && /Escuche a Dios/.test(await text(k, '.ov .sheet')), await text(k, '.ov .sheet'));
+    await k.evaluate(() => document.querySelectorAll('.ov').forEach(o => o.remove()));
+    await k.evaluate(() => { location.hash = '#/k/ZZZZZZZZ'; }); await k.waitForTimeout(300);
+    check('un QR que no es de ningún carrito', /No encontramos ese carrito/.test(await text(k, '.ov .sheet')));
+    check('sin errores (carritos, hermano)', k.errs.length === 0, k.errs);
+    const pq = await open([], '#/k/K7Q2M9XA', { cerrado: true });
+    check('alguien sin la app que escanea el QR: mensaje para el público con jw.org', /Este carrito es de la predicación pública/.test(await text(pq, '#app')) && await pq.evaluate(() => /^https:\/\/www\.jw\.org\//.test(document.querySelector('#app a.btn').href)) && /¿Sos publicador\?/.test(await text(pq, '#app')));
+    const c = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal', { reloj: '2026-10-01T12:40:00-03:00' }); await entrar(c, 400);
+    await c.click('[data-tab="dia"]'); await c.waitForTimeout(300);
+    check('del día: lo que se dejó en cada turno, con el carrito y quién lo cargó', /Se dejaron: 3 La Atalaya\s*Carrito 2 · verde \(escaneado\) · cargó Luis Benítez/.test(await text(c, '#dt-t1')) && /Sin contar lo que se dejó/.test(await text(c, '#dt-t2')), [await text(c, '#dt-t1'), await text(c, '#dt-t2')]);
+    await c.click('[data-tab="config"]'); await c.waitForTimeout(200); await c.click('[data-aj="carritos"]'); await c.waitForTimeout(300);
+    const kt = await text(c, '#cTab');
+    check('ajustes, carritos: la lista y el aviso de carrito fuera de su lugar', /Carrito 1 · azul\s*Habitual: Andén 1\s*40 La Atalaya · 40 ¡Despertad! · 100 Tarjeta de contacto/.test(kt) && /El carrito 2 · verde se usó en Andén 1 el jueves 1 de octubre/.test(kt) && /Imprimir etiquetas/.test(kt), kt.slice(0, 500));
+    await c.click('[data-knuevo]'); await c.waitForTimeout(300);
+    check('carrito nuevo: número siguiente y color', await c.evaluate(() => document.getElementById('kN').value === '3' && document.getElementById('kCol').value === 'rojo'));
+    await c.selectOption('#kAdd', 'pF'); await c.waitForTimeout(80); await c.fill('[data-kq="pF"]', '25'); await c.selectOption('#kHab', 'p2');
+    await c.click('#kOk'); await c.waitForTimeout(300);
+    check('guarda el carrito con su código para el QR', await c.evaluate(() => { const ks = Object.values(window.__store['campanas/parana-terminal'].carritos); const n = ks.find(x => x.n === 3); return !!n && /^[A-Z2-9]{8}$/.test(n.cod) && n.habitual === 'p2' && JSON.stringify(n.items) === '{"pF":25}' && n.color === 'rojo'; }));
+    await c.click('[data-knuevo]'); await c.waitForTimeout(300); await c.fill('#kN', '1'); await c.click('#kOk'); await c.waitForTimeout(150);
+    check('no deja dos carritos con el mismo número', /Ya hay un carrito 1/.test(await text(c, '#toast')));
+    await c.evaluate(() => document.querySelectorAll('.ov').forEach(o => o.remove()));
+    await c.click('[data-kficha="k2"]'); await c.waitForTimeout(300);
+    check('ficha del carrito: publicaciones y últimos turnos', /Carrito 2 · verde/.test(await text(c, '.ov .sheet')) && /Jueves 1 de octubre · Andén 1[\s\S]*3 La Atalaya · Luis Benítez/.test(await text(c, '.ov .sheet')), await text(c, '.ov .sheet'));
+    await c.evaluate(() => document.querySelectorAll('.ov').forEach(o => o.remove()));
+    await c.evaluate(() => { location.hash = '#/coord/concordia-costanera'; }); await c.waitForTimeout(300); await c.click('[data-tab="config"]'); await c.waitForTimeout(200);
+    check('en una campaña con la cuenta apagada no aparece "Carritos"', !(await c.$('[data-aj="carritos"]')));
+    await c.evaluate(() => { location.hash = '#/admin'; }); await c.waitForTimeout(400);
+    check('administración: la lista de publicaciones de la provincia', /Publicaciones \(toda la provincia\)[\s\S]*¡Despertad![\s\S]*La Atalaya\s*Revista · Español · N\.º 1 de 2026/.test(await text(c, '#app')));
+    await c.click('[data-pubnueva]'); await c.waitForTimeout(200); await c.fill('#puN', 'Disfrute de la vida'); await c.selectOption('#puT', 'Libro'); await c.fill('#puE', '2025'); await c.click('#puOk'); await c.waitForTimeout(300);
+    check('agrega una publicación', await c.evaluate(() => Object.values(window.__store).some(x => x && x.nombre === 'Disfrute de la vida' && x.tipo === 'Libro' && x.idioma === 'Español' && x.edicion === '2025')));
+    check('sin errores (carritos, coordinador)', c.errs.length === 0, c.errs);
+    Object.keys(SEED).forEach(x => delete SEED[x]); Object.assign(SEED, orig);
+  }
+  {
     console.log('\nPantalla ancha (PC)');
     const pub = { uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' };
     const q = await open([pub], '', { ancho: 1440 });
@@ -1402,8 +1466,8 @@ const SEED = {
     await k.evaluate(() => { location.hash = '#/hermanos'; }); await k.waitForTimeout(300);
     const tabla = () => k.evaluate(() => { const h = document.querySelector('.hhd'), f = document.querySelector('.arow.hf[data-hfic="h-pc"]'); return !!h && getComputedStyle(h).display === 'grid' && !!f && [...f.querySelectorAll('.hx')].map(x => getComputedStyle(x).display !== 'none' ? x.textContent : '').join('|'); });
     check('PC: hermanos como tabla (congregación, celular y último ingreso en columnas)', await tabla() === 'San Agustín (Paraná)|343 410-8890|Ayer 07:00' || await tabla() === 'San Agustín (Paraná)|343 410-8890|Ayer 7:00', await tabla());
-    await k.evaluate(() => { location.hash = '#/admin'; }); await k.waitForTimeout(300);
-    check('PC: administración en dos columnas', await k.evaluate(() => getComputedStyle(document.querySelector('.adm2')).columnCount === '2' && document.querySelectorAll('.adm2 > section').length >= 5));
+    await k.evaluate(() => { location.hash = '#/admin'; }); await k.waitForSelector('.adm2', { timeout: 5000 }).catch(() => {}); await k.waitForTimeout(200);
+    check('PC: administración en dos columnas', await k.evaluate(() => !!document.querySelector('.adm2') && getComputedStyle(document.querySelector('.adm2')).columnCount === '2' && document.querySelectorAll('.adm2 > section').length >= 5));
     check('sin errores (PC, coordinación)', k.errs.length === 0, k.errs);
     const m = await open([pub], '#/c/parana-terminal');
     check('celular: sin calendario de PC ni índice, contenedores invisibles', await m.evaluate(() => !document.querySelector('.mcal') && getComputedStyle(document.querySelector('.ccols')).display === 'contents'));

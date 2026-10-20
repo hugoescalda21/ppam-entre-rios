@@ -9,6 +9,18 @@
 
 
 
+## Versión 55 — publicaciones y carritos con QR
+
+- Se prende por campaña (Ajustes → Campaña → "Llevar la cuenta de las publicaciones"). Apagado, la campaña funciona como siempre.
+- Administración: la lista de publicaciones de toda la provincia (nombre, tipo, idioma, edición y la foto de la tapa).
+- Ajustes → Carritos: cada carrito con su número, color, lugar habitual y cuántas publicaciones lleva. "Imprimir etiquetas" arma la hoja con el QR de cada carrito.
+- Al terminar el turno, el hermano ve "Escaneá el carrito y contá lo que se dejó": escanea el QR desde la app (o elige el número si falla la cámara) y carga las cantidades. Uno por turno; el compañero lo ve y lo puede corregir.
+- Del día: lo que se dejó en cada turno, con el carrito y quién lo cargó (o "Sin contar").
+- Aviso cuando un carrito se usó fuera de su lugar habitual o en dos lugares a la misma hora (se mezclaron en el depósito).
+- Si alguien sin la app escanea el QR, ve un mensaje para el público con el enlace a jw.org.
+- Ver lugar muestra las tapas de las publicaciones del carrito.
+- Seguridad: la app puede usar la cámara (solo ella) para el escáner. Reglas nuevas para publicaciones y entregas (hay que subirlas).
+
 ## Versión 54 — más datos para cada turno
 
 - Detalle del turno: el pronóstico del tiempo para el día y la hora del turno (cuando faltan 7 días o menos y el punto está en el mapa).

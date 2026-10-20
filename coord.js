@@ -5,7 +5,7 @@
    ===================================================================== */
 window.PPAM_COORD = function (K) {
   'use strict';
-  const { DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt } = K;
+  const { DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt, KCOLORES, TIPOS_PUB, colorHex, kNombre, kNum, conPubs, cargarPubs, pubNombre, pubSub, tapaHTML, resumenItems } = K;
   const PC = () => !!(window.matchMedia && window.matchMedia('(min-width: 1100px)').matches);   // pantalla ancha (ver app.js)
   const fmtCorto = (s) => { const d = parseIso(s); return `${DOW[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; };
   function achicar(file, max) {
@@ -70,9 +70,11 @@ window.PPAM_COORD = function (K) {
   function listenCoord(cid) {
     if (S.coord.cid === cid) return;
     limpiarCompaneros(cid);
+    S.coord.ent = {};
     S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = cid; S.coord.pedidos = {}; S.coord.cupos = {};
     S.coord.unsub.push(S.db.collection('pedidos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.pedidos = o; if (S.route.name === 'coord') refrescar(renderCoord); }, (e) => console.error(e)));
     S.coord.aud = {};
+    { if (conPubs(S.campanas[cid])) cargarPubs().then(() => { if (S.route.name === 'coord') refrescar(renderCoord); }); S.coord.unsub.push(S.db.collection('entregas').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.ent = o; if (S.route.name === 'coord') refrescar(renderCoord); }, (e) => console.error(e))); }
     S.coord.unsub.push(S.db.collection('auditoria').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.aud = o; if (S.route.name === 'coord' && S.coord.tab === 'config' && S.coord.aj === 'hist') refrescar(renderCoord); }, () => {}));
     S.coord.unsub.push(S.db.collection('cupos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.cupos = o; if (S.route.name === 'coord') refrescar(renderCoord); }, (e) => console.error(e)));
   }
@@ -524,6 +526,11 @@ window.PPAM_COORD = function (K) {
       h += `<div class="pc cdp"><div class="pt"><div class="th"${fotoAttr(c.id, (p.fotos || [])[0])}>${I(p.tipo === 'carrito' ? 'cart' : p.tipo === 'stand' ? 'stand' : 'pin')}</div><div class="tx"><b>${esc(p.nombre)}</b>${p.detalle ? `<small>${esc(p.detalle)}</small>` : ''}</div><span class="pl ${fp ? 'fa' : 'ok'}">${fp ? (fp === 1 ? 'Falta 1' : 'Faltan ' + fp) : 'Completo'}</span></div>`;
       its.forEach(x => {
         h += `<div class="dt" id="dt-${esc(x.t.id)}"><div class="dth"><b class="num">${esc(fmtHora(x.t.desde))} a ${esc(fmtHora(x.t.hasta))}</b><span class="${x.falta ? 'fa' : 'ok'}">${x.falta ? (x.falta === 1 ? 'Falta 1' : 'Faltan ' + x.falta) : 'Completo'}</span></div>`;
+        if (conPubs(c)) {   // lo que se dejó en este turno (o "Sin contar" si ya terminó)
+          const e = (S.coord.ent || {})[cupoId(c.id, d, x.t.id)], k = e && (c.carritos || {})[e.k];
+          if (e) h += `<div class="dent"><b>Se dejaron:</b> ${esc(resumenItems(e.items))}<br><span>${k ? esc(kNombre(k)) + (e.modo === 'mano' ? ' (elegido a mano)' : ' (escaneado)') + ' · ' : ''}cargó ${esc(e.porNombre || '')}${hhmm(e.at) ? ' ' + hhmm(e.at) : ''}</span></div>`;
+          else if (x.ps.some(q => q.estado === 'confirmado') && (d < hoy() || (d === hoy() && yaTermino(x.t)))) h += '<div class="dent sin">Sin contar lo que se dejó</div>';
+        }
         h += x.ps.map(personaCoord).join('');
         if (x.falta) h += `<div class="dp v"><span class="mk"></span><span class="who">${x.ps.length ? (x.falta === 1 ? '1 lugar libre' : x.falta + ' lugares libres') : 'Nadie anotado todavía'}</span><button type="button" class="sbtn anot" data-anotar="${esc(x.t.id)}|${esc(d)}">${I('plus', 'width:14px;height:14px')}Anotar</button></div>`;
         h += '</div>';
@@ -581,7 +588,8 @@ window.PPAM_COORD = function (K) {
     const puntos = Object.keys(c.puntos || {}).map(id => Object.assign({ id }, c.puntos[id]));
     const turnos = Object.keys(c.turnos || {}).map(id => Object.assign({ id }, c.turnos[id])).sort((a, b) => (a.desde + a.hasta).localeCompare(b.desde + b.hasta));
     const aj = S.coord.aj || 'puntos';
-    let h = `<div class="seg2 aj"><button type="button" data-aj="campana" class="${aj === 'campana' ? 'on' : ''}">Campaña</button><button type="button" data-aj="puntos" class="${aj === 'puntos' ? 'on' : ''}">Puntos y turnos</button><button type="button" data-aj="hist" class="${aj === 'hist' ? 'on' : ''}">Historial</button></div>`;
+    let h = `<div class="seg2 aj"><button type="button" data-aj="campana" class="${aj === 'campana' ? 'on' : ''}">Campaña</button><button type="button" data-aj="puntos" class="${aj === 'puntos' ? 'on' : ''}">Puntos y turnos</button>${conPubs(c) ? `<button type="button" data-aj="carritos" class="${aj === 'carritos' ? 'on' : ''}">Carritos</button>` : ''}<button type="button" data-aj="hist" class="${aj === 'hist' ? 'on' : ''}">Historial</button></div>`;
+    if (aj === 'carritos' && conPubs(c)) { if (!S.pubs) cargarPubs().then(() => { if (S.route.name === 'coord' && S.coord.aj === 'carritos') renderCoord(); }); return h + coordCarritos(c); }
     if (aj === 'hist') return h + `<p class="note hnote">Quién cambió o borró algo en esta campaña, y cuándo. Nadie puede editar ni borrar estas líneas. Se guardan 6 meses.</p>` + historialHTML(Object.keys(S.coord.aud || {}).map(id => Object.assign({ id }, S.coord.aud[id])), { cam: false });
     if (aj === 'campana') {
       h += `<div class="sec">Datos de la campaña</div><div class="card cfcard" data-editable style="padding:12px 13px 4px;"><div class="pcw cfl">
@@ -592,6 +600,7 @@ window.PPAM_COORD = function (K) {
       <div class="two"><div class="fld"><label for="cfCiu">Ciudad</label><input id="cfCiu" value="${esc(c.ciudad || '')}"></div><div class="fld"><label for="cfLug">Lugar (opcional)</label><input id="cfLug" value="${esc(c.lugar || '')}"></div></div>
       <div class="two"><div class="fld"><label for="cfDes">Desde</label><input id="cfDes" type="date" value="${esc(c.desde || '')}"></div><div class="fld"><label for="cfHas">Hasta</label><input id="cfHas" type="date" value="${esc(c.hasta || '')}"></div></div>
       <div class="fld"><label for="cfCon">WhatsApp de contacto (opcional)</label><input id="cfCon" type="tel" autocomplete="off" value="${esc(c.contacto || '')}" placeholder="343 555-0000"><small class="celok" id="cfConOk"></small><p class="small-hint" style="margin-top:6px">Los hermanos anotados ven el botón "Avisar al coordinador que no puedo ir", que les abre WhatsApp a este número con el turno ya escrito. Si lo dejás vacío, el botón no aparece.</p></div>
+      <label class="ck"><input type="checkbox" id="cfPubs"${c.pubsOn ? ' checked' : ''}> <span><b>Llevar la cuenta de las publicaciones</b><br>Carritos con QR: al terminar el turno, los hermanos escanean el carrito y cuentan lo que se dejó. Apagado, la campaña funciona como siempre.</span></label>
       <label class="ck"><input type="checkbox" id="cfAct"${c.activa !== false ? ' checked' : ''}> <span>Visible para todos (si la desmarcás, deja de aparecer en el inicio)</span></label>
       <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div></div>`;
       return h;
@@ -639,6 +648,13 @@ window.PPAM_COORD = function (K) {
     catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); return false; }
   }
   function bindConfig(c) {
+    const tab = $('cTab');
+    if (tab && S.coord.aj === 'carritos') tab.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-knuevo],[data-kficha],[data-ketiq]'); if (!b) return;
+      if (b.dataset.knuevo !== undefined) editarCarrito(c);
+      else if (b.dataset.kficha) fichaCarrito(c.id, b.dataset.kficha);
+      else imprimirEtiquetas(c);
+    });
     if (!$('cfSave')) return;
     $('cfFoto').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; if (f) subirPortada(c, f); });
     if ($('cfFotoDel')) $('cfFotoDel').addEventListener('click', async () => {
@@ -649,13 +665,13 @@ window.PPAM_COORD = function (K) {
     bindCel($('cfCon'), $('cfConOk'));
     $('cfSave').addEventListener('click', async () => {
       const bs = $('cfSave'); if (bs.disabled) return;
-      const d = { nombre: $('cfNom').value.trim(), ciudad: $('cfCiu').value.trim(), lugar: $('cfLug').value.trim(), desde: $('cfDes').value, hasta: $('cfHas').value, activa: $('cfAct').checked };
+      const d = { nombre: $('cfNom').value.trim(), ciudad: $('cfCiu').value.trim(), lugar: $('cfLug').value.trim(), desde: $('cfDes').value, hasta: $('cfHas').value, activa: $('cfAct').checked, pubsOn: $('cfPubs').checked };
       const con = $('cfCon').value.trim(), cn = normCel(con);
       if (con && !cn.ok) { toast('El WhatsApp de contacto no parece un celular. ' + CEL_ERR); return; }
       d.contacto = con ? cn.txt : S.del();
       if (!d.nombre || !d.desde || !d.hasta) { toast('Completá el nombre y las fechas.'); return; }
       if (d.hasta < d.desde) { toast('La fecha "hasta" es anterior a "desde".'); return; }
-      const cam = []; if (d.nombre !== c.nombre) cam.push(`nombre ("${c.nombre}" → "${d.nombre}")`); if (d.ciudad !== (c.ciudad || '')) cam.push(`ciudad (${c.ciudad || '—'} → ${d.ciudad})`); if (d.lugar !== (c.lugar || '')) cam.push('lugar'); if (d.desde !== c.desde || d.hasta !== c.hasta) cam.push(`fechas (${c.desde} a ${c.hasta} → ${d.desde} a ${d.hasta})`); if (d.activa !== (c.activa !== false)) cam.push(d.activa ? 'la hizo visible' : 'la ocultó'); if ((con ? cn.txt : '') !== (c.contacto || '')) cam.push(con ? 'WhatsApp de contacto (' + cn.txt + ')' : 'quitó el WhatsApp de contacto');
+      const cam = []; if (d.nombre !== c.nombre) cam.push(`nombre ("${c.nombre}" → "${d.nombre}")`); if (d.ciudad !== (c.ciudad || '')) cam.push(`ciudad (${c.ciudad || '—'} → ${d.ciudad})`); if (d.lugar !== (c.lugar || '')) cam.push('lugar'); if (d.desde !== c.desde || d.hasta !== c.hasta) cam.push(`fechas (${c.desde} a ${c.hasta} → ${d.desde} a ${d.hasta})`); if (d.activa !== (c.activa !== false)) cam.push(d.activa ? 'la hizo visible' : 'la ocultó'); if (d.pubsOn !== !!c.pubsOn) cam.push(d.pubsOn ? 'prendió la cuenta de publicaciones' : 'apagó la cuenta de publicaciones'); if ((con ? cn.txt : '') !== (c.contacto || '')) cam.push(con ? 'WhatsApp de contacto (' + cn.txt + ')' : 'quitó el WhatsApp de contacto');
       bs.disabled = true;
       try { await S.db.doc('campanas/' + c.id).update(d); if (cam.length) auditar(c.id, 'cambio_campana', 'cambió los datos de la campaña: ' + cam.join(', ')); S.sucio = false; S.pendRender = false; toast('Guardado'); render(); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
       if (bs.isConnected) bs.disabled = false;
@@ -944,7 +960,7 @@ window.PPAM_COORD = function (K) {
     let h = soporteHTML(true);
     h += `<div class="sec">Campañas <button type="button" class="sbtn pri" data-nueva>+ Campaña</button></div><div class="card">`;
     h += cs.map(c => `<div class="edit-row adm"><div><b>${esc(c.nombre)}</b><small style="display:block;color:var(--soft);font-size:12px;">${esc(c.ciudad || '')} · ${esc(campRango(c))}${c.activa === false ? ' · oculta' : ''}</small><small style="display:block;color:var(--soft);font-size:12px;">Coordinan: ${esc((S.coordEmails[c.id] || []).join(', ') || '—')}</small></div><div style="display:flex;gap:6px;"><button type="button" class="sbtn" data-coords="${esc(c.id)}">Coordinadores</button><button type="button" class="sbtn" data-go="#/coord/${esc(c.id)}">Abrir</button></div></div>`).join('') || '<div class="empty">Creá la primera campaña.</div>';
-    h += `</div><div class="sec">Congregaciones</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Una por renglón, con la ciudad: "San Agustín (Paraná)". Es la lista que eligen los publicadores al pedir un turno.</p><div class="fld"><textarea id="adCongs" rows="8">${esc((S.publico.congregaciones || []).join('\n'))}</textarea></div><button type="button" class="btn" id="adCongsOk">Guardar lista</button></div>`;
+    h += `</div>${adminPublicacionesHTML()}<div class="sec">Congregaciones</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Una por renglón, con la ciudad: "San Agustín (Paraná)". Es la lista que eligen los publicadores al pedir un turno.</p><div class="fld"><textarea id="adCongs" rows="8">${esc((S.publico.congregaciones || []).join('\n'))}</textarea></div><button type="button" class="btn" id="adCongsOk">Guardar lista</button></div>`;
     h += `<div class="sec">Administradores</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Pueden crear campañas y elegir sus coordinadores. Un email por renglón.</p><div class="fld"><textarea id="adAdm" rows="3">${esc(S.admins.join('\n'))}</textarea></div><button type="button" class="btn" id="adAdmOk">Guardar</button></div>`;
     h += `<div class="sec">Inicio</div><div class="card" style="padding:12px 13px;"><label class="ck" style="margin:0 2px"><input type="checkbox" id="adMapa"${S.publico.mapa !== false ? ' checked' : ''}> <span><b>Mostrar el mapa en el Inicio</b><br>Debajo de "Campañas" se puede elegir Lista o Mapa. Si lo apagás, todos ven solo la lista.</span></label></div>`;
     h += `<div class="sec">Historial de cambios</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Quién creó, cambió o borró algo, en todas las campañas y en esta configuración, y cuándo. Lo borrado se puede restaurar desde ahí.</p><button type="button" class="sbtn pri" data-histgen>${I('clock', 'width:15px;height:15px')}Ver el historial</button></div>`;
@@ -954,6 +970,8 @@ window.PPAM_COORD = function (K) {
     { const app = $('app'), g = document.createElement('div'); g.className = 'pcw adm2'; let sec = null;
       [...app.children].forEach(k => { if (k.classList.contains('sec') || !sec) { sec = document.createElement('section'); sec.className = 'pcw'; g.append(sec); } sec.append(k); });
       app.append(g); }
+    app0().querySelectorAll('[data-pubnueva],[data-pubed]').forEach(b => b.addEventListener('click', () => editarPub(b.dataset.pubed || null)));
+    if (S.pubs === null) cargarPubs().then(() => { if (S.route.name === 'admin') renderAdmin(); });
     $('adMapa').addEventListener('change', async (e) => {
       const on = e.target.checked;
       try { await S.db.doc('config/publico').set({ mapa: on }, { merge: true }); auditar('', 'config', on ? 'prendió el mapa del Inicio' : 'apagó el mapa del Inicio'); toast(on ? 'El mapa se muestra en el Inicio' : 'El mapa quedó apagado'); } catch (er) { e.target.checked = !on; toast('No se pudo guardar.'); }
@@ -1254,5 +1272,153 @@ window.PPAM_COORD = function (K) {
       });
     });
   }
-  return { renderHermanos, renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };
+
+  /* ---------- Carritos (con la cuenta de publicaciones prendida) ---------- */
+  const COD_LETRAS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function nuevoCodCarrito() {
+    const usados = new Set(); Object.values(S.campanas).forEach(c => Object.values(c.carritos || {}).forEach(k => usados.add(k.cod)));
+    let x; do { x = ''; const a = new Uint32Array(8); crypto.getRandomValues(a); a.forEach(v => { x += COD_LETRAS[v % COD_LETRAS.length]; }); } while (usados.has(x));
+    return x;
+  }
+  const app0 = () => $('app');
+  const yaTermino = (t) => { const n = new Date(); return n.getHours() * 60 + n.getMinutes() >= minutos(t.hasta); };
+  const listaCarritos = (c) => Object.keys(c.carritos || {}).map(kid => Object.assign({ kid }, c.carritos[kid])).sort((a, b) => a.n - b.n);
+  const hhmm = (ts) => { const d = ts && (ts.toDate ? ts.toDate() : new Date(ts)); return d && !isNaN(d) ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : ''; };
+  // Lo que no cierra: un carrito usado lejos de su lugar habitual, o en dos lugares a la misma hora (últimos 14 días)
+  function avisosCarritos(c) {
+    const desde = addDays(hoy(), -14), es = Object.values(S.coord.ent || {}).filter(e => e.fecha >= desde && (c.carritos || {})[e.k]);
+    const tur = (e) => (c.turnos || {})[e.tid] || {}, av = [];
+    es.forEach(e => {
+      const k = c.carritos[e.k], t = tur(e);
+      if (k.habitual && t.punto && t.punto !== k.habitual) av.push(`El ${kNombre(k).toLowerCase()} se usó en ${((c.puntos || {})[t.punto] || {}).nombre || 'otro punto'} el ${fmtDia(e.fecha)} de ${fmtHora(t.desde)} a ${fmtHora(t.hasta)}. No es su lugar habitual: puede que se hayan mezclado en el depósito.`);
+    });
+    for (let i = 0; i < es.length; i++) for (let j = i + 1; j < es.length; j++) {
+      const a = es[i], b = es[j], ta = tur(a), tb = tur(b);
+      if (a.k === b.k && a.fecha === b.fecha && ta.punto !== tb.punto && minutos(ta.desde) < minutos(tb.hasta) && minutos(tb.desde) < minutos(ta.hasta)) av.push(`El ${kNombre(c.carritos[a.k]).toLowerCase()} figura en dos lugares a la misma hora el ${fmtDia(a.fecha)}. Revisá cuál se usó en cada uno.`);
+    }
+    return [...new Set(av)].slice(0, 5);
+  }
+  function coordCarritos(c) {
+    const ks = listaCarritos(c), av = avisosCarritos(c);
+    let h = `<div class="sec">Carritos de la campaña <button type="button" class="sbtn" data-knuevo>+ Carrito</button></div>`;
+    h += ks.length ? `<div class="card">${ks.map(k => { const pt = (c.puntos || {})[k.habitual]; const its = Object.keys(k.items || {}); return `<button type="button" class="kc" data-kficha="${esc(k.kid)}">${kNum(k)}<span class="tx"><b>${esc(kNombre(k))}</b><small>${pt ? 'Habitual: ' + esc(pt.nombre) : 'Sin lugar habitual'}</small><small>${its.length ? esc(its.map(x => `${k.items[x]} ${pubNombre(x)}`).join(' · ')) : 'Sin publicaciones cargadas'}</small></span>${I('chev')}</button>`; }).join('')}</div>`
+      : '<div class="card"><div class="empty">Agregá los carritos de la campaña. Después imprimís sus etiquetas con QR y las pegás en cada uno.</div></div>';
+    h += av.map(a => `<div class="kav">${I('alert', 'width:18px;height:18px;flex-shrink:0;margin-top:1px')}<span>${esc(a)}</span></div>`).join('');
+    if (ks.length) h += `<button type="button" class="btn" data-ketiq style="margin-top:12px">${I('qr')}Imprimir etiquetas</button><p class="note" style="margin-top:8px">Pegá cada etiqueta en dos lados del carrito. Al terminar el turno, los hermanos la escanean desde la app y cargan lo que se dejó.</p>`;
+    return h;
+  }
+  async function editarCarrito(c, kidIn) {
+    await cargarPubs();
+    const ks = listaCarritos(c), k = kidIn ? c.carritos[kidIn] : { n: (ks.length ? Math.max(...ks.map(x => x.n)) : 0) + 1, color: KCOLORES[ks.length % KCOLORES.length][0], habitual: '', items: {} };
+    const items = Object.assign({}, k.items || {});
+    const pubs = Object.keys(S.pubs || {}).filter(x => S.pubs[x].activa !== false).sort((a, b) => String(S.pubs[a].orden || 99).localeCompare(String(S.pubs[b].orden || 99)) || S.pubs[a].nombre.localeCompare(S.pubs[b].nombre, 'es'));
+    const ov = sheet(`<h3>${kidIn ? 'Editar ' + esc(kNombre(k).toLowerCase()) : 'Nuevo carrito'}</h3><p class="hint">El número y el color van en la etiqueta, debajo del QR.</p>
+      <div class="two"><div class="fld"><label for="kN">Número</label><input id="kN" type="number" min="1" max="99" value="${esc(String(k.n))}"></div><div class="fld"><label for="kCol">Color</label><select id="kCol">${KCOLORES.map(([n]) => `<option${n === k.color ? ' selected' : ''}>${n}</option>`).join('')}</select></div></div>
+      <div class="fld"><label for="kHab">Lugar habitual</label><select id="kHab"><option value="">Ninguno</option>${Object.keys(c.puntos || {}).map(pid => `<option value="${esc(pid)}"${pid === k.habitual ? ' selected' : ''}>${esc(c.puntos[pid].nombre)}</option>`).join('')}</select></div>
+      <div class="lbl">Publicaciones del carrito</div><div class="kinv" id="kInv"></div>
+      <p class="small-hint">Cuántas hay en este carrito ahora. Los hermanos cuentan cuántas se dejaron en cada turno.</p>
+      <button type="button" class="btn" id="kOk">Guardar</button>${kidIn ? '<button type="button" class="btn alt" id="kDel" style="color:var(--bad)">Borrar este carrito</button>' : ''}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    const q = (s) => ov.querySelector(s);
+    function pintar() {
+      const ya = Object.keys(items), resto = pubs.filter(x => !(x in items));
+      q('#kInv').innerHTML = (ya.length ? ya.map(x => `<div class="row">${tapaHTML(x)}<span class="tx"><b>${esc(pubNombre(x))}</b><small>${esc(pubSub((S.pubs || {})[x] || {}))}</small></span><input type="number" inputmode="numeric" min="0" max="9999" value="${items[x]}" data-kq="${esc(x)}" aria-label="Cantidad de ${esc(pubNombre(x))}"><button type="button" class="x" data-kx="${esc(x)}" aria-label="Quitar ${esc(pubNombre(x))}">✕</button></div>`).join('') : '')
+        + (pubs.length ? (resto.length ? `<select id="kAdd"><option value="">+ Agregar de la lista de la provincia…</option>${resto.map(x => `<option value="${esc(x)}">${esc(S.pubs[x].nombre)}${S.pubs[x].idioma ? ' · ' + esc(S.pubs[x].idioma) : ''}</option>`).join('')}</select>` : '')
+          : '<p class="small-hint">Todavía no hay publicaciones en la lista de la provincia. Las carga un administrador en Administración.</p>');
+      ov.querySelectorAll('[data-kq]').forEach(inp => inp.addEventListener('input', () => { items[inp.dataset.kq] = Math.max(0, Math.min(9999, parseInt(inp.value, 10) || 0)); }));
+      ov.querySelectorAll('[data-kx]').forEach(b => b.addEventListener('click', () => { delete items[b.dataset.kx]; pintar(); }));
+      if (q('#kAdd')) q('#kAdd').addEventListener('change', (e) => { if (e.target.value) { items[e.target.value] = 0; pintar(); const inp = ov.querySelector(`[data-kq="${CSS.escape(e.target.value)}"]`); if (inp) inp.focus(); } });
+    }
+    pintar();
+    q('#kOk').addEventListener('click', async () => {
+      const n = parseInt(q('#kN').value, 10);
+      if (!(n >= 1 && n <= 99)) { toast('Poné un número de carrito entre 1 y 99.'); return; }
+      if (ks.some(x => x.n === n && x.kid !== kidIn)) { toast(`Ya hay un carrito ${n} en esta campaña.`); return; }
+      const kid = kidIn || 'k' + uidGen(), d = { n, color: q('#kCol').value, cod: k.cod || nuevoCodCarrito(), items: {} };
+      if (q('#kHab').value) d.habitual = q('#kHab').value;
+      Object.keys(items).forEach(x => { d.items[x] = Math.max(0, Math.min(9999, items[x] | 0)); });
+      const b = q('#kOk'); b.disabled = true; b.textContent = 'Guardando…';
+      try { await S.db.doc('campanas/' + c.id).update({ ['carritos.' + kid]: d }); auditar(c.id, kidIn ? 'cambio_carrito' : 'creo_carrito', (kidIn ? 'cambió el ' : 'creó el ') + kNombre(d).toLowerCase()); ov.remove(); toast('Carrito guardado'); }
+      catch (e) { console.error(e); b.disabled = false; b.textContent = 'Guardar'; toast('No se pudo guardar. Probá de nuevo.'); }
+    });
+    if (kidIn) q('#kDel').addEventListener('click', async () => {
+      if (!confirm(`¿Borrar el ${kNombre(k).toLowerCase()}? Su etiqueta QR deja de servir. Lo que ya se contó queda guardado.`)) return;
+      try { await S.db.doc('campanas/' + c.id).update({ ['carritos.' + kidIn]: S.del() }); auditar(c.id, 'borro_carrito', 'borró el ' + kNombre(k).toLowerCase(), { antes: JSON.parse(JSON.stringify(k)), ref: 'carrito:' + kidIn }); ov.remove(); toast('Carrito borrado'); }
+      catch (e) { toast('No se pudo borrar.'); }
+    });
+  }
+  // Ficha del carrito (desde la lista o escaneando su QR): qué tiene y en qué turnos se usó
+  async function fichaCarrito(cid, kid) {
+    const c = S.campanas[cid], k = c && (c.carritos || {})[kid]; if (!k) return;
+    await cargarPubs();
+    let usos = Object.values(S.coord.cid === cid ? (S.coord.ent || {}) : {});
+    if (S.coord.cid !== cid) { try { const qs = await S.db.collection('entregas').where('cid', '==', cid).get(); usos = []; qs.forEach(d => usos.push(d.data())); } catch (e) { usos = []; } }
+    usos = usos.filter(e => e.k === kid).sort((a, b) => (b.fecha + b.tid).localeCompare(a.fecha + a.tid)).slice(0, 6);
+    const pt = (c.puntos || {})[k.habitual], its = Object.keys(k.items || {});
+    const ov = sheet(`<div class="kok">${kNum(k, 'big')}<span class="tx"><b>${esc(kNombre(k))}</b><small>${esc(c.nombre)}${pt ? ' · habitual: ' + esc(pt.nombre) : ''}</small></span></div>
+      <div class="lbl" style="margin-top:14px">Publicaciones</div><div class="card" style="padding:4px 12px">${its.length ? its.map(x => `<div class="kli">${tapaHTML(x)}<span class="tx"><b>${esc(pubNombre(x))}</b><small>${esc(pubSub((S.pubs || {})[x] || {}))}</small></span><b class="num">${k.items[x]}</b></div>`).join('') : '<div class="empty">Sin publicaciones cargadas.</div>'}</div>
+      <div class="lbl">Últimos turnos</div>${usos.length ? `<div class="hist">${usos.map(e => { const t = (c.turnos || {})[e.tid] || {}; return `<div><b>${esc(cap(fmtDia(e.fecha)))}</b> · ${esc(((c.puntos || {})[t.punto] || {}).nombre || '')} ${esc(fmtHora(t.desde || ''))}–${esc(fmtHora(t.hasta || ''))}<br>${esc(resumenItems(e.items))} · ${esc(e.porNombre || '')}${e.modo === 'mano' ? ' (elegido a mano)' : ''}</div>`; }).join('')}</div>` : '<p class="hint">Todavía no se usó.</p>'}
+      <button type="button" class="btn" id="fkEd" style="margin-top:12px">Editar</button><button type="button" class="btn alt" data-cerrar>Cerrar</button>`);
+    ov.querySelector('#fkEd').addEventListener('click', () => { ov.remove(); editarCarrito(c, kid); });
+  }
+  // Hoja de etiquetas para imprimir (QR + número + color)
+  const QRLIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+  function cargarQRLib() {
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    if (cargarQRLib.p) return cargarQRLib.p;
+    cargarQRLib.p = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = QRLIB; sc.onload = () => (window.qrcode ? res(window.qrcode) : rej(new Error('qr'))); sc.onerror = () => { cargarQRLib.p = null; rej(new Error('qr')); }; document.head.appendChild(sc); });
+    return cargarQRLib.p;
+  }
+  async function imprimirEtiquetas(c) {
+    const ks = listaCarritos(c); if (!ks.length) return;
+    let qr;
+    try { qr = await cargarQRLib(); } catch (e) { toast('No se pudo preparar el QR. Revisá la conexión y probá de nuevo.'); return; }
+    const base = location.origin + location.pathname;
+    const svg = (txt) => { const q = qr(0, 'M'); q.addData(txt); q.make(); return q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); };
+    const ov = document.createElement('div'); ov.className = 'etq';
+    ov.innerHTML = `<div class="etq-bar"><button type="button" class="btn" id="etPr">${I('share')}Imprimir</button><button type="button" class="btn alt" id="etX">Cerrar</button></div>
+      <div class="a4"><div class="tit"><b>Carritos · ${esc(c.nombre)}${c.ciudad ? ' (' + esc(c.ciudad) + ')' : ''}</b><span>PPAM Entre Ríos</span></div>
+      ${ks.map(k => `<div class="et">${svg(base + '#/k/' + k.cod)}<div><div class="n">${esc(String(k.n))}</div><div class="c"><i style="background:${colorHex(k)}"></i>${esc(cap(k.color || ''))}</div><small>Carrito ${esc(String(k.n))} · ${esc(c.nombre)}<br>Al terminar tu turno: en la app, "Escanear carrito"</small></div></div>`).join('')}</div>`;
+    document.body.appendChild(ov); document.body.classList.add('imprimiendo');
+    const cerrar = () => { ov.remove(); document.body.classList.remove('imprimiendo'); };
+    ov.querySelector('#etX').addEventListener('click', cerrar);
+    ov.querySelector('#etPr').addEventListener('click', () => window.print());
+    ov.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrar(); });
+    modal(ov, ov);
+  }
+  /* Lista de publicaciones de toda la provincia (Administración) */
+  function adminPublicacionesHTML() {
+    const ids = Object.keys(S.pubs || {}).sort((a, b) => S.pubs[a].nombre.localeCompare(S.pubs[b].nombre, 'es'));
+    return `<div class="sec">Publicaciones (toda la provincia) <button type="button" class="sbtn pri" data-pubnueva>+ Publicación</button></div><p class="note" style="margin:0 4px 8px">La lista se carga una vez para todas las campañas. Cada coordinador pone después cuántas lleva cada carrito.</p>
+      <div class="card">${S.pubs === null ? '<div class="empty">Cargando…</div>' : ids.length ? ids.map(id => `<div class="kli">${tapaHTML(id)}<span class="tx"><b>${esc(S.pubs[id].nombre)}</b><small>${esc(pubSub(S.pubs[id]))}</small></span><button type="button" class="sbtn" data-pubed="${esc(id)}">Editar</button></div>`).join('') : '<div class="empty">Todavía no hay publicaciones. Agregá las que se usan en los carritos.</div>'}</div>`;
+  }
+  function editarPub(idIn) {
+    const x = idIn ? S.pubs[idIn] : { nombre: '', tipo: 'Revista', idioma: 'Español', edicion: '' };
+    const st = { foto: x.foto || '' };
+    const ov = sheet(`<h3>${idIn ? 'Editar publicación' : 'Nueva publicación'}</h3><p class="hint">Vale para todas las campañas de la provincia.</p>
+      <div class="pubup"><div class="tapa grande" id="puF"></div><div class="pills" style="flex-direction:column;align-items:flex-start"><label class="sbtn">${I('camera')}<span id="puFL">${st.foto ? 'Cambiar foto' : 'Subir foto'}</span><input type="file" accept="image/*" id="puFile" hidden></label><button type="button" class="sbtn bad${st.foto ? '' : ' hidden'}" id="puFX">Quitar foto</button></div></div>
+      <p class="small-hint">Una foto de la tapa de la publicación impresa, sacada por ustedes (no copiada de otro sitio). Se achica sola antes de subirse.</p>
+      <div class="fld"><label for="puN">Nombre</label><input id="puN" maxlength="80" value="${esc(x.nombre)}" placeholder="La Atalaya"></div>
+      <div class="two"><div class="fld"><label for="puT">Tipo</label><select id="puT">${TIPOS_PUB.map(t => `<option${t === x.tipo ? ' selected' : ''}>${t}</option>`).join('')}</select></div><div class="fld"><label for="puI">Idioma</label><input id="puI" maxlength="30" value="${esc(x.idioma || '')}"></div></div>
+      <div class="fld"><label for="puE">Edición (opcional)</label><input id="puE" maxlength="40" value="${esc(x.edicion || '')}" placeholder="N.º 1 de 2026"></div>
+      <button type="button" class="btn" id="puOk">Guardar</button>${idIn ? '<button type="button" class="btn alt" id="puDel" style="color:var(--bad)">Borrar de la lista</button>' : ''}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    const q = (s) => ov.querySelector(s);
+    const pintarF = () => { q('#puF').style.backgroundImage = st.foto ? `url('${st.foto}')` : ''; q('#puF').classList.toggle('sin', !st.foto); q('#puF').innerHTML = st.foto ? '' : I('libro', 'width:28px;height:28px'); q('#puFL').textContent = st.foto ? 'Cambiar foto' : 'Subir foto'; q('#puFX').classList.toggle('hidden', !st.foto); };
+    pintarF();
+    q('#puFile').addEventListener('change', async (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; try { st.foto = await achicar(f, 360); pintarF(); } catch (er) { toast('No se pudo leer esa imagen.'); } });
+    q('#puFX').addEventListener('click', () => { st.foto = ''; pintarF(); });
+    q('#puOk').addEventListener('click', async () => {
+      const d = { nombre: q('#puN').value.trim().slice(0, 80), tipo: q('#puT').value, idioma: q('#puI').value.trim().slice(0, 30) };
+      if (!d.nombre) { toast('Poné el nombre de la publicación.'); return; }
+      const ed = q('#puE').value.trim().slice(0, 40); if (ed) d.edicion = ed;
+      if (st.foto) d.foto = st.foto;
+      const b = q('#puOk'); b.disabled = true; b.textContent = 'Guardando…';
+      try { await S.db.doc('publicaciones/' + (idIn || 'pub' + uidGen())).set(d); await cargarPubs(true); ov.remove(); toast('Publicación guardada'); render(); }
+      catch (e) { console.error(e); b.disabled = false; b.textContent = 'Guardar'; toast('No se pudo guardar. Probá de nuevo.'); }
+    });
+    if (idIn) q('#puDel').addEventListener('click', async () => {
+      if (!confirm('¿Borrar esta publicación de la lista? Si algún carrito la tiene, deja de mostrarse ahí.')) return;
+      try { await S.db.doc('publicaciones/' + idIn).delete(); await cargarPubs(true); ov.remove(); toast('Publicación borrada'); render(); } catch (e) { toast('No se pudo borrar.'); }
+    });
+  }
+  return { fichaCarrito, renderHermanos, renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };
 };

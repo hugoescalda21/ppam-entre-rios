@@ -323,6 +323,43 @@ const section = (t) => console.log('\n' + t);
   await check('un hermano NO borra el documento', assertFails(db(A).doc('companeros/' + T1).delete()));
   await check('el coordinador lo borra cuando el turno pasó', assertSucceeds(db(CO).doc('companeros/' + T1).delete()));
 
+  section('Publicaciones de la provincia');
+  const pubOk = { nombre: 'La Atalaya', tipo: 'Revista', idioma: 'Español', edicion: 'N.º 1 de 2026', foto: 'data:image/jpeg;base64,AAAA' };
+  await check('un administrador carga una publicación', assertSucceeds(db(ADM).doc('publicaciones/p1').set(pubOk)));
+  await check('un coordinador NO', assertFails(db(CO).doc('publicaciones/p2').set(pubOk)));
+  await check('un hermano NO', assertFails(db(A).doc('publicaciones/p2').set(pubOk)));
+  await check('NO con campos de más', assertFails(db(ADM).doc('publicaciones/p2').set(Object.assign({ precio: 1 }, pubOk))));
+  await check('NO una foto que no es JPEG', assertFails(db(ADM).doc('publicaciones/p2').set(Object.assign({}, pubOk, { foto: 'data:image/png;base64,AAAA' }))));
+  await check('NO sin nombre', assertFails(db(ADM).doc('publicaciones/p2').set(Object.assign({}, pubOk, { nombre: '' }))));
+  await check('un hermano la ve', assertSucceeds(db(A).collection('publicaciones').get()));
+  await check('sin link NO la ve', assertFails(anonDb('anon-x').collection('publicaciones').get()));
+  await check('el administrador la borra', assertSucceeds(db(ADM).doc('publicaciones/p1').delete()));
+
+  section('Lo entregado en cada turno');
+  const F3 = '2026-10-19', E1 = `${CID}__${F3}__t1`, E2 = `${CID}__${F3}__t2`;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const f = ctx.firestore();
+    await f.doc('cupos/' + E1).set({ cid: CID, fecha: F3, tid: 't1', ocupados: { 'h-ana': 'c', 'h-beto': 'c', 'h-caro': 'p' } });
+    await f.doc('cupos/' + E2).set({ cid: CID, fecha: F3, tid: 't2', ocupados: { 'h-ana': 'c' } });
+  });
+  const ent = (email, id, extra) => { const [, fe, ti] = id.split('__'); return db(email).doc('entregas/' + id).set(Object.assign({ cid: CID, fecha: fe, tid: ti, k: 'k1', modo: 'qr', items: { p1: 5, p2: 3 }, por: uidOf(email), porNombre: 'Ana Prueba', at: TS() }, extra || {})); };
+  await check('un confirmado carga lo entregado', assertSucceeds(ent(A, E1)));
+  await check('su compañero confirmado lo corrige', assertSucceeds(ent(B, E1, { items: { p1: 6 }, porNombre: 'Beto Prueba' })));
+  await check('un pendiente NO carga', assertFails(ent(C, E1, { porNombre: 'Caro' })));
+  await check('NO firmado a nombre de otro', assertFails(ent(A, E1, { por: 'h-beto' })));
+  await check('NO con campos de más (p. ej. datos de alguien)', assertFails(ent(A, E1, { celular: '343' })));
+  await check('NO si el id no coincide con el turno', assertFails(db(A).doc('entregas/' + E1).set({ cid: CID, fecha: '2026-10-20', tid: 't1', k: 'k1', modo: 'qr', items: {}, por: 'h-ana', porNombre: 'Ana', at: TS() })));
+  await check('NO de un turno en el que no está', assertFails(ent(B, E2, { porNombre: 'Beto' })));
+  await check('NO con un modo inventado', assertFails(ent(A, E1, { modo: 'otro' })));
+  await check('un confirmado la ve', assertSucceeds(db(B).doc('entregas/' + E1).get()));
+  await check('un pendiente NO la ve', assertFails(db(C).doc('entregas/' + E1).get()));
+  await check('un hermano NO lista todas', assertFails(db(A).collection('entregas').where('cid', '==', CID).get()));
+  await check('con Google sin ser coordinador NO la ve', assertFails(db(G).doc('entregas/' + E1).get()));
+  await check('el coordinador lista las de su campaña', assertSucceeds(db(CO).collection('entregas').where('cid', '==', CID).get()));
+  await check('el coordinador la corrige', assertSucceeds(db(CO).doc('entregas/' + E1).set({ cid: CID, fecha: F3, tid: 't1', k: 'k2', modo: 'mano', items: { p1: 4 }, por: uidOf(CO), porNombre: 'Coord', at: TS() })));
+  await check('un hermano NO la borra', assertFails(db(A).doc('entregas/' + E1).delete()));
+  await check('el coordinador la borra', assertSucceeds(db(CO).doc('entregas/' + E1).delete()));
+
   await env.cleanup();
   console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;

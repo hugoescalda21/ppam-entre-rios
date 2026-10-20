@@ -159,6 +159,38 @@ service cloud.firestore {
       allow delete: if gestiona(resource.data.cid);
     }
 
+    // Publicaciones: la lista de toda la provincia (nombre, tipo, idioma, edición y una foto chica de la tapa). La carga el administrador.
+    match /publicaciones/{pub} {
+      function pubValida(d) {
+        return d.keys().hasOnly(['nombre', 'tipo', 'idioma', 'edicion', 'foto', 'orden', 'activa']) &&
+               d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 80 &&
+               texto(d, 'tipo', 20) && texto(d, 'idioma', 30) && texto(d, 'edicion', 40) &&
+               (!('foto' in d) || (d.foto is string && d.foto.size() < 150000 && d.foto.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+'))) &&
+               (!('orden' in d) || d.orden is int) && (!('activa' in d) || d.activa is bool);
+      }
+      allow read: if lector();
+      allow create, update: if esAdmin() && pubValida(request.resource.data);
+      allow delete: if esAdmin();
+    }
+
+    // Lo que se dejó en cada turno: un registro por turno (id = el del cupo), solo cantidades por publicación.
+    // Lo cargan o corrigen los confirmados de ese turno (y sus coordinadores). Nunca datos de las personas que recibieron algo.
+    match /entregas/{id} {
+      function cupoE() { return /databases/$(database)/documents/cupos/$(id); }
+      function confirmadoE() { return puedePedir() && exists(cupoE()) && get(cupoE()).data.ocupados.get(yo(), '') == 'c'; }
+      function entregaValida(d) {
+        return d.keys().hasOnly(['cid', 'fecha', 'tid', 'k', 'modo', 'items', 'por', 'porNombre', 'at']) &&
+               d.cid is string && d.fecha is string && d.tid is string && id == d.cid + '__' + d.fecha + '__' + d.tid &&
+               d.k is string && d.k.size() <= 40 && d.modo in ['qr', 'mano'] && d.items is map && d.items.size() <= 40 &&
+               d.por == yo() && d.porNombre is string && d.porNombre.size() <= 80 && d.at == request.time;
+      }
+      allow get: if confirmadoE() || (resource != null && gestiona(resource.data.cid));
+      allow list: if gestiona(resource.data.cid);
+      allow create, update: if entregaValida(request.resource.data) && (confirmadoE() || gestiona(request.resource.data.cid)) &&
+                             (resource == null || (resource.data.cid == request.resource.data.cid && resource.data.fecha == request.resource.data.fecha && resource.data.tid == request.resource.data.tid));
+      allow delete: if gestiona(resource.data.cid);
+    }
+
     // Fotos de portada y de los puntos: imágenes JPEG achicadas (menos de ~330 KB), públicas.
     // Las sube el coordinador de esa campaña; el id empieza con el de la campaña.
     match /fotos/{id} {

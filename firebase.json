@@ -71,7 +71,7 @@
           },
           {
             "key": "Permissions-Policy",
-            "value": "geolocation=(self), camera=(), microphone=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), browsing-topics=()"
+            "value": "geolocation=(self), camera=(self), microphone=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), browsing-topics=()"
           },
           {
             "key": "Cross-Origin-Opener-Policy",
@@ -92,7 +92,7 @@
           },
           {
             "key": "Permissions-Policy",
-            "value": "geolocation=(self), camera=(), microphone=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), browsing-topics=()"
+            "value": "geolocation=(self), camera=(self), microphone=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), browsing-topics=()"
           },
           {
             "key": "Cross-Origin-Opener-Policy",
