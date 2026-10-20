@@ -9,6 +9,15 @@
 
 
 
+## Versión 56 — mantenimiento de los carritos
+
+- Se prende por campaña (Ajustes → Campaña → "Mantenimiento de los carritos"), con "Revisar cada" 15, 30, 60 o 90 días.
+- Después de contar lo entregado, el hermano ve "¿El carrito quedó bien?". Si tiene un problema elige qué le pasa (rueda, freno, estante, lona o cartel, sucio, le falta algo, otro), puede escribir una nota, sacar una foto y marcar "No se puede usar".
+- Ajustes → Carritos: cada carrito con su estado (Disponible / En reparación), los problemas nuevos y si le toca la revisión. Avisos cuando piden que no se use un carrito o un punto se queda sin carrito.
+- Ficha del carrito: cambiar el estado (con el motivo), seguir cada problema (En arreglo → Arreglado), "Revisar ahora" con una lista para tildar (lo que falla queda como problema) y el historial.
+- Si un hermano escanea un carrito en reparación, la app se lo avisa con el motivo.
+- Reglas nuevas para los problemas de los carritos (hay que subirlas).
+
 ## Versión 55 — publicaciones y carritos con QR
 
 - Se prende por campaña (Ajustes → Campaña → "Llevar la cuenta de las publicaciones"). Apagado, la campaña funciona como siempre.

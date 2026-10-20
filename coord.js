@@ -5,7 +5,7 @@
    ===================================================================== */
 window.PPAM_COORD = function (K) {
   'use strict';
-  const { DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt, KCOLORES, TIPOS_PUB, colorHex, kNombre, kNum, conPubs, cargarPubs, pubNombre, pubSub, tapaHTML, resumenItems } = K;
+  const { DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt, KCOLORES, TIPOS_PUB, colorHex, kNombre, kNum, conPubs, cargarPubs, pubNombre, pubSub, tapaHTML, resumenItems, conMant, PROB_TIPOS } = K;
   const PC = () => !!(window.matchMedia && window.matchMedia('(min-width: 1100px)').matches);   // pantalla ancha (ver app.js)
   const fmtCorto = (s) => { const d = parseIso(s); return `${DOW[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; };
   function achicar(file, max) {
@@ -70,10 +70,11 @@ window.PPAM_COORD = function (K) {
   function listenCoord(cid) {
     if (S.coord.cid === cid) return;
     limpiarCompaneros(cid);
-    S.coord.ent = {};
+    S.coord.ent = {}; S.coord.prob = {};
     S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = cid; S.coord.pedidos = {}; S.coord.cupos = {};
     S.coord.unsub.push(S.db.collection('pedidos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.pedidos = o; if (S.route.name === 'coord') refrescar(renderCoord); }, (e) => console.error(e)));
     S.coord.aud = {};
+    S.coord.unsub.push(S.db.collection('problemas').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.prob = o; if (S.route.name === 'coord') refrescar(renderCoord); }, (e) => console.error(e)));
     { if (conPubs(S.campanas[cid])) cargarPubs().then(() => { if (S.route.name === 'coord') refrescar(renderCoord); }); S.coord.unsub.push(S.db.collection('entregas').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.ent = o; if (S.route.name === 'coord') refrescar(renderCoord); }, (e) => console.error(e))); }
     S.coord.unsub.push(S.db.collection('auditoria').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.aud = o; if (S.route.name === 'coord' && S.coord.tab === 'config' && S.coord.aj === 'hist') refrescar(renderCoord); }, () => {}));
     S.coord.unsub.push(S.db.collection('cupos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.cupos = o; if (S.route.name === 'coord') refrescar(renderCoord); }, (e) => console.error(e)));
@@ -588,8 +589,8 @@ window.PPAM_COORD = function (K) {
     const puntos = Object.keys(c.puntos || {}).map(id => Object.assign({ id }, c.puntos[id]));
     const turnos = Object.keys(c.turnos || {}).map(id => Object.assign({ id }, c.turnos[id])).sort((a, b) => (a.desde + a.hasta).localeCompare(b.desde + b.hasta));
     const aj = S.coord.aj || 'puntos';
-    let h = `<div class="seg2 aj"><button type="button" data-aj="campana" class="${aj === 'campana' ? 'on' : ''}">Campaña</button><button type="button" data-aj="puntos" class="${aj === 'puntos' ? 'on' : ''}">Puntos y turnos</button>${conPubs(c) ? `<button type="button" data-aj="carritos" class="${aj === 'carritos' ? 'on' : ''}">Carritos</button>` : ''}<button type="button" data-aj="hist" class="${aj === 'hist' ? 'on' : ''}">Historial</button></div>`;
-    if (aj === 'carritos' && conPubs(c)) { if (!S.pubs) cargarPubs().then(() => { if (S.route.name === 'coord' && S.coord.aj === 'carritos') renderCoord(); }); return h + coordCarritos(c); }
+    let h = `<div class="seg2 aj"><button type="button" data-aj="campana" class="${aj === 'campana' ? 'on' : ''}">Campaña</button><button type="button" data-aj="puntos" class="${aj === 'puntos' ? 'on' : ''}">Puntos y turnos</button>${conPubs(c) || conMant(c) ? `<button type="button" data-aj="carritos" class="${aj === 'carritos' ? 'on' : ''}">Carritos</button>` : ''}<button type="button" data-aj="hist" class="${aj === 'hist' ? 'on' : ''}">Historial</button></div>`;
+    if (aj === 'carritos' && (conPubs(c) || conMant(c))) { if (!S.pubs) cargarPubs().then(() => { if (S.route.name === 'coord' && S.coord.aj === 'carritos') renderCoord(); }); return h + coordCarritos(c); }
     if (aj === 'hist') return h + `<p class="note hnote">Quién cambió o borró algo en esta campaña, y cuándo. Nadie puede editar ni borrar estas líneas. Se guardan 6 meses.</p>` + historialHTML(Object.keys(S.coord.aud || {}).map(id => Object.assign({ id }, S.coord.aud[id])), { cam: false });
     if (aj === 'campana') {
       h += `<div class="sec">Datos de la campaña</div><div class="card cfcard" data-editable style="padding:12px 13px 4px;"><div class="pcw cfl">
@@ -601,6 +602,8 @@ window.PPAM_COORD = function (K) {
       <div class="two"><div class="fld"><label for="cfDes">Desde</label><input id="cfDes" type="date" value="${esc(c.desde || '')}"></div><div class="fld"><label for="cfHas">Hasta</label><input id="cfHas" type="date" value="${esc(c.hasta || '')}"></div></div>
       <div class="fld"><label for="cfCon">WhatsApp de contacto (opcional)</label><input id="cfCon" type="tel" autocomplete="off" value="${esc(c.contacto || '')}" placeholder="343 555-0000"><small class="celok" id="cfConOk"></small><p class="small-hint" style="margin-top:6px">Los hermanos anotados ven el botón "Avisar al coordinador que no puedo ir", que les abre WhatsApp a este número con el turno ya escrito. Si lo dejás vacío, el botón no aparece.</p></div>
       <label class="ck"><input type="checkbox" id="cfPubs"${c.pubsOn ? ' checked' : ''}> <span><b>Llevar la cuenta de las publicaciones</b><br>Carritos con QR: al terminar el turno, los hermanos escanean el carrito y cuentan lo que se dejó. Apagado, la campaña funciona como siempre.</span></label>
+      <label class="ck"><input type="checkbox" id="cfMant"${c.mantOn ? ' checked' : ''}> <span><b>Mantenimiento de los carritos</b><br>"¿El carrito quedó bien?" al terminar el turno, problemas, reparaciones y revisión periódica.</span></label>
+      <div class="fld" style="margin:-6px 0 10px 32px"><label for="cfRev">Revisar cada</label><select id="cfRev">${[15, 30, 60, 90].map(n => `<option value="${n}"${(c.revDias || 30) === n ? ' selected' : ''}>${n} días</option>`).join('')}</select></div>
       <label class="ck"><input type="checkbox" id="cfAct"${c.activa !== false ? ' checked' : ''}> <span>Visible para todos (si la desmarcás, deja de aparecer en el inicio)</span></label>
       <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div></div>`;
       return h;
@@ -665,13 +668,13 @@ window.PPAM_COORD = function (K) {
     bindCel($('cfCon'), $('cfConOk'));
     $('cfSave').addEventListener('click', async () => {
       const bs = $('cfSave'); if (bs.disabled) return;
-      const d = { nombre: $('cfNom').value.trim(), ciudad: $('cfCiu').value.trim(), lugar: $('cfLug').value.trim(), desde: $('cfDes').value, hasta: $('cfHas').value, activa: $('cfAct').checked, pubsOn: $('cfPubs').checked };
+      const d = { nombre: $('cfNom').value.trim(), ciudad: $('cfCiu').value.trim(), lugar: $('cfLug').value.trim(), desde: $('cfDes').value, hasta: $('cfHas').value, activa: $('cfAct').checked, pubsOn: $('cfPubs').checked, mantOn: $('cfMant').checked, revDias: parseInt($('cfRev').value, 10) || 30 };
       const con = $('cfCon').value.trim(), cn = normCel(con);
       if (con && !cn.ok) { toast('El WhatsApp de contacto no parece un celular. ' + CEL_ERR); return; }
       d.contacto = con ? cn.txt : S.del();
       if (!d.nombre || !d.desde || !d.hasta) { toast('Completá el nombre y las fechas.'); return; }
       if (d.hasta < d.desde) { toast('La fecha "hasta" es anterior a "desde".'); return; }
-      const cam = []; if (d.nombre !== c.nombre) cam.push(`nombre ("${c.nombre}" → "${d.nombre}")`); if (d.ciudad !== (c.ciudad || '')) cam.push(`ciudad (${c.ciudad || '—'} → ${d.ciudad})`); if (d.lugar !== (c.lugar || '')) cam.push('lugar'); if (d.desde !== c.desde || d.hasta !== c.hasta) cam.push(`fechas (${c.desde} a ${c.hasta} → ${d.desde} a ${d.hasta})`); if (d.activa !== (c.activa !== false)) cam.push(d.activa ? 'la hizo visible' : 'la ocultó'); if (d.pubsOn !== !!c.pubsOn) cam.push(d.pubsOn ? 'prendió la cuenta de publicaciones' : 'apagó la cuenta de publicaciones'); if ((con ? cn.txt : '') !== (c.contacto || '')) cam.push(con ? 'WhatsApp de contacto (' + cn.txt + ')' : 'quitó el WhatsApp de contacto');
+      const cam = []; if (d.nombre !== c.nombre) cam.push(`nombre ("${c.nombre}" → "${d.nombre}")`); if (d.ciudad !== (c.ciudad || '')) cam.push(`ciudad (${c.ciudad || '—'} → ${d.ciudad})`); if (d.lugar !== (c.lugar || '')) cam.push('lugar'); if (d.desde !== c.desde || d.hasta !== c.hasta) cam.push(`fechas (${c.desde} a ${c.hasta} → ${d.desde} a ${d.hasta})`); if (d.activa !== (c.activa !== false)) cam.push(d.activa ? 'la hizo visible' : 'la ocultó'); if (d.mantOn !== !!c.mantOn) cam.push(d.mantOn ? 'prendió el mantenimiento de carritos' : 'apagó el mantenimiento de carritos'); if (d.pubsOn !== !!c.pubsOn) cam.push(d.pubsOn ? 'prendió la cuenta de publicaciones' : 'apagó la cuenta de publicaciones'); if ((con ? cn.txt : '') !== (c.contacto || '')) cam.push(con ? 'WhatsApp de contacto (' + cn.txt + ')' : 'quitó el WhatsApp de contacto');
       bs.disabled = true;
       try { await S.db.doc('campanas/' + c.id).update(d); if (cam.length) auditar(c.id, 'cambio_campana', 'cambió los datos de la campaña: ' + cam.join(', ')); S.sucio = false; S.pendRender = false; toast('Guardado'); render(); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
       if (bs.isConnected) bs.disabled = false;
@@ -1301,8 +1304,9 @@ window.PPAM_COORD = function (K) {
   function coordCarritos(c) {
     const ks = listaCarritos(c), av = avisosCarritos(c);
     let h = `<div class="sec">Carritos de la campaña <button type="button" class="sbtn" data-knuevo>+ Carrito</button></div>`;
-    h += ks.length ? `<div class="card">${ks.map(k => { const pt = (c.puntos || {})[k.habitual]; const its = Object.keys(k.items || {}); return `<button type="button" class="kc" data-kficha="${esc(k.kid)}">${kNum(k)}<span class="tx"><b>${esc(kNombre(k))}</b><small>${pt ? 'Habitual: ' + esc(pt.nombre) : 'Sin lugar habitual'}</small><small>${its.length ? esc(its.map(x => `${k.items[x]} ${pubNombre(x)}`).join(' · ')) : 'Sin publicaciones cargadas'}</small></span>${I('chev')}</button>`; }).join('')}</div>`
+    h += ks.length ? `<div class="card">${ks.map(k => { const pt = (c.puntos || {})[k.habitual]; const its = Object.keys(k.items || {}); return `<button type="button" class="kc" data-kficha="${esc(k.kid)}">${kNum(k)}<span class="tx"><b>${esc(kNombre(k))}</b><small>${pt ? 'Habitual: ' + esc(pt.nombre) : 'Sin lugar habitual'}</small>${conPubs(c) ? `<small>${its.length ? esc(its.map(x => `${k.items[x]} ${pubNombre(x)}`).join(' · ')) : 'Sin publicaciones cargadas'}</small>` : ''}${mantBadges(c, k)}</span>${I('chev')}</button>`; }).join('')}</div>`
       : '<div class="card"><div class="empty">Agregá los carritos de la campaña. Después imprimís sus etiquetas con QR y las pegás en cada uno.</div></div>';
+    h += mantAvisos(c).map(a => `<div class="kav rep">${I('alert', 'width:18px;height:18px;flex-shrink:0;margin-top:1px')}<span>${esc(a.t)}${a.k ? `<br><button type="button" class="sbtn" data-kficha="${esc(a.k)}" style="margin-top:8px">Ver el carrito</button>` : ''}</span></div>`).join('');
     h += av.map(a => `<div class="kav">${I('alert', 'width:18px;height:18px;flex-shrink:0;margin-top:1px')}<span>${esc(a)}</span></div>`).join('');
     if (ks.length) h += `<button type="button" class="btn" data-ketiq style="margin-top:12px">${I('qr')}Imprimir etiquetas</button><p class="note" style="margin-top:8px">Pegá cada etiqueta en dos lados del carrito. Al terminar el turno, los hermanos la escanean desde la app y cargan lo que se dejó.</p>`;
     return h;
@@ -1352,13 +1356,26 @@ window.PPAM_COORD = function (K) {
     await cargarPubs();
     let usos = Object.values(S.coord.cid === cid ? (S.coord.ent || {}) : {});
     if (S.coord.cid !== cid) { try { const qs = await S.db.collection('entregas').where('cid', '==', cid).get(); usos = []; qs.forEach(d => usos.push(d.data())); } catch (e) { usos = []; } }
+    if (conMant(c) && S.coord.cid !== cid) { try { const qs = await S.db.collection('problemas').where('cid', '==', cid).get(); S.coord.prob = S.coord.prob || {}; qs.forEach(d => { S.coord.prob[d.id] = d.data(); }); } catch (e) { /* sin permiso o sin señal */ } }
     usos = usos.filter(e => e.k === kid).sort((a, b) => (b.fecha + b.tid).localeCompare(a.fecha + a.tid)).slice(0, 6);
     const pt = (c.puntos || {})[k.habitual], its = Object.keys(k.items || {});
     const ov = sheet(`<div class="kok">${kNum(k, 'big')}<span class="tx"><b>${esc(kNombre(k))}</b><small>${esc(c.nombre)}${pt ? ' · habitual: ' + esc(pt.nombre) : ''}</small></span></div>
       <div class="lbl" style="margin-top:14px">Publicaciones</div><div class="card" style="padding:4px 12px">${its.length ? its.map(x => `<div class="kli">${tapaHTML(x)}<span class="tx"><b>${esc(pubNombre(x))}</b><small>${esc(pubSub((S.pubs || {})[x] || {}))}</small></span><b class="num">${k.items[x]}</b></div>`).join('') : '<div class="empty">Sin publicaciones cargadas.</div>'}</div>
       <div class="lbl">Últimos turnos</div>${usos.length ? `<div class="hist">${usos.map(e => { const t = (c.turnos || {})[e.tid] || {}; return `<div><b>${esc(cap(fmtDia(e.fecha)))}</b> · ${esc(((c.puntos || {})[t.punto] || {}).nombre || '')} ${esc(fmtHora(t.desde || ''))}–${esc(fmtHora(t.hasta || ''))}<br>${esc(resumenItems(e.items))} · ${esc(e.porNombre || '')}${e.modo === 'mano' ? ' (elegido a mano)' : ''}</div>`; }).join('')}</div>` : '<p class="hint">Todavía no se usó.</p>'}
+      ${conMant(c) ? mantFichaHTML(c, Object.assign({ kid }, k)) : ''}
       <button type="button" class="btn" id="fkEd" style="margin-top:12px">Editar</button><button type="button" class="btn alt" data-cerrar>Cerrar</button>`);
     ov.querySelector('#fkEd').addEventListener('click', () => { ov.remove(); editarCarrito(c, kid); });
+    const otraVez = () => setTimeout(() => { if (!document.querySelector('.ov')) fichaCarrito(cid, kid); }, 200);
+    ov.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-kest],[data-pest],[data-krev]'); if (!b) return;
+      if (b.dataset.krev !== undefined) { ov.remove(); revisarCarrito(S.campanas[cid], kid, otraVez); return; }
+      if (b.dataset.pest) { const [id, est] = b.dataset.pest.split('|'); b.disabled = true; if (await cambiarProblema(id, est)) { ov.remove(); otraVez(); } return; }
+      const rep = b.dataset.kest === 'rep'; if (rep === (k.estado === 'rep')) return;
+      if (!rep) { if (await cambiarEstadoCarrito(c, kid, false)) { ov.remove(); otraVez(); } return; }
+      ov.remove();
+      const m = sheet(`<h3>¿Qué le pasa al ${esc(kNombre(k).toLowerCase())}?</h3><p class="hint">Los hermanos que lo escaneen van a ver que está en reparación y el motivo.</p><div class="fld"><label for="kMot">Motivo (opcional)</label><input id="kMot" maxlength="120" placeholder="Rueda trasera rota"></div><button type="button" class="btn" id="kMOk">Marcar en reparación</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+      m.querySelector('#kMOk').addEventListener('click', async () => { if (await cambiarEstadoCarrito(c, kid, true, m.querySelector('#kMot').value.trim())) { m.remove(); otraVez(); } });
+    });
   }
   // Hoja de etiquetas para imprimir (QR + número + color)
   const QRLIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
@@ -1418,6 +1435,75 @@ window.PPAM_COORD = function (K) {
     if (idIn) q('#puDel').addEventListener('click', async () => {
       if (!confirm('¿Borrar esta publicación de la lista? Si algún carrito la tiene, deja de mostrarse ahí.')) return;
       try { await S.db.doc('publicaciones/' + idIn).delete(); await cargarPubs(true); ov.remove(); toast('Publicación borrada'); render(); } catch (e) { toast('No se pudo borrar.'); }
+    });
+  }
+
+  /* ---------- Mantenimiento de los carritos ---------- */
+  const REVISAR = ['Ruedas', 'Frenos', 'Lona y cartel', 'Limpieza', 'Etiquetas QR legibles'];
+  const diasDesde = (iso) => iso ? Math.round((parseIso(hoy()) - parseIso(String(iso).slice(0, 10))) / 864e5) : null;
+  const probsDe = (cid, kid) => Object.keys(S.coord.prob || {}).map(id => Object.assign({ id }, S.coord.prob[id])).filter(p => p.cid === cid && p.k === kid).sort((a, b) => String(b.at && b.at.toDate ? b.at.toDate().toISOString() : b.at).localeCompare(String(a.at && a.at.toDate ? a.at.toDate().toISOString() : a.at)));
+  const fechaP = (ts) => { const d = ts && (ts.toDate ? ts.toDate() : /^\d{4}-\d{2}-\d{2}$/.test(String(ts)) ? parseIso(String(ts)) : new Date(ts)); return d && !isNaN(d) ? `${d.getDate()} ${MES[d.getMonth()].slice(0, 3)}` : ''; };
+  function revisionTxt(c, k) {
+    const cada = c.revDias || 30, d = diasDesde(k.revisado);
+    if (d === null) return { txt: 'Nunca se revisó', toca: true };
+    return { txt: `Última: ${fechaP(k.revisado)} · cada ${cada} días`, toca: d >= cada, falta: cada - d, hace: d };
+  }
+  function mantBadges(c, k) {
+    if (!conMant(c)) return '';
+    const ps = probsDe(c.id, k.kid).filter(p => p.estado !== 'ok'), nuevos = ps.filter(p => p.estado === 'nuevo').length, rv = revisionTxt(c, k);
+    let h = k.estado === 'rep' ? '<span class="est rep">En reparación</span>' : '<span class="est ok">Disponible</span>';
+    if (nuevos) h += `<span class="est pr">${nuevos === 1 ? '1 problema nuevo' : nuevos + ' problemas nuevos'}</span>`;
+    else if (ps.length) h += `<span class="est pr">${ps.length === 1 ? '1 en arreglo' : ps.length + ' en arreglo'}</span>`;
+    if (rv.toca) h += `<span class="est rv">${rv.hace != null ? 'Revisar · hace ' + rv.hace + ' días' : 'Sin revisión'}</span>`;
+    return `<span class="ests">${h}</span>`;
+  }
+  function mantAvisos(c) {
+    if (!conMant(c)) return [];
+    const ks = listaCarritos(c), av = [];
+    ks.forEach(k => { if (k.estado !== 'rep' && probsDe(c.id, k.kid).some(p => p.estado === 'nuevo' && p.noUsar)) av.push({ t: `Pidieron que no se use el ${kNombre(k).toLowerCase()}`, k: k.kid }); });
+    ks.filter(k => k.estado === 'rep' && k.habitual && (c.puntos || {})[k.habitual]).forEach(k => {
+      if (!ks.some(o => o.kid !== k.kid && o.habitual === k.habitual && o.estado !== 'rep')) av.push({ t: `${c.puntos[k.habitual].nombre} se queda sin carrito: el ${kNombre(k).toLowerCase()} está en reparación. Asigná otro a ese punto o avisá a los hermanos.` });
+    });
+    return av;
+  }
+  async function cambiarEstadoCarrito(c, kid, rep, motivo) {
+    const k = c.carritos[kid], upd = { ['carritos.' + kid + '.estado']: rep ? 'rep' : 'ok' };
+    upd['carritos.' + kid + '.motivo'] = rep && motivo ? motivo.slice(0, 120) : S.del();
+    try { await S.db.doc('campanas/' + c.id).update(upd); auditar(c.id, rep ? 'carrito_rep' : 'carrito_ok', (rep ? 'marcó en reparación el ' : 'marcó como disponible el ') + kNombre(k).toLowerCase() + (rep && motivo ? ': ' + motivo.slice(0, 120) : '')); toast(rep ? 'Marcado en reparación' : 'Carrito disponible'); return true; }
+    catch (e) { console.error(e); toast('No se pudo guardar.'); return false; }
+  }
+  async function cambiarProblema(id, estado) {
+    try { await S.db.doc('problemas/' + id).update({ estado, cambio: { por: S.user.email.toLowerCase(), at: new Date().toISOString() } }); return true; }
+    catch (e) { console.error(e); toast('No se pudo guardar.'); return false; }
+  }
+  function mantFichaHTML(c, k) {
+    const ps = probsDe(c.id, k.kid), abiertos = ps.filter(p => p.estado !== 'ok'), rv = revisionTxt(c, k);
+    let h = `<div class="seg3" role="group" aria-label="Estado del carrito"><button type="button" data-kest="ok" class="${k.estado === 'rep' ? '' : 'on'}" aria-pressed="${k.estado === 'rep' ? 'false' : 'true'}">Disponible</button><button type="button" data-kest="rep" class="${k.estado === 'rep' ? 'on' : ''}" aria-pressed="${k.estado === 'rep' ? 'true' : 'false'}">En reparación</button></div>`;
+    if (k.estado === 'rep' && k.motivo) h += `<p class="hint" style="margin:-6px 0 10px">${esc(k.motivo)}</p>`;
+    h += '<div class="lbl">Problemas</div>' + (abiertos.length ? abiertos.map(p => `<div class="pb">${p.foto ? `<span class="ph" style="background-image:url('${p.foto}')" role="img" aria-label="Foto del problema"></span>` : ''}<div class="tx"><b>${esc(p.tipo)} · <span class="${p.estado === 'nuevo' ? 'pnu' : 'par'}">${p.estado === 'nuevo' ? 'Nuevo' : 'En arreglo'}</span></b>${p.nota ? `<small>"${esc(p.nota)}"</small>` : ''}${p.noUsar ? '<small class="pnu">Pidió que no se use</small>' : ''}<small>${esc(p.porNombre || '')} · ${esc(fechaP(p.at))}</small></div><div class="acts">${p.estado === 'nuevo' ? `<button type="button" class="sbtn" data-pest="${esc(p.id)}|arreglo">En arreglo</button>` : ''}<button type="button" class="sbtn pri" data-pest="${esc(p.id)}|ok">Arreglado</button></div></div>`).join('') : '<p class="hint">Sin problemas pendientes.</p>');
+    h += `<div class="lbl">Revisión</div><div class="rv"><span class="tx"><b>${esc(rv.txt)}</b>${rv.hace != null ? `<small>${rv.toca ? 'Ya le toca' : 'Le toca en ' + rv.falta + (rv.falta === 1 ? ' día' : ' días')}</small>` : ''}</span><button type="button" class="sbtn" data-krev>Revisar ahora</button></div>`;
+    const hist = [];
+    ps.forEach(p => { hist.push([p.at && p.at.toDate ? p.at.toDate().toISOString() : String(p.at || ''), `<b>${esc(fechaP(p.at))}</b> · ${esc(p.porNombre || '')} informó: ${esc(p.tipo.toLowerCase())}`]); if (p.estado === 'ok' && p.cambio) hist.push([String(p.cambio.at || ''), `<b>${esc(fechaP(p.cambio.at))}</b> · Arreglado: ${esc(p.tipo.toLowerCase())}`]); });
+    (k.revs || []).forEach(r => hist.push([String(r.f || ''), `<b>${esc(fechaP(r.f))}</b> · Revisión${r.mal && r.mal.length ? ' (a arreglar: ' + esc(r.mal.join(', ').toLowerCase()) + ')' : ' completa'}${r.por ? ' · ' + esc(r.por) : ''}`]));
+    hist.sort((a, b) => b[0].localeCompare(a[0]));
+    if (hist.length) h += `<div class="lbl">Historial</div><div class="hist">${hist.slice(0, 8).map(x => `<div>${x[1]}</div>`).join('')}</div>`;
+    return h;
+  }
+  function revisarCarrito(c, kid, listo) {
+    const k = c.carritos[kid];
+    const ov = sheet(`<h3>Revisión del ${esc(kNombre(k).toLowerCase())}</h3><p class="hint">Tildá lo que está bien. Lo que no, queda como problema para arreglar.</p>
+      <div class="ckl">${REVISAR.map((t, i) => `<label><input type="checkbox" data-rv="${i}" checked> <span>${esc(t)}</span></label>`).join('')}</div>
+      <div class="fld" style="margin-top:8px"><label for="rvN">Nota (opcional)</label><textarea id="rvN" rows="2" maxlength="300"></textarea></div>
+      <button type="button" class="btn" id="rvOk">Guardar revisión</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    ov.querySelector('#rvOk').addEventListener('click', async () => {
+      const mal = [...ov.querySelectorAll('[data-rv]')].filter(x => !x.checked).map(x => REVISAR[+x.dataset.rv]), nota = ov.querySelector('#rvN').value.trim().slice(0, 300);
+      const r = { f: new Date().toISOString(), por: (S.user.displayName || S.user.email || '').slice(0, 60) }; if (mal.length) r.mal = mal; if (nota) r.nota = nota;
+      const revs = [r, ...(k.revs || [])].slice(0, 10), b = S.db.batch();
+      b.update(S.db.doc('campanas/' + c.id), { ['carritos.' + kid + '.revisado']: hoy(), ['carritos.' + kid + '.revs']: revs });
+      if (mal.length) b.set(S.db.collection('problemas').doc(Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), Object.assign({ cid: c.id, k: kid, tipo: mal.join(', ').slice(0, 80), por: S.yo, porNombre: ((S.user.displayName || S.user.email || '') + ' (revisión)').slice(0, 80), at: S.ahora(), estado: 'nuevo' }, nota ? { nota } : {}));
+      const bt = ov.querySelector('#rvOk'); bt.disabled = true; bt.textContent = 'Guardando…';
+      try { await b.commit(); auditar(c.id, 'reviso_carrito', 'revisó el ' + kNombre(k).toLowerCase() + (mal.length ? ' (a arreglar: ' + mal.join(', ').toLowerCase() + ')' : ' (todo bien)')); ov.remove(); toast('Revisión guardada'); if (listo) listo(); }
+      catch (e) { console.error(e); bt.disabled = false; bt.textContent = 'Guardar revisión'; toast('No se pudo guardar.'); }
     });
   }
   return { fichaCarrito, renderHermanos, renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };

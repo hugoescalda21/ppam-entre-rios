@@ -57,7 +57,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '55';
+  const VERSION = '56';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -495,7 +495,7 @@
     if (e.err) return '';
     if (e.d) {
       const k = (c.carritos || {})[e.d.k], hora = e.d.at && (e.d.at.toDate ? e.d.at.toDate() : new Date(e.d.at));
-      return `<div class="entr ok" id="entr"><div class="h">✓ Lo entregado en este turno</div><p class="res">${esc(resumenItems(e.d.items))}</p><div class="q"><span>${k ? esc(kNombre(k)) + ' · ' : ''}Lo cargó ${esc(e.d.porNombre || '')}${hora && !isNaN(hora) ? ' · ' + pad(hora.getHours()) + ':' + pad(hora.getMinutes()) : ''}</span>${abierto ? `<button type="button" class="sbtn" data-corregir="${esc(p.id)}">Corregir</button>` : ''}</div></div>`;
+      return `<div class="entr ok" id="entr"><div class="h">✓ Lo entregado en este turno</div><p class="res">${esc(resumenItems(e.d.items))}</p><div class="q"><span>${k ? esc(kNombre(k)) + ' · ' : ''}Lo cargó ${esc(e.d.porNombre || '')}${hora && !isNaN(hora) ? ' · ' + pad(hora.getHours()) + ':' + pad(hora.getMinutes()) : ''}</span>${abierto ? `<button type="button" class="sbtn" data-corregir="${esc(p.id)}">Corregir</button>` : ''}</div>${abierto && conMant(c) && k ? `<button type="button" class="linkish probl" data-probk="${esc(p.id)}">${I('alert', 'width:14px;height:14px')}Informar un problema del carrito</button>` : ''}</div>`;
     }
     if (!abierto) return p.fecha === hoy() ? '<div class="entr" id="entr"><p class="nota0">Al terminar el turno vas a poder contar lo que se dejó en el carrito.</p></div>' : '';
     return `<div class="entr pend" id="entr"><b>¿Cómo te fue? Contá lo que se dejó</b><p>Escaneá el QR del carrito que usaste. Lo carga uno solo por turno.</p><button type="button" class="btn" data-contar="${esc(p.id)}">${I('qr')}Escanear carrito</button></div>`;
@@ -561,7 +561,7 @@
     await cargarPubs();
     const id = cupoId(p.cid, p.fecha, p.tid), prev = ((S.ent[id] || {}).d) || null, ant = (prev && prev.items) || {};
     const ids = [...new Set([...Object.keys(k.items || {}), ...Object.keys(ant)])].filter(x => (S.pubs || {})[x]);
-    const ov = sheet(`<div class="kok">${kNum(k, 'big')}<span class="tx"><b>${esc(kNombre(k))}</b><small>${modo === 'qr' ? '✓ Escaneado' : 'Elegido a mano'}</small></span><button type="button" class="sbtn" id="ctOtro">No es este</button></div>
+    const ov = sheet(`<div class="kok">${kNum(k, 'big')}<span class="tx"><b>${esc(kNombre(k))}</b><small>${modo === 'qr' ? '✓ Escaneado' : 'Elegido a mano'}</small></span><button type="button" class="sbtn" id="ctOtro">No es este</button></div>${repHTML(k)}
       <h3 style="margin-top:14px">¿Cuánto se dejó?</h3><p class="hint">${esc(cap(fmtDia(p.fecha)))} · ${esc(p.desde)} a ${esc(p.hasta)}${prev ? ` · ya lo cargó ${esc(prev.porNombre || '')}: si algo está mal, corregilo` : ''}</p>
       <div class="ctl">${ids.length ? ids.map(x => `<div class="it">${tapaHTML(x)}<span class="tx"><b>${esc(pubNombre(x))}</b><small>${esc(pubSub(S.pubs[x]))}</small></span><span class="stp"><button type="button" data-mn="${esc(x)}" aria-label="Uno menos">−</button><input type="number" inputmode="numeric" min="0" max="999" value="${ant[x] || 0}" data-cnt="${esc(x)}" aria-label="Cantidad de ${esc(pubNombre(x))}"><button type="button" data-mas="${esc(x)}" aria-label="Uno más">+</button></span></div>`).join('') : '<p class="hint">Este carrito todavía no tiene publicaciones cargadas. Avisale al coordinador.</p>'}</div>
       <button type="button" class="btn" id="ctOk"${ids.length ? '' : ' disabled'}>Guardar lo entregado</button><button type="button" class="btn alt" data-cerrar>Cancelar</button><p class="fine">Se cuenta en el ${esc(kNombre(k).toLowerCase())}. Solo cantidades, nunca datos de las personas.</p>`);
@@ -574,7 +574,8 @@
       try {
         await conTiempo(S.db.doc('entregas/' + id).set({ cid: p.cid, fecha: p.fecha, tid: p.tid, k: kid, modo, items, por: S.yo, porNombre: nombreYo().slice(0, 80), at: S.ahora() }));
         S.ent[id] = { t: Date.now(), d: { cid: p.cid, fecha: p.fecha, tid: p.tid, k: kid, modo, items, por: S.yo, porNombre: nombreYo(), at: new Date().toISOString() } };
-        ov.remove(); toast('¡Gracias! Quedó guardado lo entregado'); render();
+        ov.remove(); render();
+        if (conMant(c)) quedoBien(c, kid, id); else toast('¡Gracias! Quedó guardado lo entregado');
       } catch (e) { console.error(e); b.disabled = false; b.textContent = 'Guardar lo entregado'; toast(e && e.code === 'sin-respuesta' ? 'Hay poca señal: se guarda solo cuando vuelva la conexión.' : 'No se pudo guardar. Probá de nuevo.'); }
     });
   }
@@ -585,7 +586,7 @@
     if (!r) { sheet(`<h3>No encontramos ese carrito</h3><p class="hint">Puede que lo hayan borrado o que sea de una campaña que ya terminó.</p><button type="button" class="btn alt" data-cerrar>Cerrar</button>`); return; }
     if (S.isAdmin || S.coordDe.includes(r.c.id)) { fichaCarrito(r.c.id, r.kid); return; }
     const ps = turnosParaContar().filter(p => p.cid === r.c.id);
-    if (!ps.length) { sheet(`<div class="kok">${kNum(r.k, 'big')}<span class="tx"><b>${esc(kNombre(r.k))}</b><small>${esc(r.c.nombre)}</small></span></div><p class="hint" style="margin-top:14px">No tenés un turno para cargar con este carrito. Se puede contar lo entregado desde 15 minutos antes de que termine tu turno confirmado hasta el día siguiente.</p><button type="button" class="btn alt" data-cerrar>Cerrar</button>`); return; }
+    if (!ps.length) { sheet(`<div class="kok">${kNum(r.k, 'big')}<span class="tx"><b>${esc(kNombre(r.k))}</b><small>${esc(r.c.nombre)}</small></span></div>${repHTML(r.k)}<p class="hint" style="margin-top:14px">No tenés un turno para cargar con este carrito. Se puede contar lo entregado desde 15 minutos antes de que termine tu turno confirmado hasta el día siguiente.</p><button type="button" class="btn alt" data-cerrar>Cerrar</button>`); return; }
     await Promise.all(ps.map(p => cargarEnt(p)));
     if (ps.length === 1) { contar(ps[0], r.kid, 'qr'); return; }
     const ov = sheet(`<h3>¿De qué turno?</h3><p class="hint">${esc(kNombre(r.k))} · ${esc(r.c.nombre)}</p>${ps.map((p, i) => `<button type="button" class="btn alt" data-tq="${i}">${esc(cap(fmtDia(p.fecha)))} · ${esc(p.desde)} a ${esc(p.hasta)}</button>`).join('')}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
@@ -597,6 +598,63 @@
       <a class="btn" href="https://www.jw.org/es/" target="_blank" rel="noopener">Ir a jw.org</a>
       <div class="codok qrher">${I('help', 'width:18px;height:18px')}<span><b>¿Sos publicador?</b>Abrí la app PPAM con tu link y tocá "Escanear carrito" para cargar lo que se dejó.</span></div>`);
   }
+
+  /* ---------- Mantenimiento de los carritos (se prende por campaña) ----------
+     problemas/{id}: lo que informa un hermano (o el coordinador en una revisión). Lo ve y sigue el coordinador. */
+  const conMant = (c) => !!(c && c.mantOn);
+  const PROB_TIPOS = ['Rueda', 'Freno', 'Estante', 'Lona o cartel', 'Está sucio', 'Le falta algo', 'Otro'];
+  // Foto chica para un problema (se achica en el celular antes de subirse)
+  function fotoChica(file, max) {
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let w = img.naturalWidth, h = img.naturalHeight; const k = Math.min(1, (max || 640) / Math.max(w, h)); w = Math.round(w * k); h = Math.round(h * k);
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+        let q = 0.75, out = cv.toDataURL('image/jpeg', q);
+        while (out.length > 130000 && q > 0.3) { q -= 0.1; out = cv.toDataURL('image/jpeg', q); }
+        if (out.length > 145000) rej(new Error('grande')); else res(out);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagen')); };
+      img.src = url;
+    });
+  }
+  function quedoBien(c, kid, turno) {
+    const k = (c.carritos || {})[kid]; if (!k) return;
+    const ov = sheet(`<div class="kok">${kNum(k, 'big')}<span class="tx"><b>${esc(kNombre(k))}</b><small>${esc(c.nombre)}</small></span></div><h3 style="margin-top:14px">¿El carrito quedó bien?</h3><p class="hint">Si algo se rompió o falta, avisá: el coordinador lo ve enseguida.</p>
+      <div class="sino"><button type="button" class="btn" data-cerrar>Sí, todo bien</button><button type="button" class="btn alt prob" id="qbNo">Tiene un problema</button></div>`);
+    ov.querySelector('#qbNo').addEventListener('click', () => { ov.remove(); informarProblema(c, kid, turno); });
+  }
+  function informarProblema(c, kid, turno) {
+    const k = (c.carritos || {})[kid]; if (!k) return;
+    const st = { tipos: new Set(), foto: '' };
+    const ov = sheet(`<h3>¿Qué le pasa al ${esc(kNombre(k).toLowerCase())}?</h3><p class="hint">Elegí lo que corresponda. El coordinador lo ve enseguida.</p>
+      <div class="pchs">${PROB_TIPOS.map(t => `<button type="button" data-pt="${esc(t)}" aria-pressed="false">${esc(t)}</button>`).join('')}</div>
+      <div class="fld"><label for="prN">Contalo en pocas palabras (opcional)</label><textarea id="prN" rows="2" maxlength="300" placeholder="Por ejemplo: la rueda de adelante está floja"></textarea></div>
+      <div class="lbl">Foto (opcional)</div><div class="up" id="prF"></div>
+      <label class="ck" style="margin-top:12px"><input type="checkbox" id="prNo"> <span><b>No se puede usar</b> (que no lo lleve nadie hasta que lo arreglen)</span></label>
+      <p class="err hidden" id="prErr"></p>
+      <button type="button" class="btn" id="prOk">Avisar al coordinador</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    const q = (s) => ov.querySelector(s);
+    const pintarF = () => {
+      q('#prF').innerHTML = st.foto ? `<div class="img" style="background-image:url('${st.foto}')"><button type="button" id="prFX" aria-label="Quitar foto">✕</button></div>` : `<label class="add">${I('camera', 'width:20px;height:20px;margin:0 auto 3px;display:block')}Agregar foto<input type="file" accept="image/*" id="prFile"></label>`;
+      if (q('#prFX')) q('#prFX').addEventListener('click', () => { st.foto = ''; pintarF(); });
+      if (q('#prFile')) q('#prFile').addEventListener('change', async (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; try { st.foto = await fotoChica(f, 640); pintarF(); } catch (er) { toast('No se pudo usar esa foto. Probá con otra.'); } });
+    };
+    pintarF();
+    ov.querySelectorAll('[data-pt]').forEach(b => b.addEventListener('click', () => { const t = b.dataset.pt; if (st.tipos.has(t)) st.tipos.delete(t); else st.tipos.add(t); b.classList.toggle('on', st.tipos.has(t)); b.setAttribute('aria-pressed', st.tipos.has(t) ? 'true' : 'false'); }));
+    q('#prOk').addEventListener('click', async () => {
+      if (!st.tipos.size) { q('#prErr').textContent = 'Elegí qué le pasa (por lo menos una opción).'; q('#prErr').classList.remove('hidden'); return; }
+      const d = { cid: c.id, k: kid, tipo: [...st.tipos].join(', ').slice(0, 80), noUsar: q('#prNo').checked, por: S.yo, porNombre: nombreYo().slice(0, 80), at: S.ahora(), estado: 'nuevo' };
+      const nota = q('#prN').value.trim().slice(0, 300); if (nota) d.nota = nota;
+      if (st.foto) d.foto = st.foto;
+      if (turno) d.turno = turno;
+      const b = q('#prOk'); b.disabled = true; b.textContent = 'Enviando…';
+      try { await conTiempo(S.db.collection('problemas').doc(Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).set(d)); ov.remove(); toast('Gracias: el coordinador ya lo ve'); }
+      catch (e) { console.error(e); b.disabled = false; b.textContent = 'Avisar al coordinador'; toast(e && e.code === 'sin-respuesta' ? 'Hay poca señal: se manda solo cuando vuelva la conexión.' : 'No se pudo enviar. Probá de nuevo.'); }
+    });
+  }
+  const repHTML = (k) => k && k.estado === 'rep' ? `<div class="krep">${I('alert', 'width:18px;height:18px;flex-shrink:0;margin-top:1px')}<span><b>Este carrito está en reparación</b>${k.motivo ? esc(k.motivo) + '. ' : ''}No lo lleves hasta que el coordinador lo marque como arreglado.</span></div>` : '';
   const waLink = (cel, txt) => { let x = String(cel || '').replace(/\D/g, ''); if (x.length === 10) x = '549' + x; return 'https://wa.me/' + x + '?text=' + encodeURIComponent(txt); };
 
   // Varias novedades juntas (por ejemplo, los lugares de cada campaña) se dibujan una sola vez.
@@ -1338,6 +1396,7 @@
     if (!rech) h += `<div class="tl"><span class="ok"><span class="dot">${I('check')}</span>Pedido</span><span class="ln on"></span><span class="${conf ? 'ok' : ''}"><span class="dot">${conf ? I('check') : ''}</span>Confirmado</span><span class="ln${pasado ? ' on' : ''}"></span><span class="${pasado ? 'ok' : ''}"><span class="dot">${pasado ? I('check') : ''}</span>El día</span></div>`;
     if (conClima && !(climaK && !climaK.v)) h += `<div class="clima" id="clima" aria-live="polite">${climaK && climaK.v ? climaHTML(p, climaK.v) : ''}</div>`;
     h += entregaHTML(p);
+    if (conMant(c) && !conPubs(c) && conf && (p.fecha === hoy() || p.fecha === addDays(hoy(), -1))) h += `<button type="button" class="linkish probl" data-probesc="${esc(p.id)}">${I('alert', 'width:14px;height:14px')}Informar un problema del carrito</button>`;
     h += '<div class="grid4">';
     h += url ? `<a class="pr" href="${esc(url)}" target="_blank" rel="noopener"${llegarAttr(p.cid, p.punto)}>${I('nav')}Llegar</a>` : `<button type="button" disabled>${I('nav')}Llegar</button>`;
     h += `<button type="button" data-ics="${esc(p.id)}">${I('cal')}Agendar</button><button type="button" data-comp="${esc(p.id)}">${I('share')}Compartir</button>`;
@@ -1871,6 +1930,8 @@
     if (ds.ciudad) { S.ciudad = ds.ciudad; renderHome(); return; }
     if (ds.dia) { S.dia = ds.dia; renderCamp(); return; }
     if (ds.contar || ds.corregir) { const p = S.mis[ds.contar || ds.corregir] && Object.assign({ id: ds.contar || ds.corregir }, S.mis[ds.contar || ds.corregir]); if (!p) return; const id = cupoId(p.cid, p.fecha, p.tid); if (ds.corregir && S.ent[id] && S.ent[id].d) { contar(p, S.ent[id].d.k, S.ent[id].d.modo || 'qr'); return; } contarTurno(p); return; }
+    if (ds.probesc) { const p = S.mis[ds.probesc]; if (!p) return; const c = S.campanas[p.cid]; escanear(c, (kid) => informarProblema(c, kid, cupoId(p.cid, p.fecha, p.tid))); return; }
+    if (ds.probk) { const p = S.mis[ds.probk], id = p && cupoId(p.cid, p.fecha, p.tid), e = id && S.ent[id] && S.ent[id].d; if (e) informarProblema(S.campanas[p.cid], e.k, id); return; }
     if (ds.comod) { const [cid, pid, k] = ds.comod.split('|'); verComod(cid, pid, k); return; }
     if (ds.compartir) { const [pid, si] = ds.compartir.split('|'), p = S.mis[pid]; if (!p) return; t.disabled = true; compartirNombre(p.cid, p.fecha, p.tid, si === '1', p).then(ok => { if (!ok) toast('No se pudo cambiar. Probá de nuevo.'); else toast(si === '1' ? 'Tus compañeros de este turno ven tu nombre' : 'Listo: tu nombre ya no se muestra'); render(); }); return; }
     if (ds.calmes) { const c = S.campanas[S.route.cid]; if (!c) return; const dias = diasDe(c).filter(d => turnosDelDia(c, d).some(t => !yaEmpezo(d, t))), meses = [...new Set(dias.map(d => d.slice(0, 7)))], m = meses[meses.indexOf(S.dia.slice(0, 7)) + (+ds.calmes)]; if (m) { S.dia = dias.find(d => d.slice(0, 7) === m); renderCamp(); } return; }
@@ -1933,7 +1994,7 @@
     if (coordMod) return Promise.resolve(coordMod);
     if (!coordCargando) coordCargando = new Promise((res, rej) => {
       const sc = document.createElement('script'); sc.src = './coord.js?v=' + VERSION;
-      sc.onload = () => { try { coordMod = window.PPAM_COORD({ DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt, KCOLORES, TIPOS_PUB, colorHex, kNombre, kNum, conPubs, cargarPubs, pubNombre, pubSub, tapaHTML, resumenItems }); res(coordMod); } catch (e) { rej(e); } };
+      sc.onload = () => { try { coordMod = window.PPAM_COORD({ DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt, KCOLORES, TIPOS_PUB, colorHex, kNombre, kNum, conPubs, cargarPubs, pubNombre, pubSub, tapaHTML, resumenItems, conMant, PROB_TIPOS }); res(coordMod); } catch (e) { rej(e); } };
       sc.onerror = () => { coordCargando = null; rej(new Error('coord.js')); };
       document.head.appendChild(sc);
     });

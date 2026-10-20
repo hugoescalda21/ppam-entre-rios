@@ -191,6 +191,27 @@ service cloud.firestore {
       allow delete: if gestiona(resource.data.cid);
     }
 
+    // Problemas de un carrito (mantenimiento): los informa un hermano habilitado o el coordinador (en una revisión).
+    // Solo los ve y los sigue el coordinador de esa campaña. El que informa solo puede crear, no cambiar ni leer otros.
+    match /problemas/{id} {
+      function probValido(d) {
+        return d.keys().hasOnly(['cid', 'k', 'tipo', 'nota', 'foto', 'noUsar', 'turno', 'por', 'porNombre', 'at', 'estado', 'cambio']) &&
+               d.cid is string && d.cid.size() <= 80 && d.k is string && d.k.size() <= 40 &&
+               d.tipo is string && d.tipo.size() > 0 && d.tipo.size() <= 80 && texto(d, 'nota', 300) && texto(d, 'turno', 140) &&
+               (!('foto' in d) || (d.foto is string && d.foto.size() < 150000 && d.foto.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+'))) &&
+               (!('noUsar' in d) || d.noUsar is bool) && d.porNombre is string && d.porNombre.size() <= 80 &&
+               d.estado in ['nuevo', 'arreglo', 'ok'] && (!('cambio' in d) || d.cambio is map);
+      }
+      allow create: if probValido(request.resource.data) && request.resource.data.por == yo() && request.resource.data.at == request.time &&
+                     request.resource.data.estado == 'nuevo' && !('cambio' in request.resource.data) &&
+                     (puedePedir() || gestiona(request.resource.data.cid)) &&
+                     exists(/databases/$(database)/documents/campanas/$(request.resource.data.cid));
+      allow read: if gestiona(resource.data.cid);
+      allow update: if gestiona(resource.data.cid) && probValido(request.resource.data) &&
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'cambio']);
+      allow delete: if gestiona(resource.data.cid);
+    }
+
     // Fotos de portada y de los puntos: imágenes JPEG achicadas (menos de ~330 KB), públicas.
     // Las sube el coordinador de esa campaña; el id empieza con el de la campaña.
     match /fotos/{id} {

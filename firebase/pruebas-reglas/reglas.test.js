@@ -360,6 +360,27 @@ const section = (t) => console.log('\n' + t);
   await check('un hermano NO la borra', assertFails(db(A).doc('entregas/' + E1).delete()));
   await check('el coordinador la borra', assertSucceeds(db(CO).doc('entregas/' + E1).delete()));
 
+  section('Problemas de los carritos (mantenimiento)');
+  const prob = (email, id, extra) => db(email).doc('problemas/' + id).set(Object.assign({ cid: CID, k: 'k1', tipo: 'Rueda', nota: 'La rueda está floja', noUsar: false, por: uidOf(email), porNombre: 'Ana Prueba', at: TS(), estado: 'nuevo' }, extra || {}));
+  await check('un hermano informa un problema', assertSucceeds(prob(A, 'pr1', { foto: 'data:image/jpeg;base64,AAAA', turno: E1 })));
+  await check('NO firmado por otro', assertFails(prob(A, 'pr2', { por: 'h-beto' })));
+  await check('NO ya marcado como arreglado', assertFails(prob(A, 'pr2', { estado: 'ok' })));
+  await check('NO con campos de más', assertFails(prob(A, 'pr2', { celular: '343' })));
+  await check('NO para una campaña que no existe', assertFails(prob(A, 'pr2', { cid: 'no-existe' })));
+  await check('sin link NO', assertFails(anonDb('anon-x').doc('problemas/pr2').set({ cid: CID, k: 'k1', tipo: 'Rueda', por: 'anon-x', porNombre: 'X', at: TS(), estado: 'nuevo' })));
+  await check('con Google sin ser coordinador NO', assertFails(prob(G, 'pr2')));
+  await check('el hermano NO lo lee (ni los de otros)', assertFails(db(A).doc('problemas/pr1').get()));
+  await check('un hermano NO lista los problemas', assertFails(db(A).collection('problemas').where('cid', '==', CID).get()));
+  await check('el coordinador los lista', assertSucceeds(db(CO).collection('problemas').where('cid', '==', CID).get()));
+  await check('el hermano NO lo cambia', assertFails(db(A).doc('problemas/pr1').update({ estado: 'ok' })));
+  await check('el coordinador lo pasa a "en arreglo"', assertSucceeds(db(CO).doc('problemas/pr1').update({ estado: 'arreglo', cambio: { por: CO, at: 'x' } })));
+  await check('el coordinador NO cambia lo que escribió el hermano', assertFails(db(CO).doc('problemas/pr1').update({ nota: 'otra cosa' })));
+  await check('el coordinador lo marca arreglado', assertSucceeds(db(CO).doc('problemas/pr1').update({ estado: 'ok', cambio: { por: CO, at: 'y' } })));
+  await check('NO un estado inventado', assertFails(db(CO).doc('problemas/pr1').update({ estado: 'perdido' })));
+  await check('el coordinador informa uno en una revisión', assertSucceeds(prob(CO, 'pr3', { porNombre: 'Coord (revisión)' })));
+  await check('un hermano NO borra', assertFails(db(A).doc('problemas/pr3').delete()));
+  await check('el coordinador borra', assertSucceeds(db(CO).doc('problemas/pr3').delete()));
+
   await env.cleanup();
   console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;

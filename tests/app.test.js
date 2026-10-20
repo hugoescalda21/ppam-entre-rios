@@ -1431,6 +1431,49 @@ const SEED = {
     Object.keys(SEED).forEach(x => delete SEED[x]); Object.assign(SEED, orig);
   }
   {
+    console.log('\nMantenimiento de los carritos');
+    const orig = JSON.parse(JSON.stringify(SEED));
+    const cp = SEED['campanas/parana-terminal'];
+    Object.assign(cp, { pubsOn: true, mantOn: true, revDias: 30 });
+    cp.carritos = { k1: { n: 1, color: 'azul', cod: 'K7Q2M9XA', habitual: 'p1', items: { pA: 40 }, revisado: '2026-08-20' }, k2: { n: 2, color: 'verde', cod: 'P3ZT8WLC', habitual: 'p2', items: { pA: 20 }, estado: 'rep', motivo: 'Rueda trasera rota' } };
+    SEED['publicaciones/pA'] = { nombre: 'La Atalaya', tipo: 'Revista', idioma: 'Español' };
+    SEED['pedidos/parana-terminal__2026-10-01__t2__u-ana'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-ana', nombre: 'Ana', apellido: 'Paz', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', estado: 'confirmado', creado: '2026-09-29T10:00:00Z' };
+    SEED['cupos/parana-terminal__2026-10-01__t2'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', ocupados: { 'u-ana': 'c' } };
+    SEED['problemas/prv1'] = { cid: 'parana-terminal', k: 'k1', tipo: 'Lona o cartel', nota: 'La lona está rota', noUsar: true, por: 'otro1', porNombre: 'Luis Benítez', at: '2026-09-30T20:00:00Z', estado: 'nuevo' };
+    const pub = { uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' };
+    const k = await open([pub], '#/t/' + encodeURIComponent('parana-terminal__2026-10-01__t2__u-ana'), { reloj: '2026-10-01T12:40:00-03:00' }); await k.waitForTimeout(500);
+    await k.click('#entr [data-contar]'); await k.waitForTimeout(300); await k.click('.esc [data-kman="k1"]'); await k.waitForTimeout(300);
+    await k.click('[data-mas="pA"]'); await k.click('#ctOk'); await k.waitForTimeout(300);
+    check('después de contar: "¿El carrito quedó bien?"', /¿El carrito quedó bien\?/.test(await text(k, '.ov .sheet')) && /Sí, todo bien\s*Tiene un problema/.test(await text(k, '.ov .sheet')));
+    await k.click('#qbNo'); await k.waitForTimeout(200);
+    await k.click('#prOk'); await k.waitForTimeout(100);
+    check('para avisar hay que elegir qué le pasa', /Elegí qué le pasa/.test(await text(k, '#prErr')));
+    await k.click('[data-pt="Rueda"]'); await k.click('[data-pt="Freno"]'); await k.click('[data-pt="Freno"]'); await k.fill('#prN', 'La rueda de adelante está floja'); await k.check('#prNo'); await k.click('#prOk'); await k.waitForTimeout(300);
+    check('el problema le llega al coordinador (sin datos de más)', await k.evaluate(() => { const p = Object.keys(window.__store).filter(x => x.startsWith('problemas/') && x !== 'problemas/prv1').map(x => window.__store[x]); return p.length === 1 && p[0].tipo === 'Rueda' && p[0].nota === 'La rueda de adelante está floja' && p[0].noUsar === true && p[0].k === 'k1' && p[0].por === 'u-ana' && p[0].porNombre === 'Ana Paz' && p[0].estado === 'nuevo' && p[0].turno === 'parana-terminal__2026-10-01__t2' && !('celular' in p[0]); }), await k.evaluate(() => Object.keys(window.__store).filter(x => x.startsWith('problemas/')).map(x => window.__store[x])));
+    check('y en el detalle queda "Informar un problema del carrito"', !!(await k.$('#entr [data-probk]')));
+    await k.evaluate(() => { location.hash = '#/k/P3ZT8WLC'; }); await k.waitForTimeout(400);
+    check('un carrito en reparación avisa al escanearlo (con el motivo)', /Este carrito está en reparación\s*Rueda trasera rota/.test(await text(k, '.ov:last-of-type .sheet')), await text(k, '.ov:last-of-type .sheet'));
+    check('sin errores (mantenimiento, hermano)', k.errs.length === 0, k.errs);
+    const c = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal', { reloj: '2026-10-01T12:40:00-03:00' }); await entrar(c, 400);
+    await c.click('[data-tab="config"]'); await c.waitForTimeout(200); await c.click('[data-aj="campana"]'); await c.waitForTimeout(200);
+    check('datos de la campaña: el interruptor de mantenimiento y cada cuánto revisar', await c.evaluate(() => document.getElementById('cfMant').checked && document.getElementById('cfRev').value === '30'));
+    await c.click('[data-aj="carritos"]'); await c.waitForTimeout(300);
+    const kt = await text(c, '#cTab');
+    check('carritos: estado, problemas nuevos y revisión vencida', /Carrito 1 · azul[\s\S]*Disponible\s*1 problema nuevo\s*Revisar · hace 42 días/.test(kt) && /Carrito 2 · verde[\s\S]*En reparación/.test(kt), kt.slice(0, 600));
+    check('avisos: pidieron que no se use, y un punto que se queda sin carrito', /Pidieron que no se use el carrito 1 · azul/.test(kt) && /Hall central se queda sin carrito/.test(kt), kt.slice(0, 900));
+    await c.click('[data-kficha="k1"]'); await c.waitForTimeout(400);
+    const fk = await text(c, '.ov .sheet');
+    check('ficha: el problema con quién lo informó, y la revisión', /Lona o cartel · Nuevo/.test(fk) && /Pidió que no se use/.test(fk) && /Luis Benítez/.test(fk) && /Última: 20 ago · cada 30 días\s*Ya le toca/.test(fk), fk.slice(0, 600));
+    await c.click('[data-pest="prv1|arreglo"]'); await c.waitForTimeout(500);
+    check('"En arreglo" cambia el estado del problema', await c.evaluate(() => window.__store['problemas/prv1'].estado === 'arreglo' && window.__store['problemas/prv1'].cambio.por === 'admin@x.com'));
+    await c.click('[data-kest="rep"]'); await c.waitForTimeout(250); await c.fill('#kMot', 'Lona rota'); await c.click('#kMOk'); await c.waitForTimeout(500);
+    check('marcar en reparación con el motivo', await c.evaluate(() => { const k = window.__store['campanas/parana-terminal'].carritos.k1; return k.estado === 'rep' && k.motivo === 'Lona rota'; }));
+    await c.click('[data-krev]'); await c.waitForTimeout(250); await c.uncheck('[data-rv="1"]'); await c.click('#rvOk'); await c.waitForTimeout(500);
+    check('revisión: queda la fecha y lo que falló pasa a ser un problema', await c.evaluate(() => { const k = window.__store['campanas/parana-terminal'].carritos.k1; const p = Object.values(window.__store).filter(x => x && x.k === 'k1' && x.tipo === 'Frenos'); return k.revisado === '2026-10-01' && k.revs[0].mal.join() === 'Frenos' && p.length === 1 && p[0].estado === 'nuevo'; }));
+    check('sin errores (mantenimiento, coordinador)', c.errs.length === 0, c.errs);
+    Object.keys(SEED).forEach(x => delete SEED[x]); Object.assign(SEED, orig);
+  }
+  {
     console.log('\nPantalla ancha (PC)');
     const pub = { uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' };
     const q = await open([pub], '', { ancho: 1440 });
