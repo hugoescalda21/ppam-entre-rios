@@ -5,7 +5,7 @@
    ===================================================================== */
 window.PPAM_COORD = function (K) {
   'use strict';
-  const { DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel } = K;
+  const { DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt } = K;
   const PC = () => !!(window.matchMedia && window.matchMedia('(min-width: 1100px)').matches);   // pantalla ancha (ver app.js)
   const fmtCorto = (s) => { const d = parseIso(s); return `${DOW[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; };
   function achicar(file, max) {
@@ -61,8 +61,15 @@ window.PPAM_COORD = function (K) {
   const dTxt = (ds) => (ds || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', ');
   /* ---------- Coordinación ---------- */
   function misCampanas() { return Object.values(S.campanas).filter(c => S.isAdmin || S.coordDe.includes(c.id)).sort((a, b) => String(b.desde || '').localeCompare(String(a.desde || ''))); }
+  // Los nombres de compañeros de turno se borran cuando el turno ya pasó (lo hace el coordinador al abrir su campaña)
+  const limpiados = new Set();
+  function limpiarCompaneros(cid) {
+    if (limpiados.has(cid)) return; limpiados.add(cid);
+    S.db.collection('companeros').where('cid', '==', cid).get().then(qs => qs.forEach(d => { const x = d.data(); if (x && x.fecha < hoy()) S.db.doc('companeros/' + d.id).delete().catch(() => {}); })).catch(() => {});
+  }
   function listenCoord(cid) {
     if (S.coord.cid === cid) return;
+    limpiarCompaneros(cid);
     S.coord.unsub.forEach(f => f()); S.coord.unsub = []; S.coord.cid = cid; S.coord.pedidos = {}; S.coord.cupos = {};
     S.coord.unsub.push(S.db.collection('pedidos').where('cid', '==', cid).onSnapshot((qs) => { const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); S.coord.pedidos = o; if (S.route.name === 'coord') refrescar(renderCoord); }, (e) => console.error(e)));
     S.coord.aud = {};
@@ -551,7 +558,7 @@ window.PPAM_COORD = function (K) {
     if (estado === 'confirmado') batch.set(cref, { cid: p.cid, fecha: p.fecha, tid: p.tid, ocupados: { [p.uid]: 'c' } }, { merge: true });
     else batch.update(cref, { ['ocupados.' + p.uid]: S.del() });
     batch.update(S.db.doc('pedidos/' + pid), { estado, actualizado: new Date().toISOString(), por: S.user.email.toLowerCase() });
-    try { await batch.commit(); const c = S.campanas[p.cid] || {}; auditar(p.cid, estado === 'confirmado' ? 'confirmo' : p.estado === 'confirmado' ? 'quito' : 'no_confirmo', (estado === 'confirmado' ? 'confirmó a ' : p.estado === 'confirmado' ? 'quitó del turno a ' : 'no confirmó a ') + pTxt(c, p)); if (!(estado === 'confirmado' && avisarConfirmado(p, c))) toast(estado === 'confirmado' ? 'Confirmado' : 'Listo'); } catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); }
+    try { await batch.commit(); if (estado !== 'confirmado') S.db.doc('companeros/' + cupoId(p.cid, p.fecha, p.tid)).update({ ['n.' + p.uid]: S.del() }).catch(() => {}); const c = S.campanas[p.cid] || {}; auditar(p.cid, estado === 'confirmado' ? 'confirmo' : p.estado === 'confirmado' ? 'quito' : 'no_confirmo', (estado === 'confirmado' ? 'confirmó a ' : p.estado === 'confirmado' ? 'quitó del turno a ' : 'no confirmó a ') + pTxt(c, p)); if (!(estado === 'confirmado' && avisarConfirmado(p, c))) toast(estado === 'confirmado' ? 'Confirmado' : 'Listo'); } catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); }
   }
   function textoVoluntarios(c, dias) {
     const i0 = dias.indexOf(S.coord.semana), ds = dias.slice(i0 < 0 ? 0 : i0, (i0 < 0 ? 0 : i0) + 7);
@@ -584,6 +591,7 @@ window.PPAM_COORD = function (K) {
       <div class="fld"><label for="cfNom">Nombre</label><input id="cfNom" value="${esc(c.nombre)}"></div>
       <div class="two"><div class="fld"><label for="cfCiu">Ciudad</label><input id="cfCiu" value="${esc(c.ciudad || '')}"></div><div class="fld"><label for="cfLug">Lugar (opcional)</label><input id="cfLug" value="${esc(c.lugar || '')}"></div></div>
       <div class="two"><div class="fld"><label for="cfDes">Desde</label><input id="cfDes" type="date" value="${esc(c.desde || '')}"></div><div class="fld"><label for="cfHas">Hasta</label><input id="cfHas" type="date" value="${esc(c.hasta || '')}"></div></div>
+      <div class="fld"><label for="cfCon">WhatsApp de contacto (opcional)</label><input id="cfCon" type="tel" autocomplete="off" value="${esc(c.contacto || '')}" placeholder="343 555-0000"><small class="celok" id="cfConOk"></small><p class="small-hint" style="margin-top:6px">Los hermanos anotados ven el botón "Avisar al coordinador que no puedo ir", que les abre WhatsApp a este número con el turno ya escrito. Si lo dejás vacío, el botón no aparece.</p></div>
       <label class="ck"><input type="checkbox" id="cfAct"${c.activa !== false ? ' checked' : ''}> <span>Visible para todos (si la desmarcás, deja de aparecer en el inicio)</span></label>
       <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div></div>`;
       return h;
@@ -638,12 +646,16 @@ window.PPAM_COORD = function (K) {
       const b = S.db.batch(); b.update(S.db.doc('campanas/' + c.id), { portada: S.del() }); b.delete(S.db.doc('fotos/' + fotoKey(c.id, c.portada)));
       try { await b.commit(); auditar(c.id, 'borro_foto', 'quitó la foto de portada'); toast('Foto quitada'); } catch (e) { console.error(e); toast('No se pudo quitar.'); }
     });
+    bindCel($('cfCon'), $('cfConOk'));
     $('cfSave').addEventListener('click', async () => {
       const bs = $('cfSave'); if (bs.disabled) return;
       const d = { nombre: $('cfNom').value.trim(), ciudad: $('cfCiu').value.trim(), lugar: $('cfLug').value.trim(), desde: $('cfDes').value, hasta: $('cfHas').value, activa: $('cfAct').checked };
+      const con = $('cfCon').value.trim(), cn = normCel(con);
+      if (con && !cn.ok) { toast('El WhatsApp de contacto no parece un celular. ' + CEL_ERR); return; }
+      d.contacto = con ? cn.txt : S.del();
       if (!d.nombre || !d.desde || !d.hasta) { toast('Completá el nombre y las fechas.'); return; }
       if (d.hasta < d.desde) { toast('La fecha "hasta" es anterior a "desde".'); return; }
-      const cam = []; if (d.nombre !== c.nombre) cam.push(`nombre ("${c.nombre}" → "${d.nombre}")`); if (d.ciudad !== (c.ciudad || '')) cam.push(`ciudad (${c.ciudad || '—'} → ${d.ciudad})`); if (d.lugar !== (c.lugar || '')) cam.push('lugar'); if (d.desde !== c.desde || d.hasta !== c.hasta) cam.push(`fechas (${c.desde} a ${c.hasta} → ${d.desde} a ${d.hasta})`); if (d.activa !== (c.activa !== false)) cam.push(d.activa ? 'la hizo visible' : 'la ocultó');
+      const cam = []; if (d.nombre !== c.nombre) cam.push(`nombre ("${c.nombre}" → "${d.nombre}")`); if (d.ciudad !== (c.ciudad || '')) cam.push(`ciudad (${c.ciudad || '—'} → ${d.ciudad})`); if (d.lugar !== (c.lugar || '')) cam.push('lugar'); if (d.desde !== c.desde || d.hasta !== c.hasta) cam.push(`fechas (${c.desde} a ${c.hasta} → ${d.desde} a ${d.hasta})`); if (d.activa !== (c.activa !== false)) cam.push(d.activa ? 'la hizo visible' : 'la ocultó'); if ((con ? cn.txt : '') !== (c.contacto || '')) cam.push(con ? 'WhatsApp de contacto (' + cn.txt + ')' : 'quitó el WhatsApp de contacto');
       bs.disabled = true;
       try { await S.db.doc('campanas/' + c.id).update(d); if (cam.length) auditar(c.id, 'cambio_campana', 'cambió los datos de la campaña: ' + cam.join(', ')); S.sucio = false; S.pendRender = false; toast('Guardado'); render(); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
       if (bs.isConnected) bs.disabled = false;
@@ -698,12 +710,13 @@ window.PPAM_COORD = function (K) {
     return { map, poner, quitar: () => { if (mk) { map.removeLayer(mk); mk = null; } } };
   }
   // Pantalla completa: buscar por nombre o dirección y marcar con comodidad.
-  function buscarEnMapa(c, st, listo) {
+  function buscarEnMapa(c, st, listo, que) {
+    que = que || 'el punto';
     const ov = document.createElement('div'); ov.className = 'mapfull';
-    ov.innerHTML = `<div class="mf-top"><button type="button" class="mf-back" data-mf-cerrar>${I('back')}Volver al punto</button><h3>Marcar en el mapa</h3>
+    ov.innerHTML = `<div class="mf-top"><button type="button" class="mf-back" data-mf-cerrar>${I('back')}Volver</button><h3>Marcar en el mapa</h3>
       <form class="mf-bus" id="mfForm"><input id="mfQ" placeholder="Buscá un lugar o una dirección" autocomplete="off"><button type="submit" class="sbtn pri">Buscar</button></form><div class="mf-res hidden" id="mfRes"></div></div>
       <div class="mf-map" id="mfMap"><div class="mapmsg">Cargando el mapa…</div></div>
-      <div class="mf-bot"><div id="mfDir" class="mf-dir">Tocá el mapa donde va el punto.</div><div class="mf-acts"><button type="button" class="btn alt" data-mf-cerrar>Cancelar</button><button type="button" class="btn" id="mfOk" disabled>✓ Usar este lugar</button></div></div>`;
+      <div class="mf-bot"><div id="mfDir" class="mf-dir">Tocá el mapa donde ${que === 'el punto' ? 'va el punto' : 'está ' + esc(que)}.</div><div class="mf-acts"><button type="button" class="btn alt" data-mf-cerrar>Cancelar</button><button type="button" class="btn" id="mfOk" disabled>✓ Usar este lugar</button></div></div>`;
     document.body.appendChild(ov);
     const q = (s) => ov.querySelector(s);
     let sel = st.lat != null ? { lat: st.lat, lng: st.lng, dir: '' } : null, mapa = null;
@@ -746,7 +759,9 @@ window.PPAM_COORD = function (K) {
   function editarPunto(c, pidIn) {
     const pid = pidIn || 'p' + uidGen();
     const p = pidIn ? c.puntos[pidIn] : { nombre: '', tipo: 'carrito', cupo: 2, detalle: '' };
-    const st = { fotos: (p.fotos || []).slice(), nuevas: {}, borrar: [], lat: p.lat != null ? p.lat : null, lng: p.lng != null ? p.lng : null, mapsUrl: p.mapsUrl || '' };
+    const st = { fotos: (p.fotos || []).slice(), nuevas: {}, borrar: [], lat: p.lat != null ? p.lat : null, lng: p.lng != null ? p.lng : null, mapsUrl: p.mapsUrl || '',
+      comod: Object.assign({}, p.comod || {}), lug: { estac: Object.assign({}, (p.lugares || {}).estac || {}), bano: Object.assign({}, (p.lugares || {}).bano || {}) } };
+    const LUGX = { estac: ['el estacionamiento', 'Gratis la primera hora, entrada por calle…'], bano: ['el baño', 'Dónde queda, si hay que pedir la llave…'] };
     const ov = sheet(`<h3>${pidIn ? 'Editar punto' : 'Nuevo punto'}</h3><p class="hint">Un carrito, un stand o cualquier lugar donde se pone la gente.</p>
       <div class="fld"><label for="ptNom">Nombre</label><input id="ptNom" value="${esc(p.nombre)}" placeholder="Andén 1, Hall central, Plaza…"></div>
       <div class="two"><div class="fld"><label for="ptTipo">Tipo</label><select id="ptTipo">${Object.keys(TIPOS).map(k => `<option value="${k}"${p.tipo === k ? ' selected' : ''}>${TIPOS[k][1]}</option>`).join('')}</select></div>
@@ -763,6 +778,13 @@ window.PPAM_COORD = function (K) {
       <p class="small-hint">Del lugar, sin personas reconocibles. Se achican solas antes de subirse.</p>
       <div class="fld"><label for="ptInd">Cómo encontrarlo (opcional)</label><textarea id="ptInd" rows="2" placeholder="Entrando por Av. Ramírez, a la derecha, entre las boleterías 4 y 5.">${esc(p.indicaciones || '')}</textarea></div>
       <div class="fld"><label for="ptRet" id="ptRetL">${retiroLabel(p)} (opcional)</label><textarea id="ptRet" rows="2" placeholder="Dónde se busca y se devuelve">${esc(p.retiro || '')}</textarea></div>
+      <div class="lbl">Comodidades del lugar</div>
+      <div class="cmsel">${COMOD.map(([k, txt, ic]) => `<label class="${st.comod[k] ? 'on' : ''}"><input type="checkbox" data-cm="${k}"${st.comod[k] ? ' checked' : ''}>${I(ic, 'width:16px;height:16px')}${txt}</label>`).join('')}</div>
+      ${Object.keys(LUGX).map(k => `<div class="lugx${st.comod[k] ? '' : ' hidden'}" id="lx-${k}"><div class="t">${I(k === 'estac' ? 'auto' : 'bano', 'width:16px;height:16px')}¿Dónde está ${LUGX[k][0]}? <small>(opcional)</small></div><div class="okline" id="lxOk-${k}"></div>
+        <div class="pills"><button type="button" class="sbtn" data-lxgeo="${k}">${I('target')}Estoy acá</button><button type="button" class="sbtn" data-lxmap="${k}">${I('search')}Buscar en el mapa</button><button type="button" class="sbtn" data-lxlink="${k}">${I('link')}Pegar link</button></div>
+        <div class="fld hidden" id="lxLinkF-${k}" style="margin:8px 0 0"><input id="lxLink-${k}" placeholder="Pegá acá el link de Google Maps" inputmode="url"></div>
+        <div class="fld" style="margin:8px 0 0"><textarea id="lxNota-${k}" rows="2" maxlength="200" placeholder="Nota (opcional): ${esc(LUGX[k][1])}">${esc(st.lug[k].nota || '')}</textarea></div></div>`).join('')}
+      <div class="fld"><label for="ptPubs">Publicaciones que hay (opcional)</label><textarea id="ptPubs" rows="2" maxlength="200" placeholder="Idiomas, revistas, folletos, tarjetas de contacto…">${esc(p.pubs || '')}</textarea></div>
       <button type="button" class="btn" id="ptOk">Guardar</button>${pidIn ? '<button type="button" class="btn alt" id="ptDel" style="color:var(--bad)">Borrar este punto</button>' : ''}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
     const q = (s) => ov.querySelector(s);
     let mapa = null, dirAuto = '';
@@ -801,6 +823,27 @@ window.PPAM_COORD = function (K) {
       });
     }
     pintarUbi(); pintarFotos();
+    // Comodidades: el estacionamiento y el baño se pueden ubicar en el mapa
+    function pintarLx(k) {
+      const l = st.lug[k], el = q('#lxOk-' + k); if (!el) return;
+      el.innerHTML = l.lat != null ? `✓ Ubicado en el mapa${st.lat != null ? ' · a ' + distTxt(metros({ lat: st.lat, lng: st.lng }, l)) + ' del punto' : ''} · <button type="button" class="linkish" data-lxx="${k}">quitar</button>` : '';
+    }
+    const ponerLx = (k, lat, lng) => { st.lug[k].lat = +(+lat).toFixed(6); st.lug[k].lng = +(+lng).toFixed(6); pintarLx(k); };
+    Object.keys(LUGX).forEach(pintarLx);
+    ov.querySelectorAll('[data-cm]').forEach(cb => cb.addEventListener('change', () => { const k = cb.dataset.cm; st.comod[k] = cb.checked; cb.closest('label').classList.toggle('on', cb.checked); if (q('#lx-' + k)) q('#lx-' + k).classList.toggle('hidden', !cb.checked); }));
+    ov.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-lxgeo],[data-lxmap],[data-lxlink],[data-lxx]'); if (!b) return;
+      const d = b.dataset;
+      if (d.lxx) { st.lug[d.lxx].lat = st.lug[d.lxx].lng = null; pintarLx(d.lxx); return; }
+      if (d.lxlink) { q('#lxLinkF-' + d.lxlink).classList.remove('hidden'); q('#lxLink-' + d.lxlink).focus(); return; }
+      if (d.lxmap) { const k = d.lxmap, l = st.lug[k]; buscarEnMapa(c, { lat: l.lat != null ? l.lat : null, lng: l.lng }, (lat, lng) => ponerLx(k, lat, lng), LUGX[k][0]); return; }
+      if (d.lxgeo) {
+        const k = d.lxgeo; if (!navigator.geolocation) { toast('Este navegador no da la ubicación.'); return; }
+        b.disabled = true;
+        navigator.geolocation.getCurrentPosition((pos) => { b.disabled = false; ponerLx(k, pos.coords.latitude, pos.coords.longitude); }, () => { b.disabled = false; toast('No se pudo obtener la ubicación. Revisá el permiso del navegador.'); }, { enableHighAccuracy: true, timeout: 15000 });
+      }
+    });
+    Object.keys(LUGX).forEach(k => q('#lxLink-' + k).addEventListener('input', () => { const g = parseMapsLink(q('#lxLink-' + k).value.trim()); if (g) ponerLx(k, g.lat, g.lng); }));
     q('#ptTipo').addEventListener('change', () => { if (!pidIn) q('#ptCupo').value = q('#ptTipo').value === 'stand' ? 3 : 2; q('#ptRetL').textContent = retiroLabel({ tipo: q('#ptTipo').value }) + ' (opcional)'; });
     q('#ptLinkB').addEventListener('click', () => { q('#ptLinkF').classList.remove('hidden'); q('#ptLink').focus(); });
     q('#ptLink').addEventListener('input', () => {
@@ -826,6 +869,11 @@ window.PPAM_COORD = function (K) {
       if (ret) d.retiro = ret;
       if (st.lat != null) { d.lat = st.lat; d.lng = st.lng; } else if (st.mapsUrl) d.mapsUrl = st.mapsUrl;
       if (st.fotos.length) d.fotos = st.fotos;
+      const cm = {}; COMOD.forEach(([k]) => { if (st.comod[k]) cm[k] = true; });
+      if (Object.keys(cm).length) d.comod = cm;
+      const lug = {}; Object.keys(LUGX).forEach(k => { if (!cm[k]) return; const l = st.lug[k], nota = q('#lxNota-' + k).value.trim().slice(0, 200), x = {}; if (l.lat != null) { x.lat = l.lat; x.lng = l.lng; } if (nota) x.nota = nota; if (Object.keys(x).length) lug[k] = x; });
+      if (Object.keys(lug).length) d.lugares = lug;
+      const pubs = q('#ptPubs').value.trim().slice(0, 200); if (pubs) d.pubs = pubs;
       const b = S.db.batch(), ahora = new Date().toISOString();
       Object.keys(st.nuevas).forEach(f => { b.set(S.db.doc('fotos/' + fotoKey(c.id, f)), { cid: c.id, data: st.nuevas[f], creado: ahora }); S.fotos[fotoKey(c.id, f)] = st.nuevas[f]; });
       st.borrar.forEach(f => b.delete(S.db.doc('fotos/' + fotoKey(c.id, f))));

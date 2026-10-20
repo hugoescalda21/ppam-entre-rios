@@ -293,6 +293,36 @@ const section = (t) => console.log('\n' + t);
   await check('un hermano NO los ve', assertFails(db(A).collection('descartados').get()));
   await check('el coordinador lo vuelve a mostrar', assertSucceeds(db(CO).doc('descartados/uid-prueba').delete()));
 
+  section('Compañeros de turno (nombre opcional)');
+  const F2 = '2026-10-12', T1 = `${CID}__${F2}__t1`, T2 = `${CID}__${F2}__t2`;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const f = ctx.firestore();
+    await f.doc('cupos/' + T1).set({ cid: CID, fecha: F2, tid: 't1', ocupados: { 'h-ana': 'c', 'h-beto': 'c', 'h-caro': 'p' } });
+    await f.doc('cupos/' + T2).set({ cid: CID, fecha: F2, tid: 't2', ocupados: { 'h-ana': 'c' } });
+  });
+  const comp = (email, id, n, extra) => db(email).doc('companeros/' + id).set(Object.assign({ cid: CID, fecha: F2, n }, extra || {}), { merge: true });
+  await check('un confirmado pone su nombre', assertSucceeds(comp(A, T1, { 'h-ana': 'Ana Prueba · San Agustín (Paraná)' })));
+  await check('NO pone el nombre de otro', assertFails(comp(A, T1, { 'h-beto': 'Beto' })));
+  await check('NO con campos de más (p. ej. el celular)', assertFails(comp(A, T1, { 'h-ana': 'Ana' }, { celular: '343' })));
+  await check('NO un nombre larguísimo', assertFails(comp(A, T1, { 'h-ana': 'x'.repeat(141) })));
+  await check('NO si cid/fecha no coinciden con el turno', assertFails(db(A).doc('companeros/' + T1).set({ cid: 'otra', fecha: F2, n: { 'h-ana': 'Ana' } }, { merge: true })));
+  await check('un pendiente también puede dejarlo puesto', assertSucceeds(comp(C, T1, { 'h-caro': 'Caro Prueba' })));
+  await check('NO si no está anotado en ese turno', assertFails(comp(B, T2, { 'h-beto': 'Beto Prueba' })));
+  await check('con Google sin ser coordinador NO', assertFails(comp(G, T1, { [uidOf(G)]: 'Gente' })));
+  await check('otro confirmado del mismo turno lo ve', assertSucceeds(db(B).doc('companeros/' + T1).get()));
+  await check('un pendiente NO lo ve', assertFails(db(C).doc('companeros/' + T1).get()));
+  await check('alguien de otro turno NO lo ve', assertFails(db(B).doc('companeros/' + T2).get()));
+  await check('sin link NO lo ve', assertFails(anonDb('anon-x').doc('companeros/' + T1).get()));
+  await check('con Google sin ser coordinador NO lo ve', assertFails(db(G).doc('companeros/' + T1).get()));
+  await check('un hermano NO lista todos', assertFails(db(A).collection('companeros').where('cid', '==', CID).get()));
+  await check('el coordinador lo ve', assertSucceeds(db(CO).doc('companeros/' + T1).get()));
+  await check('el coordinador lista los de su campaña', assertSucceeds(db(CO).collection('companeros').where('cid', '==', CID).get()));
+  await check('cada uno saca su nombre', assertSucceeds(db(A).doc('companeros/' + T1).update({ 'n.h-ana': DEL() })));
+  await check('NO saca el de otro', assertFails(db(A).doc('companeros/' + T1).update({ 'n.h-caro': DEL() })));
+  await check('el coordinador saca un nombre (al no confirmar)', assertSucceeds(db(CO).doc('companeros/' + T1).update({ 'n.h-caro': DEL() })));
+  await check('un hermano NO borra el documento', assertFails(db(A).doc('companeros/' + T1).delete()));
+  await check('el coordinador lo borra cuando el turno pasó', assertSucceeds(db(CO).doc('companeros/' + T1).delete()));
+
   await env.cleanup();
   console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;

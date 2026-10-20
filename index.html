@@ -29,11 +29,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@600;700&display=swap">
-<link rel="stylesheet" href="./app.css?v=53">
+<link rel="stylesheet" href="./app.css?v=54">
 <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
-<script defer src="./firebase-config.js?v=53"></script>
+<script defer src="./firebase-config.js?v=54"></script>
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -59,6 +59,18 @@
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
     <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-sombra" viewBox="0 0 24 24"><path d="M12 21v-6"/><path d="M12 3a6 6 0 0 0-6 6 6 6 0 0 0 6 6 6 6 0 0 0 6-6 6 6 0 0 0-6-6z"/></symbol>
+    <symbol id="i-silla" viewBox="0 0 24 24"><path d="M4 10h16M5 14h14M6 14v5M18 14v5M6 6v4M18 6v4"/></symbol>
+    <symbol id="i-auto" viewBox="0 0 24 24"><path d="M5 17h14v-5l-2-5H7l-2 5z"/><path d="M5 12h14M6 17v2M18 17v2"/><circle cx="8.5" cy="14.5" r=".8"/><circle cx="15.5" cy="14.5" r=".8"/></symbol>
+    <symbol id="i-bano" viewBox="0 0 24 24"><circle cx="7" cy="4.5" r="1.6"/><circle cx="17" cy="4.5" r="1.6"/><path d="M7 8v12M5 9h4M5 9v6M9 9v6M12 3v18M17 8l-3 7h6zM16 15v5M18 15v5"/></symbol>
+    <symbol id="i-libro" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/></symbol>
+    <symbol id="i-pie" viewBox="0 0 24 24"><circle cx="13" cy="4" r="2"/><path d="M10 21l2-6 3 3v3M12 15l-1-5 4 2 2 3M11 10l-3 2v3"/></symbol>
+    <symbol id="i-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-solnube" viewBox="0 0 24 24"><path d="M10 3v1M4.6 5.6l.7.7M3 11h1M15.4 5.6l-.7.7"/><path d="M6.4 10a4 4 0 0 1 7.4-2"/><path d="M9 20h8a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6 1.6A2.7 2.7 0 0 0 9 20z"/></symbol>
+    <symbol id="i-nube" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.5 2A3 3 0 0 0 7 18z"/></symbol>
+    <symbol id="i-lluvia" viewBox="0 0 24 24"><path d="M7 15h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.5 2A3 3 0 0 0 7 15z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></symbol>
+    <symbol id="i-tormenta" viewBox="0 0 24 24"><path d="M7 15h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.5 2A3 3 0 0 0 7 15z"/><path d="M12 15l-2 4h4l-2 4"/></symbol>
+    <symbol id="i-niebla" viewBox="0 0 24 24"><path d="M4 9h16M4 13h16M6 17h12"/></symbol>
     <symbol id="logo" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.8-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.2-6.5 11-6.5 11z" fill="#fff"/><circle cx="12" cy="10" r="2.6" fill="#B8924A"/></symbol>
   </defs></svg>
 
@@ -97,7 +109,7 @@
 
   <footer class="foot">
     <div class="foot-links"><button type="button" class="linkish" id="repBtn"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>Reportar un problema</button><span class="dot">·</span><button type="button" class="linkish" id="privBtn">Cómo se usan tus datos</button></div>
-    <div class="foot-ver" id="verTxt">Versión 53</div>
+    <div class="foot-ver" id="verTxt">Versión 54</div>
   </footer>
 
   <nav class="tabbar" id="tabbar" aria-label="Secciones">
@@ -109,6 +121,6 @@
   </nav>
 
   <div class="toast" id="toast" role="status"></div>
-  <script defer src="./app.js?v=53"></script>
+  <script defer src="./app.js?v=54"></script>
 </body>
 </html>

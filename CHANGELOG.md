@@ -9,6 +9,15 @@
 
 
 
+## Versión 54 — más datos para cada turno
+
+- Detalle del turno: el pronóstico del tiempo para el día y la hora del turno (cuando faltan 7 días o menos y el punto está en el mapa).
+- Compañeros de turno: al pedir un turno, cada hermano puede marcar "Que mis compañeros de turno vean mi nombre". Lo ven solo los confirmados de ese mismo horario y lugar (nombre, apellido y congregación; nunca el celular). Se cambia desde el detalle del turno o en "Mis datos", y se borra cuando el turno pasa.
+- "Avisar al coordinador que no puedo ir": abre WhatsApp con el turno ya escrito, si el coordinador cargó un WhatsApp de contacto en los datos de la campaña.
+- Comodidades del punto (sombra, para sentarse, estacionamiento, baño cerca) y las publicaciones que hay. El estacionamiento y el baño se pueden ubicar en el mapa: el hermano los toca y ve el mapa, la distancia caminando y cómo llegar.
+- "Cómo llegar" pregunta "¿Cómo vas?" cuando hay estacionamiento: caminando o en colectivo (al carrito) o en auto (al estacionamiento).
+- Reglas de seguridad: nueva colección de compañeros de turno (hay que subir las reglas).
+
 ## Versión 53 — vista en PC
 
 - En una pantalla ancha (PC o tablet acostada, desde 1100 px) el menú pasa a una barra a la izquierda, con el logo arriba y "Reportar un problema" y la versión abajo. Las ventanas (pedir turno, fichas) aparecen centradas.

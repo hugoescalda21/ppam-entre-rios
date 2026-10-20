@@ -116,6 +116,8 @@ const SEED = {
     const ctx = await b.newContext({ viewport: opts && opts.ancho ? { width: opts.ancho, height: 900 } : { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
     await ctx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });   // miércoles 30 de septiembre
     await ctx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
+    // Pronóstico del tiempo de prueba (Open-Meteo): 1 = mayormente soleado, máxima 22°, 10% de lluvia
+    await ctx.route(/api\.open-meteo\.com/, r => { const f = new URL(r.request().url()).searchParams.get('start_date'); r.fulfill({ contentType: 'application/json', body: JSON.stringify({ hourly: { time: Array.from({ length: 24 }, (_, h) => `${f}T${String(h).padStart(2, '0')}:00`), temperature_2m: Array.from({ length: 24 }, (_, h) => 12 + Math.min(h, 14) * 0.7), precipitation_probability: Array.from({ length: 24 }, () => 10), weather_code: Array.from({ length: 24 }, () => 1) } }) }); });
     if (opts && opts.nuevo) await ctx.addInitScript(() => { window.__bvNueva = true; });   // ver la bienvenida como alguien nuevo
     if (opts && opts.cerrado) await ctx.addInitScript(() => { window.__cerrado = true; });   // un celular sin link (la web cerrada)
     await ctx.addInitScript(`(${mock.toString()})(${JSON.stringify(SEED)}, ${JSON.stringify(users)})`);
@@ -1034,7 +1036,7 @@ const SEED = {
     check('la pestaña Ayuda está siempre en la barra de abajo', await a.evaluate(() => { const b = document.getElementById('tabAyuda'); return b && !b.classList.contains('hidden') && /Ayuda/.test(b.textContent); }));
     await a.click('#tabAyuda'); await a.waitForTimeout(200);
     const at = await text(a, '#app');
-    check('Ayuda: 14 preguntas para publicadores, en 3 grupos, sin las de coordinadores', await a.evaluate(() => document.querySelectorAll('.faq details').length) === 14 && /Anotarme[\s\S]*Mis turnos[\s\S]*Mis datos y la app/.test(at) && !/Para coordinadores/.test(at), at.slice(0, 200));
+    check('Ayuda: 15 preguntas para publicadores, en 3 grupos, sin las de coordinadores', await a.evaluate(() => document.querySelectorAll('.faq details').length) === 15 && /Anotarme[\s\S]*Mis turnos[\s\S]*Mis datos y la app/.test(at) && !/Para coordinadores/.test(at), at.slice(0, 200));
     check('la pestaña queda marcada y el título dice "Preguntas frecuentes"', await a.evaluate(() => document.getElementById('tabAyuda').classList.contains('on')) && /Preguntas frecuentes/.test(await text(a, '#tbTitle')));
     await a.click('#faq-completo summary'); await a.waitForTimeout(80);
     check('tocar una pregunta muestra la respuesta', await a.evaluate(() => document.getElementById('faq-completo').open) && /Con lugar/.test(await text(a, '#faq-completo')));
@@ -1047,7 +1049,7 @@ const SEED = {
     if (fs.existsSync(ax2)) { await a.keyboard.press('Escape'); await a.waitForTimeout(100); await a.addScriptTag({ content: fs.readFileSync(ax2, 'utf8') }); const v = await a.evaluate(async () => (await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations.map(x => x.id + ' x' + x.nodes.length)); check('axe (WCAG 2.2 AA) sin problemas: Ayuda', v.length === 0, v); }
     const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '');
     await entrar(k, 300); await k.evaluate(() => { location.hash = '#/ayuda/recuperar'; }); await k.waitForTimeout(300);
-    check('el coordinador ve además "Para coordinadores", y un enlace abre esa respuesta', /Para coordinadores/.test(await text(k, '#app')) && await k.evaluate(() => document.getElementById('faq-recuperar').open) && await k.evaluate(() => document.querySelectorAll('.faq details').length) === 17);
+    check('el coordinador ve además "Para coordinadores", y un enlace abre esa respuesta', /Para coordinadores/.test(await text(k, '#app')) && await k.evaluate(() => document.getElementById('faq-recuperar').open) && await k.evaluate(() => document.querySelectorAll('.faq details').length) === 18);
     const u = await open([{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }], '');
     await entrar(u, 300);
     await u.evaluate(() => { const db = window.__ppamMock.db; db.doc('pedidos/parana-terminal__2026-10-02__t2__u-ana').set({ cid: 'parana-terminal', fecha: '2026-10-02', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-ana', email: 'ana@x.com', nombre: 'Ana', apellido: 'Paz', congregacion: 'X', celular: '343 555-0000', estado: 'pendiente', creado: 'x' }); });
@@ -1301,6 +1303,68 @@ const SEED = {
     check('la tarjeta dice las fechas', /09:00–11:00\s*Vie 6, Sáb 7/.test(await text(k, '#app')), await text(k, '#app'));
     check('sin errores (campaña corta)', k.errs.length === 0, k.errs);
     delete SEED['campanas/corta'];
+  }
+  {
+    console.log('\nComodidades, clima, compañeros de turno y avisar al coordinador');
+    const orig = JSON.parse(JSON.stringify(SEED));
+    const cp = SEED['campanas/parana-terminal'];
+    cp.contacto = '343 555-1234';
+    Object.assign(cp.puntos.p1, { lat: -31.741234, lng: -60.523678, direccion: 'Av. Ramírez 2598', comod: { sombra: true, estac: true, bano: true }, lugares: { estac: { lat: -31.7402, lng: -60.5248, nota: 'Playa de la terminal, gratis la primera hora' }, bano: { nota: 'Dentro de la terminal, al fondo' } }, pubs: 'Español e inglés. Folletos y tarjetas.' });
+    SEED['pedidos/parana-terminal__2026-10-01__t2__u-ana'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-ana', nombre: 'Ana', apellido: 'Paz', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', estado: 'confirmado', creado: '2026-09-29T10:00:00Z' };
+    SEED['cupos/parana-terminal__2026-10-01__t2'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', ocupados: { 'u-ana': 'c', 'u-luis': 'c', 'u-rosa': 'c', otro3: 'p' } };
+    SEED['companeros/parana-terminal__2026-10-01__t2'] = { cid: 'parana-terminal', fecha: '2026-10-01', n: { 'u-luis': 'Luis Benítez · Crespo Sur (Crespo)', otro3: 'Pendiente Prueba · Otra' } };
+    SEED['companeros/parana-terminal__2026-09-02__t1'] = { cid: 'parana-terminal', fecha: '2026-09-02', n: { viejo1: 'Viejo Prueba' } };
+    const pub = { uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' };
+    const k = await open([pub], '#/t/' + encodeURIComponent('parana-terminal__2026-10-01__t2__u-ana'));
+    await k.waitForTimeout(500);
+    const det = await text(k, '#app');
+    check('detalle del turno: el pronóstico para esa hora', /Mayormente soleado/.test(await text(k, '#clima')) && /de 10\D+a 12/.test(await text(k, '#clima')) && /10% de lluvia/.test(await text(k, '#clima')) && /20°/.test(await text(k, '#clima')), await text(k, '#clima'));
+    check('van con vos: solo los confirmados que mostraron su nombre (y cuántos más)', /Van con vos\s*LB\s*Luis Benítez\s*Crespo Sur \(Crespo\)\s*1\s*1 hermano más/i.test(await text(k, '#comp')) && !/Pendiente Prueba/.test(det), await text(k, '#comp'));
+    check('y avisa que tu nombre no se ve', /no ven tu nombre/.test(await text(k, '#comp')));
+    const av = await k.evaluate(() => { const a = document.querySelector('a.avisar'); return a && decodeURIComponent(a.href); });
+    check('botón "Avisar al coordinador que no puedo ir" con el WhatsApp de la campaña y el turno escrito', !!av && av.startsWith('https://wa.me/5493435551234?text=') && /Hola, soy Ana Paz \(San Agustín \(Paraná\)\)\. No voy a poder ir a mi turno del jueves 1 de octubre de 10:00 a 12:00 en Andén 1 \(Terminal de ómnibus\)\./.test(av), av);
+    await k.click('[data-compartir]'); await k.waitForTimeout(300);
+    check('"Mostrarlo": pone solo su nombre y congregación (sin celular)', await k.evaluate(() => window.__store['companeros/parana-terminal__2026-10-01__t2'].n['u-ana'] === 'Ana Paz · San Agustín (Paraná)') && /✓ Tus compañeros de este turno ven tu nombre/.test(await text(k, '#comp')));
+    await k.click('[data-compartir]'); await k.waitForTimeout(300);
+    check('"Dejar de mostrarlo" lo saca', await k.evaluate(() => !('u-ana' in window.__store['companeros/parana-terminal__2026-10-01__t2'].n)));
+    await k.click('[data-lugar]'); await k.waitForTimeout(250);
+    const lug = await text(k, '.ov:last-child .sheet');
+    check('ver lugar: comodidades (las que tienen lugar se pueden tocar) y publicaciones', /Sombra\s*Estacionamiento\s*Baño/.test(lug) && await k.evaluate(() => !!document.querySelector('.cmds span.cmd') && !!document.querySelector('[data-comod="parana-terminal|p1|estac"]') && !!document.querySelector('[data-comod="parana-terminal|p1|bano"]')) && /Publicaciones en el carrito\s*Español e inglés/i.test(lug), lug);
+    await k.click('[data-comod="parana-terminal|p1|estac"]'); await k.waitForTimeout(250);
+    const es = await text(k, '.ov:last-child .sheet');
+    check('estacionamiento: distancia caminando, nota y "Cómo llegar en auto"', /Estacionamiento/.test(es) && /unos 1\d0 m caminando hasta el carrito · 2 minutos/.test(es) && /Playa de la terminal/.test(es) && await k.evaluate(() => /destination=-31\.7402,-60\.5248&travelmode=driving/.test(document.querySelector('.ov:last-child a.go').href)), es);
+    await k.click('.ov:last-child [data-cerrar]'); await k.waitForTimeout(100);
+    await k.click('[data-comod="parana-terminal|p1|bano"]'); await k.waitForTimeout(200);
+    check('baño sin ubicación: solo la nota, sin mapa', /Dentro de la terminal, al fondo/.test(await text(k, '.ov:last-child .sheet')) && !(await k.$('.ov:last-child .cmapa')));
+    await k.evaluate(() => document.querySelectorAll('.ov').forEach(o => o.remove()));
+    await k.click('.grid4 a.pr'); await k.waitForTimeout(200);
+    check('"Llegar" con estacionamiento cargado pregunta cómo vas', /¿Cómo vas\?/.test(await text(k, '.ov .sheet')) && await k.evaluate(() => { const o = [...document.querySelectorAll('.ov a.opt')]; return o.length === 2 && /destination=-31\.741234,-60\.523678/.test(o[0].href) && /destination=-31\.7402,-60\.5248&travelmode=driving/.test(o[1].href); }) && /En auto\s*Te lleva al estacionamiento · después unos 1\d0 m caminando/.test(await text(k, '.ov .sheet')), await text(k, '.ov .sheet'));
+    await k.evaluate(() => document.querySelectorAll('.ov').forEach(o => o.remove()));
+    await k.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await k.waitForTimeout(250);
+    await k.click('[data-dia="2026-10-03"]'); await k.waitForTimeout(80); await k.click('[data-pedir="t1"]'); await k.waitForTimeout(150);
+    check('pedir turno: la casilla de mostrar el nombre viene apagada', await k.evaluate(() => !!document.getElementById('pComp') && !document.getElementById('pComp').checked));
+    await k.check('#pComp'); await k.check('#pOk'); await k.click('#pGo'); await k.waitForTimeout(400);
+    check('con la casilla marcada, al anotarse queda su nombre para los compañeros', await k.evaluate(() => (window.__store['companeros/parana-terminal__2026-10-03__t1'] || { n: {} }).n['u-ana'] === 'Ana Paz · San Agustín (Paraná)' && window.__store['companeros/parana-terminal__2026-10-03__t1'].cid === 'parana-terminal'));
+    await k.evaluate(() => document.querySelectorAll('.ov').forEach(o => o.remove()));
+    await k.click('#userBtn'); await k.waitForTimeout(150);
+    check('"Mis datos": queda marcado para los próximos turnos', await k.evaluate(() => !!document.getElementById('uComp') && document.getElementById('uComp').checked));
+    check('sin errores (comodidades, clima, compañeros)', k.errs.length === 0, k.errs);
+    const c = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal'); await entrar(c, 400);
+    check('el coordinador borra los nombres de turnos que ya pasaron', await c.evaluate(() => !window.__store['companeros/parana-terminal__2026-09-02__t1'] && !!window.__store['companeros/parana-terminal__2026-10-01__t2']));
+    await c.click('[data-tab="config"]'); await c.waitForTimeout(150); await c.click('[data-aj="campana"]'); await c.waitForTimeout(150);
+    check('datos de la campaña: el WhatsApp de contacto', await c.evaluate(() => document.getElementById('cfCon').value === '343 555-1234'));
+    await c.fill('#cfCon', '343 4'); await c.click('#cfSave'); await c.waitForTimeout(150);
+    check('no guarda un WhatsApp que no es un celular', await c.evaluate(() => window.__store['campanas/parana-terminal'].contacto === '343 555-1234') && /no parece un celular/.test(await text(c, '#toast')));
+    await c.fill('#cfCon', ''); await c.click('#cfSave'); await c.waitForTimeout(200);
+    check('vacío lo quita (y el botón de avisar no aparece)', await c.evaluate(() => !('contacto' in window.__store['campanas/parana-terminal'])));
+    await c.click('[data-aj="puntos"]'); await c.waitForTimeout(150); await c.click('#pc-p1 .pt .sbtn'); await c.waitForTimeout(250);
+    check('editar punto: comodidades marcadas y el estacionamiento ubicado', await c.evaluate(() => [...document.querySelectorAll('.cmsel input')].map(x => x.dataset.cm + (x.checked ? '1' : '0')).join() === 'sombra1,sentarse0,estac1,bano1' && !document.getElementById('lx-estac').classList.contains('hidden') && /Ubicado en el mapa · a unos 1\d0 m del punto/.test(document.getElementById('lxOk-estac').textContent) && document.getElementById('lxNota-bano').value === 'Dentro de la terminal, al fondo'), await c.evaluate(() => document.getElementById('lxOk-estac').textContent));
+    await c.click('.cmsel label:has([data-cm="sombra"])'); await c.click('.cmsel label:has([data-cm="sentarse"])'); await c.click('.cmsel label:has([data-cm="bano"])');
+    check('al destildar el baño se esconde su recuadro', await c.evaluate(() => document.getElementById('lx-bano').classList.contains('hidden')));
+    await c.fill('#ptPubs', 'Solo español'); await c.click('#ptOk'); await c.waitForTimeout(250);
+    check('guarda comodidades, el lugar del estacionamiento y las publicaciones', await c.evaluate(() => { const p = window.__store['campanas/parana-terminal'].puntos.p1; return JSON.stringify(p.comod) === '{"sentarse":true,"estac":true}' && p.lugares.estac.lat === -31.7402 && p.lugares.estac.nota === 'Playa de la terminal, gratis la primera hora' && !p.lugares.bano && p.pubs === 'Solo español'; }), await c.evaluate(() => window.__store['campanas/parana-terminal'].puntos.p1));
+    check('sin errores (coordinador)', c.errs.length === 0, c.errs);
+    Object.keys(SEED).forEach(x => delete SEED[x]); Object.assign(SEED, orig);
   }
   {
     console.log('\nPantalla ancha (PC)');
