@@ -113,7 +113,7 @@ const SEED = {
 (async () => {
   const b = await chromium.launch();
   async function open(users, hash, opts) {
-    const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
+    const ctx = await b.newContext({ viewport: opts && opts.ancho ? { width: opts.ancho, height: 900 } : { width: 390, height: 844 }, timezoneId: 'America/Argentina/Buenos_Aires' });
     await ctx.clock.install({ time: new Date('2026-09-30T12:00:00-03:00') });   // miércoles 30 de septiembre
     await ctx.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
     if (opts && opts.nuevo) await ctx.addInitScript(() => { window.__bvNueva = true; });   // ver la bienvenida como alguien nuevo
@@ -1301,6 +1301,48 @@ const SEED = {
     check('la tarjeta dice las fechas', /09:00–11:00\s*Vie 6, Sáb 7/.test(await text(k, '#app')), await text(k, '#app'));
     check('sin errores (campaña corta)', k.errs.length === 0, k.errs);
     delete SEED['campanas/corta'];
+  }
+  {
+    console.log('\nPantalla ancha (PC)');
+    const pub = { uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' };
+    const q = await open([pub], '', { ancho: 1440 });
+    const ui = () => q.evaluate(() => ({ dir: getComputedStyle(document.getElementById('tabbar')).flexDirection, marca: getComputedStyle(document.querySelector('#tabbar .sbrand')).display !== 'none', cols: !!document.querySelector('.hcols .hizq .welcome') && !!document.querySelector('.hcols .hder .ccs .camp') }));
+    check('PC: menú al costado, con la marca, y el inicio en dos columnas', JSON.stringify(await ui()) === JSON.stringify({ dir: 'column', marca: true, cols: true }), await ui());
+    await q.click('[data-go="#/c/parana-terminal"]'); await q.waitForTimeout(200);
+    const cal = () => q.evaluate(() => { const c = document.querySelector('.ccols .cizq .days.mcal'); return c ? { dias: c.querySelectorAll('.day').length, vacios: c.querySelectorAll('.nd').length, sem: c.querySelectorAll('.wd').length, ancho: c.offsetWidth > 250, mes: document.querySelector('.cal-h b').textContent, flechas: !!document.querySelector('[data-calmes]') } : null; });
+    check('PC: la campaña muestra el mes entero como calendario (sin domingos con turnos), turnos a la derecha', JSON.stringify(await cal()) === JSON.stringify({ dias: 27, vacios: 4, sem: 7, ancho: true, mes: 'Octubre 2026', flechas: false }) && !!(await q.$('.cder [data-pedir="t1"]')), await cal());
+    await q.click('[data-dia="2026-10-03"]'); await q.waitForTimeout(80);
+    check('PC: tocar un día del calendario cambia los turnos', /Sábado 3 de octubre/.test(await text(q, '.cder')) && await q.evaluate(() => document.querySelector('[data-dia="2026-10-03"]').classList.contains('on')));
+    await q.evaluate(() => { location.hash = '#/c/concordia-costanera'; }); await q.waitForTimeout(250);
+    check('PC: campaña de dos meses con flechas (la de atrás apagada)', await q.evaluate(() => document.querySelector('.cal-h b').textContent === 'Octubre 2026' && document.querySelector('[data-calmes="-1"]').disabled && !document.querySelector('[data-calmes="1"]').disabled));
+    await q.click('[data-calmes="1"]'); await q.waitForTimeout(100);
+    check('PC: la flecha pasa a noviembre y elige su primer día', await q.evaluate(() => document.querySelector('.cal-h b').textContent === 'Noviembre 2026' && document.querySelector('.day.on').dataset.dia === '2026-11-01') && /Domingo 1 de noviembre/.test(await text(q, '.cder')), await text(q, '.cder'));
+    await q.setViewportSize({ width: 390, height: 844 }); await q.waitForTimeout(150);
+    check('al achicar la ventana vuelve la vista de celular (tira de días, menú abajo)', await q.evaluate(() => !document.querySelector('.mcal') && !!document.querySelector('.days .day') && getComputedStyle(document.getElementById('tabbar')).flexDirection === 'row' && getComputedStyle(document.querySelector('#tabbar .sbrand')).display === 'none'));
+    await q.setViewportSize({ width: 1440, height: 900 }); await q.waitForTimeout(150);
+    check('y al agrandarla vuelve el calendario', !!(await q.$('.days.mcal')));
+    await q.evaluate(() => { location.hash = '#/ayuda'; }); await q.waitForTimeout(200);
+    check('PC: la ayuda tiene un índice de temas', await q.evaluate(() => document.querySelectorAll('.aynav [data-ayg]').length >= 3 && getComputedStyle(document.querySelector('.aynav')).display !== 'none'));
+    await q.click('.aynav [data-ayg="1"]'); await q.waitForTimeout(100);
+    check('PC: tocar un tema lo marca', await q.evaluate(() => document.querySelector('.aynav [data-ayg="1"]').classList.contains('on')));
+    check('sin errores (PC, hermano)', q.errs.length === 0, q.errs);
+    SEED['hermanos/h-pc'] = { nombre: 'Rosa', apellido: 'Acosta', congregacion: 'San Agustín (Paraná)', celular: '343 410-8890', cod: 'ROSAPC01', uid: 'anon-pc', creado: '2026-09-20T10:00:00Z', por: 'coord@x.com', ultimo: '2026-09-29T10:00:00Z' };
+    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal', { ancho: 1440 }); await entrar(k, 300);
+    delete SEED['hermanos/h-pc'];
+    await k.click('[data-tab="cobertura"]'); await k.waitForTimeout(150);
+    check('PC: la cobertura muestra dos semanas', await k.evaluate(() => document.querySelector('[data-sem]').dataset.sem === '-14' && document.querySelector('.grid').style.gridTemplateColumns.includes('repeat(14')));
+    await k.click('[data-tab="dia"]'); await k.waitForTimeout(150);
+    check('PC: del día con los puntos en cuadrícula', await k.evaluate(() => getComputedStyle(document.querySelector('.pcs')).display === 'grid'));
+    await k.click('[data-tab="config"]'); await k.waitForTimeout(150); await k.click('[data-aj="campana"]'); await k.waitForTimeout(150);
+    check('PC: datos de la campaña en dos columnas (foto | datos)', await k.evaluate(() => getComputedStyle(document.querySelector('.cfcard')).display === 'grid' && !!document.querySelector('.cfl .portada') && !!document.querySelector('.cfr #cfNom')));
+    await k.evaluate(() => { location.hash = '#/hermanos'; }); await k.waitForTimeout(300);
+    const tabla = () => k.evaluate(() => { const h = document.querySelector('.hhd'), f = document.querySelector('.arow.hf[data-hfic="h-pc"]'); return !!h && getComputedStyle(h).display === 'grid' && !!f && [...f.querySelectorAll('.hx')].map(x => getComputedStyle(x).display !== 'none' ? x.textContent : '').join('|'); });
+    check('PC: hermanos como tabla (congregación, celular y último ingreso en columnas)', await tabla() === 'San Agustín (Paraná)|343 410-8890|Ayer 07:00' || await tabla() === 'San Agustín (Paraná)|343 410-8890|Ayer 7:00', await tabla());
+    await k.evaluate(() => { location.hash = '#/admin'; }); await k.waitForTimeout(300);
+    check('PC: administración en dos columnas', await k.evaluate(() => getComputedStyle(document.querySelector('.adm2')).columnCount === '2' && document.querySelectorAll('.adm2 > section').length >= 5));
+    check('sin errores (PC, coordinación)', k.errs.length === 0, k.errs);
+    const m = await open([pub], '#/c/parana-terminal');
+    check('celular: sin calendario de PC ni índice, contenedores invisibles', await m.evaluate(() => !document.querySelector('.mcal') && getComputedStyle(document.querySelector('.ccols')).display === 'contents'));
   }
   await b.close(); console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;

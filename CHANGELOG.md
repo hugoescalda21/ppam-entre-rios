@@ -9,6 +9,16 @@
 
 
 
+## Versión 53 — vista en PC
+
+- En una pantalla ancha (PC o tablet acostada, desde 1100 px) el menú pasa a una barra a la izquierda, con el logo arriba y "Reportar un problema" y la versión abajo. Las ventanas (pedir turno, fichas) aparecen centradas.
+- Inicio: tu próximo turno a la izquierda y las campañas a la derecha. Sin turnos, las campañas van de a dos.
+- Campaña: el mes entero como calendario a la izquierda (con flechas si dura más de un mes) y los turnos del día a la derecha.
+- Mis turnos de a dos; el detalle del turno con el mapa grande al costado; la ayuda con un índice de temas.
+- Coordinación: pedidos y puntos de a dos, la cobertura muestra dos semanas, los datos de la campaña en dos columnas y la administración en dos columnas.
+- Hermanos habilitados como tabla (congregación, celular y último ingreso), con "Reenviar link" en cada fila.
+- En el celular no cambia nada.
+
 ## Versión 52 — detalles
 
 - Ficha del hermano: la fecha de "Habilitado" y de "Dado de baja" va en horario argentino (antes, si era de noche, mostraba el día siguiente).

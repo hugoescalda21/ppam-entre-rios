@@ -6,6 +6,7 @@
 window.PPAM_COORD = function (K) {
   'use strict';
   const { DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel } = K;
+  const PC = () => !!(window.matchMedia && window.matchMedia('(min-width: 1100px)').matches);   // pantalla ancha (ver app.js)
   const fmtCorto = (s) => { const d = parseIso(s); return `${DOW[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; };
   function achicar(file, max) {
     return new Promise((res, rej) => {
@@ -73,10 +74,11 @@ window.PPAM_COORD = function (K) {
     const mias = misCampanas();
     if (!S.route.cid) {
       if (!mias.length && !S.isAdmin && S.isSoporte) { go('#/soporte'); return; }
-      let h = tarjetaHermanos();
+      let h = '<div class="pcw ctop">' + tarjetaHermanos();
       h += S.isSoporte && !S.isAdmin ? `<button type="button" class="coordbar" data-go="#/soporte"><span class="n">${I('alert', 'width:15px;height:15px')}</span><span class="tx">Reportes y errores<small>Equipo de soporte</small></span>${I('chev')}</button>` : '';
-      h += S.isAdmin ? `<button type="button" class="coordbar" data-go="#/admin"><span class="n">${I('grid', 'width:15px;height:15px')}</span><span class="tx">Administración<small>Campañas, coordinadores y congregaciones</small></span>${I('chev')}</button><div class="sec">Campañas</div>` : '';
-      h += !mias.length && !S.isAdmin && S.isSoporte ? '' : mias.length ? mias.map(c => `<button type="button" class="cc camp" data-go="#/coord/${esc(c.id)}"><span class="th"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc(c.ciudad || '')} · ${esc(campRango(c))}</small></span>${I('chev')}</button>`).join('') : '<div class="card"><div class="empty">No coordinás ninguna campaña todavía.</div></div>';
+      h += S.isAdmin ? `<button type="button" class="coordbar" data-go="#/admin"><span class="n">${I('grid', 'width:15px;height:15px')}</span><span class="tx">Administración<small>Campañas, coordinadores y congregaciones</small></span>${I('chev')}</button>` : '';
+      h += '</div>' + (S.isAdmin ? '<div class="sec">Campañas</div>' : '');
+      h += !mias.length && !S.isAdmin && S.isSoporte ? '' : mias.length ? '<div class="pcw ccs">' + mias.map(c => `<button type="button" class="cc camp" data-go="#/coord/${esc(c.id)}"><span class="th"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc(c.ciudad || '')} · ${esc(campRango(c))}</small></span>${I('chev')}</button>`).join('') + '</div>' : '<div class="card"><div class="empty">No coordinás ninguna campaña todavía.</div></div>';
       $('app').innerHTML = h; return;
     }
     const c = S.campanas[S.route.cid];
@@ -460,7 +462,7 @@ window.PPAM_COORD = function (K) {
   }
   function coordPedidos(c, pend, peds) {
     let h = `<div class="sec">Por confirmar</div>`;
-    h += pend.length ? pend.map(p => pedidoCoordRow(c, p, `<button type="button" class="sbtn nk" data-rechazar="${esc(p.id)}">${I('x', 'width:15px;height:15px')}No confirmar</button><button type="button" class="sbtn pri" data-confirmar="${esc(p.id)}">${I('check', 'width:15px;height:15px')}Confirmar</button>`)).join('') : '<div class="card"><div class="empty">No hay pedidos nuevos. Todo al día.</div></div>';
+    h += pend.length ? '<div class="pcw rqs">' + pend.map(p => pedidoCoordRow(c, p, `<button type="button" class="sbtn nk" data-rechazar="${esc(p.id)}">${I('x', 'width:15px;height:15px')}No confirmar</button><button type="button" class="sbtn pri" data-confirmar="${esc(p.id)}">${I('check', 'width:15px;height:15px')}Confirmar</button>`)).join('') + '</div>' : '<div class="card"><div class="empty">No hay pedidos nuevos. Todo al día.</div></div>';
     const conf = peds.filter(p => p.estado === 'confirmado' && p.fecha >= hoy()).sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
     if (conf.length) h += `<div class="sec">Confirmados (${conf.length})</div><div class="card">` + conf.slice(0, 40).map(p => pedidoCoordRow(c, p, `<button type="button" class="sbtn bad" data-quitar="${esc(p.id)}">Quitar del turno</button>`)).join('') + '</div>';
     return h;
@@ -468,8 +470,9 @@ window.PPAM_COORD = function (K) {
   function coordCobertura(c, dias) {
     if (!dias.length) return '<div class="empty">No hay días con turnos por delante. Revisá las fechas y los turnos en Configurar.</div>';
     if (!S.coord.semana || !dias.includes(S.coord.semana)) S.coord.semana = dias[0];
-    const i0 = dias.indexOf(S.coord.semana), ds = dias.slice(i0, i0 + 7);
-    let h = `<div class="acts" style="margin:0 0 10px;"><button type="button" class="sbtn" data-sem="-7" ${i0 === 0 ? 'disabled' : ''}>${I('back', 'width:15px;height:15px')}Anteriores</button><button type="button" class="sbtn" data-sem="7" ${i0 + 7 >= dias.length ? 'disabled' : ''}>Siguientes${I('chev', 'width:15px;height:15px')}</button></div>`;
+    const N = PC() ? 14 : 7;   // en PC entran dos semanas
+    const i0 = dias.indexOf(S.coord.semana), ds = dias.slice(i0, i0 + N);
+    let h = `<div class="acts" style="margin:0 0 10px;"><button type="button" class="sbtn" data-sem="-${N}" ${i0 === 0 ? 'disabled' : ''}>${I('back', 'width:15px;height:15px')}Anteriores</button><button type="button" class="sbtn" data-sem="${N}" ${i0 + N >= dias.length ? 'disabled' : ''}>Siguientes${I('chev', 'width:15px;height:15px')}</button></div>`;
     Object.keys(c.puntos || {}).forEach(pid => {
       const p = c.puntos[pid];
       const franjas = [...new Set(Object.values(c.turnos || {}).filter(t => t.punto === pid).map(t => t.desde + '-' + t.hasta))].sort();
@@ -505,6 +508,7 @@ window.PPAM_COORD = function (K) {
     h += `<div class="dres cd"><span><b>${nc}</b> confirmados${np ? ` · <b class="pe">${np}</b> por confirmar` : ''} · ${nf ? `<b class="fa">faltan ${nf}</b>` : '<b>completo</b>'}</span><div class="seg2 cf"><button type="button" data-cdf="todos" class="${soloF ? '' : 'on'}">Todos</button><button type="button" data-cdf="faltan" class="${soloF ? 'on' : ''}">Faltan</button></div></div>`;
     const wa = (cel) => { const x = String(cel || '').replace(/\D/g, ''); return 'https://wa.me/' + (x.length === 10 ? '549' + x : x); };
     let vistos = 0;
+    h += '<div class="pcw pcs">';
     Object.keys(c.puntos || {}).forEach(pid => {
       const p = c.puntos[pid], its = info.filter(x => x.t.punto === pid && (!soloF || x.falta > 0));
       if (!its.length) return;
@@ -519,6 +523,7 @@ window.PPAM_COORD = function (K) {
       });
       h += '</div>';
     });
+    h += '</div>';
     if (!ts.length) h += '<div class="card"><div class="empty">No hay turnos ese día.</div></div>';
     else if (!vistos) h += '<div class="card"><div class="empty">Ese día está todo cubierto.</div></div>';
     h += `<div class="acts"><button type="button" class="sbtn pri" data-listadia>${I('share')}Compartir la lista por WhatsApp</button></div>`;
@@ -572,15 +577,15 @@ window.PPAM_COORD = function (K) {
     let h = `<div class="seg2 aj"><button type="button" data-aj="campana" class="${aj === 'campana' ? 'on' : ''}">Campaña</button><button type="button" data-aj="puntos" class="${aj === 'puntos' ? 'on' : ''}">Puntos y turnos</button><button type="button" data-aj="hist" class="${aj === 'hist' ? 'on' : ''}">Historial</button></div>`;
     if (aj === 'hist') return h + `<p class="note hnote">Quién cambió o borró algo en esta campaña, y cuándo. Nadie puede editar ni borrar estas líneas. Se guardan 6 meses.</p>` + historialHTML(Object.keys(S.coord.aud || {}).map(id => Object.assign({ id }, S.coord.aud[id])), { cam: false });
     if (aj === 'campana') {
-      h += `<div class="sec">Datos de la campaña</div><div class="card" data-editable style="padding:12px 13px 4px;">
+      h += `<div class="sec">Datos de la campaña</div><div class="card cfcard" data-editable style="padding:12px 13px 4px;"><div class="pcw cfl">
       <div class="lbl">Foto de portada</div><div class="portada"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></div>
       <div class="pills"><label class="sbtn">${I('camera')}${c.portada ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" id="cfFoto" hidden></label>${c.portada ? '<button type="button" class="sbtn bad" id="cfFotoDel">Quitar foto</button>' : ''}</div>
-      <p class="small-hint">Una foto apaisada del lugar, sin personas reconocibles. Se achica sola antes de subirse. Sin foto se usa el color de la campaña.</p>
+      <p class="small-hint">Una foto apaisada del lugar, sin personas reconocibles. Se achica sola antes de subirse. Sin foto se usa el color de la campaña.</p></div><div class="pcw cfr">
       <div class="fld"><label for="cfNom">Nombre</label><input id="cfNom" value="${esc(c.nombre)}"></div>
       <div class="two"><div class="fld"><label for="cfCiu">Ciudad</label><input id="cfCiu" value="${esc(c.ciudad || '')}"></div><div class="fld"><label for="cfLug">Lugar (opcional)</label><input id="cfLug" value="${esc(c.lugar || '')}"></div></div>
       <div class="two"><div class="fld"><label for="cfDes">Desde</label><input id="cfDes" type="date" value="${esc(c.desde || '')}"></div><div class="fld"><label for="cfHas">Hasta</label><input id="cfHas" type="date" value="${esc(c.hasta || '')}"></div></div>
       <label class="ck"><input type="checkbox" id="cfAct"${c.activa !== false ? ' checked' : ''}> <span>Visible para todos (si la desmarcás, deja de aparecer en el inicio)</span></label>
-      <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div>`;
+      <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div></div>`;
       return h;
     }
     const vistosT = {}, repetidos = new Set();
@@ -591,6 +596,7 @@ window.PPAM_COORD = function (K) {
     const conTurnos = puntos.filter(p => turnos.some(t => t.punto === p.id));
     h += `<div class="sec">Puntos y turnos <button type="button" class="sbtn" data-punto="">+ Punto</button></div>`;
     if (!puntos.length) h += '<div class="card"><div class="empty">Agregá el primer punto (un carrito, un stand…). Después le cargás sus horarios.</div></div>';
+    h += '<div class="pcw pcs">';
     puntos.forEach(p => {
       const ts = turnos.filter(t => t.punto === p.id), mismos = ts.length > 1 && ts.every(t => diasTxt(t.dias) === diasTxt(ts[0].dias));
       const rep = ts.filter(t => repetidos.has(t.id)).length, nf = (p.fotos || []).length;
@@ -604,6 +610,7 @@ window.PPAM_COORD = function (K) {
       h += '</div>';
     });
     const huerf = turnos.filter(t => !(c.puntos || {})[t.punto]);
+    h += '</div>';
     if (huerf.length) h += `<div class="pc aj"><div class="tlbl">Turnos de un punto que ya no existe</div><div class="tch">${huerf.map(t => `<button type="button" class="tchip rep" data-turno="${esc(t.id)}"><b class="num">${esc(t.desde)}–${esc(t.hasta)}</b><small>${esc(diasTxt(t.dias))}</small></button>`).join('')}</div></div>`;
     return h;
   }
@@ -895,6 +902,10 @@ window.PPAM_COORD = function (K) {
     h += `<div class="sec">Historial de cambios</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Quién creó, cambió o borró algo, en todas las campañas y en esta configuración, y cuándo. Lo borrado se puede restaurar desde ahí.</p><button type="button" class="sbtn pri" data-histgen>${I('clock', 'width:15px;height:15px')}Ver el historial</button></div>`;
     h += `<div class="sec">Equipo de soporte</div><div class="card" style="padding:12px 13px;"><p class="note" style="margin:0 0 8px;">Ven los reportes de problemas y los errores de la página. No cambian campañas ni ven los pedidos. Un email por renglón.</p><div class="fld"><textarea id="adSop" rows="3">${esc(S.soporteEmails.join('\n'))}</textarea></div><button type="button" class="btn" id="adSopOk">Guardar</button></div>`;
     $('app').innerHTML = h;
+    // Secciones agrupadas (en PC van en dos columnas; en el celular se ven igual que antes)
+    { const app = $('app'), g = document.createElement('div'); g.className = 'pcw adm2'; let sec = null;
+      [...app.children].forEach(k => { if (k.classList.contains('sec') || !sec) { sec = document.createElement('section'); sec.className = 'pcw'; g.append(sec); } sec.append(k); });
+      app.append(g); }
     $('adMapa').addEventListener('change', async (e) => {
       const on = e.target.checked;
       try { await S.db.doc('config/publico').set({ mapa: on }, { merge: true }); auditar('', 'config', on ? 'prendió el mapa del Inicio' : 'apagó el mapa del Inicio'); toast(on ? 'El mapa se muestra en el Inicio' : 'El mapa quedó apagado'); } catch (er) { e.target.checked = !on; toast('No se pudo guardar.'); }
@@ -1069,7 +1080,9 @@ window.PPAM_COORD = function (K) {
     const sub = S.herm.ok ? [`${L.length} ${L.length === 1 ? 'habilitado' : 'habilitados'}`, sin ? `${sin} todavía no ${sin === 1 ? 'entró' : 'entraron'}` : '', vj ? `${vj} ${vj === 1 ? 'usaba' : 'usaban'} Google` : ''].filter(Boolean).join(' · ') : 'Cargando…';
     return `<button type="button" class="hcard" data-go="#/hermanos"><span class="ii">${I('users', 'width:24px;height:24px')}</span><span class="tx"><b>Hermanos habilitados${av ? ` <span class="bdg">${av} ${av === 1 ? 'aviso' : 'avisos'}</span>` : ''}</b><small>${esc(sub)}</small></span>${I('chev')}</button>`;
   }
-  const filaH = (h, acts) => `<div class="arow" data-hfic="${esc(h.id || '')}"><span class="av">${esc(iniciales(h.nombre + ' ' + h.apellido))}</span><span class="tx"><b>${esc(h.nombre)} ${esc(h.apellido)}</b><small>${esc(h.sub)}</small></span><span class="acts">${acts}</span></div>`;
+  // En PC la lista se ve como tabla: congregación, celular y último ingreso en columnas (en el celular van en la línea de abajo)
+  const filaH = (h, acts) => `<div class="arow hf" data-hfic="${esc(h.id || '')}"><span class="av">${esc(iniciales(h.nombre + ' ' + h.apellido))}</span><span class="tx"><b>${esc(h.nombre)} ${esc(h.apellido)}</b><small>${esc(h.sub)}</small></span><span class="hx">${esc(h.congregacion || '')}</span><span class="hx num">${esc(h.celular || '')}</span><span class="hx">${esc(h.baja ? 'Dado de baja' : h.ultimo ? cap(cuandoH(h.ultimo) || '') : 'Todavía no entró')}</span><span class="acts">${acts}</span></div>`;
+  const cabH = '<div class="hhd" aria-hidden="true"><span></span><span>Hermano</span><span>Congregación</span><span>Celular</span><span>Último ingreso</span><span></span></div>';
   function renderHermanos() {
     if (!S.user || !(S.isAdmin || S.coordDe.length)) { $('app').innerHTML = '<div class="empty">Esta parte es para coordinadores.</div>'; return; }
     escucharHermanos(); cargarViejos();
@@ -1086,13 +1099,13 @@ window.PPAM_COORD = function (K) {
       ${congs.length > 1 ? `<div class="cg">${['todas', ...congs].map(c => `<button type="button" class="${H.cong === c ? 'on' : ''}" data-hcong="${esc(c)}">${c === 'todas' ? 'Todas' : esc(congCorta(c))}</button>`).join('')}</div>` : ''}`;
     if (!H.ok) h += H.err ? '<div class="empty">No se pudo cargar la lista. Revisá la conexión.</div>' : '<div class="empty">Cargando…</div>';
     h += avisos.map(a => `<div class="codok warn">${I('alert', 'width:18px;height:18px')}<span><b>${esc(a.nombre)} ${esc(a.apellido)} entró desde otro celular</b>${esc(cap(cuandoH(a.ultimo) || ''))}${a.disp ? ' · ' + esc(a.disp) : ''}. Si no lo cambió ${esc(a.nombre)}, mandale un link nuevo: el viejo deja de servir.<br><button type="button" class="linkish fuerte" data-hfic="${esc(a.id)}">Ver a ${esc(a.nombre)}</button> · <button type="button" class="linkish" data-hok="${esc(a.id)}">Ya está, fue ${esc(a.nombre)}</button></span></div>`).join('');
-    const reenviar = (x) => `<a class="sbtn" href="${esc(waTxt(x.celular, msgLink(x)))}" target="_blank" rel="noopener" aria-label="Reenviarle el link por WhatsApp">${I('chat', 'width:15px;height:15px')}</a>`;
-    if (sinEntrar.length) h += `<div class="sec">Todavía no entraron <span class="tag pendiente">${sinEntrar.length}</span></div><div class="card">${sinEntrar.map(x => filaH(Object.assign({ sub: `${congCorta(x.congregacion)} · link enviado ${cuandoH(x.creado) || ''}`.trim() }, x), reenviar(x))).join('')}</div>`;
+    const reenviar = (x) => `<a class="sbtn" href="${esc(waTxt(x.celular, msgLink(x)))}" target="_blank" rel="noopener" aria-label="Reenviarle el link por WhatsApp">${I('chat', 'width:15px;height:15px')}<span class="pcsolo">Reenviar link</span></a>`;
+    if (sinEntrar.length) h += `<div class="sec">Todavía no entraron <span class="tag pendiente">${sinEntrar.length}</span></div><div class="card">${cabH}${sinEntrar.map(x => filaH(Object.assign({ sub: `${congCorta(x.congregacion)} · link enviado ${cuandoH(x.creado) || ''}`.trim() }, x), reenviar(x))).join('')}</div>`;
     if (viejos.length) h += `<div class="sec">Usaban la página con Google <span class="tag">${viejos.length}</span></div><div class="card">${viejos.map(v => `<div class="arow"><span class="av">${esc(iniciales(v.nombre + ' ' + v.apellido))}</span><span class="tx"><b>${esc(v.nombre)} ${esc(v.apellido)}</b><small>${esc(congCorta(v.congregacion))} · ${esc(v.celular || '')}${v.turnos ? ` · ${v.turnos} ${v.turnos === 1 ? 'turno' : 'turnos'}` : ''}</small></span><span class="acts"><button type="button" class="sbtn pri" data-hviejo="${esc(v.uid)}">Habilitar</button><button type="button" class="sbtn" data-hquitar="${esc(v.uid)}" aria-label="Quitar a ${esc(v.nombre)} ${esc(v.apellido)} de esta lista" title="Quitar de esta lista">${I('x', 'width:15px;height:15px')}</button></span></div>`).join('')}</div><p class="fine izq">Pidieron turnos con Google y todavía no tienen su link. Al habilitarlos se cargan solos sus datos y, cuando tocan el link, sus turnos pasan al acceso nuevo. Con la ✕ lo quitás de esta lista (por ejemplo, una prueba).</p>`;
     const quitados = Object.values(S.herm.viejos || {}).filter(v => !S.herm.lista[v.uid] && (S.herm.desc || {})[v.uid]);
     if (quitados.length) h += `<details class="hbajas"><summary>Quitados de la lista (${quitados.length})</summary><div class="card">${quitados.map(v => `<div class="arow"><span class="av">${esc(iniciales(v.nombre + ' ' + v.apellido))}</span><span class="tx"><b>${esc(v.nombre)} ${esc(v.apellido)}</b><small>${esc(congCorta(v.congregacion))} · ${esc(v.celular || '')}</small></span><span class="acts"><button type="button" class="sbtn" data-hvolver="${esc(v.uid)}">Volver a mostrar</button></span></div>`).join('')}</div></details>`;
-    h += `<div class="sec">Habilitados <span class="tag confirmado">${activos.length}</span></div><div class="card">${activos.length ? activos.map(x => filaH(Object.assign({ sub: `${congCorta(x.congregacion)} · entró ${cuandoH(x.ultimo)}` }, x), I('chev'))).join('') : '<div class="empty">Todavía nadie entró con su link.</div>'}</div>`;
-    if (bajas.length) h += `<details class="hbajas"><summary>Dados de baja (${bajas.length})</summary><div class="card">${bajas.map(x => filaH(Object.assign({ sub: congCorta(x.congregacion) }, x), I('chev'))).join('')}</div></details>`;
+    h += `<div class="sec">Habilitados <span class="tag confirmado">${activos.length}</span></div><div class="card">${activos.length ? cabH + activos.map(x => filaH(Object.assign({ sub: `${congCorta(x.congregacion)} · entró ${cuandoH(x.ultimo)}` }, x), `<span class="pcsolo">${reenviar(x)}</span>${I('chev')}`)).join('') : '<div class="empty">Todavía nadie entró con su link.</div>'}</div>`;
+    if (bajas.length) h += `<details class="hbajas"><summary>Dados de baja (${bajas.length})</summary><div class="card">${cabH}${bajas.map(x => filaH(Object.assign({ sub: congCorta(x.congregacion) }, x), I('chev'))).join('')}</div></details>`;
     $('app').innerHTML = h + '</div>';
     const box = $('herm');
     const bus = $('hBus'); bus.addEventListener('input', () => { H.q = bus.value; clearTimeout(H.t); H.t = setTimeout(() => { renderHermanos(); const b = $('hBus'); if (b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); } }, 250); });

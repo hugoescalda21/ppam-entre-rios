@@ -21,6 +21,10 @@
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
+  // Pantalla ancha (PC, tablet acostada): menú al costado y pantallas en columnas. En el celular no cambia nada.
+  const mqPC = window.matchMedia ? window.matchMedia('(min-width: 1100px)') : { matches: false };
+  const PC = () => !!mqPC.matches;
+  if (mqPC.addEventListener) mqPC.addEventListener('change', () => { if (S.route) try { render(); } catch (e) { /* todavía cargando */ } });
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const DOW = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   const DOW_L = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
@@ -53,7 +57,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '52';
+  const VERSION = '53';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -609,12 +613,16 @@
   }
   function renderAyuda() {
     const esCoord = !!(S.user && (S.isAdmin || S.coordDe.length));
-    let h = `<button type="button" class="btn alt" id="ayBv" style="margin:4px 0 6px">${I('star', 'width:18px;height:18px')}Ver la bienvenida otra vez</button>`;
-    AYUDA.filter(g => !g.coord || esCoord).forEach(g => {
-      h += `<div class="sec">${esc(g.g)}</div><div class="card faq">${g.qs.map(([id, q, a]) => `<details name="faq" id="faq-${id}"${S.route.q === id ? ' open' : ''}><summary>${esc(q)}${I('chev', 'width:16px;height:16px')}</summary><p>${esc(a)}</p></details>`).join('')}</div>`;
+    const grupos = AYUDA.filter(g => !g.coord || esCoord);
+    // En PC: índice de temas a la izquierda
+    let h = PC() ? `<div class="pcw ayc"><nav class="aynav" aria-label="Temas de ayuda"><b>Temas</b>${grupos.map((g, i) => `<button type="button" data-ayg="${i}"${i ? '' : ' class="on"'}>${esc(g.g)}</button>`).join('')}</nav><div class="pcw ayd">` : '';
+    h += `<button type="button" class="btn alt" id="ayBv" style="margin:4px 0 6px">${I('star', 'width:18px;height:18px')}Ver la bienvenida otra vez</button>`;
+    grupos.forEach((g, i) => {
+      h += `<div class="sec" id="ayg-${i}">${esc(g.g)}</div><div class="card faq">${g.qs.map(([id, q, a]) => `<details name="faq" id="faq-${id}"${S.route.q === id ? ' open' : ''}><summary>${esc(q)}${I('chev', 'width:16px;height:16px')}</summary><p>${esc(a)}</p></details>`).join('')}</div>`;
     });
     h += `<div class="card" style="padding:14px 16px;margin-top:14px"><b>¿No encontraste tu respuesta?</b><p class="hint" style="margin:4px 0 10px">Contanos qué pasó y te ayuda el equipo de soporte.</p><button type="button" class="sbtn" id="ayRep">${I('alert', 'width:15px;height:15px')}Reportar un problema</button></div>`;
-    $('app').innerHTML = h;
+    $('app').innerHTML = h + (PC() ? '</div></div>' : '');
+    $('app').querySelectorAll('[data-ayg]').forEach(b => b.addEventListener('click', () => { const s = $('ayg-' + b.dataset.ayg); if (s) s.scrollIntoView({ behavior: 'smooth', block: 'start' }); $('app').querySelectorAll('[data-ayg]').forEach(x => x.classList.toggle('on', x === b)); }));
     $('ayBv').addEventListener('click', () => bienvenida(true));
     $('ayRep').addEventListener('click', () => reportar());
     if (S.route.q) { const d = $('faq-' + S.route.q); if (d) setTimeout(() => d.scrollIntoView({ block: 'center' }), 50); }
@@ -663,6 +671,7 @@
       const dest = mias.length === 1 ? '#/coord/' + mias[0].id : '#/coord';
       h += `<button type="button" class="coordbar" data-go="${esc(dest)}"><span class="n num${n ? '' : ' cero'}">${n}</span><span class="tx">${n === 1 ? 'Pedido por confirmar' : n ? 'Pedidos por confirmar' : 'Coordinación · todo al día'}<small>${esc(mias.length === 1 ? mias[0].nombre : mias.length + ' campañas')}</small></span>${I('chev')}</button>`;
     }
+    const izq = h; h = '';
     h += `<div class="sh"><b>Campañas</b>${ciudades.length > 1 ? `<label class="flt">${esc(S.ciudad === 'todas' ? 'Toda la provincia' : S.ciudad)}${I('down', 'width:14px;height:14px')}<select id="fCiudad" aria-label="Filtrar por ciudad">${['todas', ...ciudades].map(x => `<option value="${esc(x)}"${x === S.ciudad ? ' selected' : ''}>${x === 'todas' ? 'Toda la provincia' : esc(x)}</option>`).join('')}</select></label>` : ''}</div>`;
     const conMapa = S.publico.mapa !== false;   // Administración → "Mostrar el mapa en el Inicio"
     if (!conMapa && S.vista === 'mapa') S.vista = 'lista';
@@ -671,10 +680,11 @@
       h += mapaHTML();
       // Las que no se pueden ubicar (sin puntos marcados y ciudad desconocida) siguen apareciendo, debajo del mapa.
       const fuera = fueraDelMapa(vis);
-      if (fuera.length) h += `<div class="lbl" style="margin-top:4px">${fuera.length === 1 ? 'Sin ubicación en el mapa' : fuera.length + ' campañas sin ubicación en el mapa'}</div>` + fuera.map(campCard).join('');
+      if (fuera.length) h += `<div class="lbl" style="margin-top:4px">${fuera.length === 1 ? 'Sin ubicación en el mapa' : fuera.length + ' campañas sin ubicación en el mapa'}</div><div class="pcw ccs">` + fuera.map(campCard).join('') + '</div>';
     }
-    else h += vis.length ? vis.map(campCard).join('') : '<div class="card"><div class="empty"><b>Por ahora no hay campañas programadas.</b><br>Cuando haya una, la vas a ver acá y te vas a poder anotar.</div></div>';
-    $('app').innerHTML = h;
+    else h += vis.length ? '<div class="pcw ccs">' + vis.map(campCard).join('') + '</div>' : '<div class="card"><div class="empty"><b>Por ahora no hay campañas programadas.</b><br>Cuando haya una, la vas a ver acá y te vas a poder anotar.</div></div>';
+    // En PC: lo tuyo (próximo turno, invitación) a la izquierda y las campañas a la derecha
+    $('app').innerHTML = /class="(ticket|welcome|coordbar)/.test(izq) ? `<div class="pcw hcols"><div class="pcw hizq">${izq}</div><div class="pcw hder">${h}</div></div>` : izq + h;
     if (vis.length && S.vista === 'mapa') dibujarMapa(vis);
   }
   // Campañas que todavía no empezaron: cuánto falta (días; "mañana")
@@ -708,14 +718,29 @@
     if (!dias.length) { $('app').innerHTML = '<div class="card"><div class="empty">No hay días con turnos por delante.</div></div>'; return; }
     const md = parseIso(S.dia);
     const fd = faltanDias(c);
-    let h = fd ? `<div class="cuenta" role="note"><div class="cn"><b class="num">${fd}</b><small>${fd === 1 ? 'día' : 'días'}</small></div><div><b>${fd === 1 ? 'La campaña empieza mañana' : `Faltan ${fd} días para que empiece`}</b><span>Ya podés anotarte: elegí un día y un horario.</span></div></div>` : '';
-    h += `<div class="month"><b>${cap(MES[md.getMonth()])}</b><span class="leyenda"><i class="c"></i>confirmado<i class="p"></i>pedido<i></i>libre</span></div>`;
-    h += `<div class="days">${dias.map(d => {
+    let h = '<div class="pcw ccols"><div class="pcw cizq">';
+    h += fd ? `<div class="cuenta" role="note"><div class="cn"><b class="num">${fd}</b><small>${fd === 1 ? 'día' : 'días'}</small></div><div><b>${fd === 1 ? 'La campaña empieza mañana' : `Faltan ${fd} días para que empiece`}</b><span>Ya podés anotarte: elegí un día y un horario.</span></div></div>` : '';
+    const botonDia = (d) => {
       const x = parseIso(d), k = cobertura(c, [d]);
       const nivel = k.faltan <= 0 ? 'lleno' : k.faltan / k.total <= 0.34 ? 'poco' : 'libre';
       const llenos = k.total ? Math.round(k.ocup * 3 / k.total) : 0;
-      return `<button type="button" class="day ${nivel}${d === S.dia ? ' on' : ''}" data-dia="${d}"><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><span class="cap3">${[0, 1, 2].map(i => `<i class="${i < llenos ? 'f' : ''}"></i>`).join('')}</span></button>`;
-    }).join('')}</div>`;
+      return `<button type="button" class="day ${nivel}${d === S.dia ? ' on' : ''}" data-dia="${d}"${PC() ? ` aria-label="${esc(cap(fmtDia(d)))}"` : ''}><small>${DOW[x.getDay()]}</small><b class="num">${x.getDate()}</b><span class="cap3">${[0, 1, 2].map(i => `<i class="${i < llenos ? 'f' : ''}"></i>`).join('')}</span></button>`;
+    };
+    const leyenda = '<span class="leyenda"><i class="c"></i>confirmado<i class="p"></i>pedido<i></i>libre</span>';
+    if (PC()) {
+      // En PC: el mes entero como calendario (con flechas si la campaña dura más de un mes)
+      const meses = [...new Set(dias.map(d => d.slice(0, 7)))];
+      const mes = S.dia.slice(0, 7), im = meses.indexOf(mes), y = +mes.slice(0, 4), mo = +mes.slice(5, 7) - 1;
+      const enMes = new Set(dias.filter(d => d.slice(0, 7) === mes)), nDias = new Date(y, mo + 1, 0).getDate(), off = (new Date(y, mo, 1).getDay() + 6) % 7;
+      h += `<div class="month cal-h"><b>${cap(MES[mo])} ${y}</b>${meses.length > 1 ? `<span class="calnav"><button type="button" class="sbtn" data-calmes="-1" aria-label="Mes anterior"${im <= 0 ? ' disabled' : ''}>${I('back', 'width:15px;height:15px')}</button><button type="button" class="sbtn" data-calmes="1" aria-label="Mes siguiente"${im >= meses.length - 1 ? ' disabled' : ''}>${I('chev', 'width:15px;height:15px')}</button></span>` : ''}</div>${leyenda}`;
+      h += `<div class="days mcal">${['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'].map(x => `<span class="wd" aria-hidden="true">${x}</span>`).join('')}${'<span></span>'.repeat(off)}`;
+      for (let n = 1; n <= nDias; n++) { const d = mes + '-' + pad(n); h += enMes.has(d) ? botonDia(d) : `<span class="nd" aria-hidden="true">${n}</span>`; }
+      h += '</div>';
+    } else {
+      h += `<div class="month"><b>${cap(MES[md.getMonth()])}</b>${leyenda}</div>`;
+      h += `<div class="days">${dias.map(botonDia).join('')}</div>`;
+    }
+    h += '</div><div class="pcw cder">';
     const ts = turnosDelDia(c, S.dia);
     const orden = ordenPuntos(c).filter(pid => ts.some(t => t.punto === pid));
     const filas = orden.map(pid => {
@@ -750,7 +775,7 @@
       h += '</div>';
     });
     if (filas.length && !vistos) h += '<div class="card"><div class="empty">Ese día ya no quedan lugares. Probá con otro día.</div></div>';
-    $('app').innerHTML = h;
+    $('app').innerHTML = h + '</div></div>';
     if (enlace && (S.ccOk || {})[c.id]) { enlace.hecho = true; setTimeout(() => { const oc = ocupDe(c.id, S.dia, enlace.tid); if (S.yo && oc[S.yo]) return; if (Object.keys(oc).length >= cupoDe(c, Object.assign({ id: enlace.tid }, c.turnos[enlace.tid]))) { toast('Ese turno ya se completó. Elegí otro horario.'); return; } pedir(enlace.tid); }, 0); }
   }
   function verLugar(cid, pid) {
@@ -972,12 +997,13 @@
     const porConf = all.filter(p => !hecho(p) && p.estado === 'pendiente').length;
     let h = '';
     if (all.length) h += `<div class="stat"><div class="g"><b class="num">${delMes.length}</b><small>${delMes.length === 1 ? 'turno' : 'turnos'} ${cualMes}</small></div><div><b class="num">${Number.isInteger(horas) ? horas : horas.toFixed(1).replace('.', ',')} h</b><small>de predicación</small></div><div><b class="num">${porConf}</b><small>por confirmar</small></div></div>`;
-    if (deHoy.length) h += '<div class="lbl">Hoy</div>' + deHoy.map(p => misCard(p, 'hoy')).join('');
-    if (prox.length) h += `<div class="lbl sp">Próximos <span>${prox.length}</span></div>` + prox.map(p => misCard(p, '')).join('');
+    const grupo = (ps, modo) => '<div class="pcw tcs">' + ps.map(p => misCard(p, modo)).join('') + '</div>';
+    if (deHoy.length) h += '<div class="lbl">Hoy</div>' + grupo(deHoy, 'hoy');
+    if (prox.length) h += `<div class="lbl sp">Próximos <span>${prox.length}</span></div>` + grupo(prox, '');
     if (!deHoy.length && !prox.length) h += '<div class="welcome"><h4>No tenés turnos por delante</h4><p>Elegí una campaña y anotate en un horario libre.</p><button type="button" class="btn p" data-go="#/">Ver campañas</button></div>';
     if (pas.length) {
       const hechosMes = pas.filter(p => p.estado === 'confirmado' && p.fecha.slice(0, 7) === mes).length;
-      h += `<div class="lbl sp">Realizados <span>${esc(cap(MES[parseIso(pas[0].fecha).getMonth()]))}</span></div>` + pas.slice(0, 20).map(p => misCard(p, 'done')).join('');
+      h += `<div class="lbl sp">Realizados <span>${esc(cap(MES[parseIso(pas[0].fecha).getMonth()]))}</span></div>` + grupo(pas.slice(0, 20), 'done');
       if (hechosMes) h += `<div class="thanks">${I('star')}<span><b>¡Gracias por participar!</b><br>${hechosMes === 1 ? 'Ya hiciste 1 turno este mes.' : `Ya hiciste ${hechosMes} turnos este mes.`}</span></div>`;
     }
     if (deHoy.length || prox.length) h += `<button type="button" class="cta2" data-go="#/">${I('plus')}Anotarme en otro turno</button>`;
@@ -1002,7 +1028,8 @@
     if (!p) { $('app').innerHTML = '<div class="card"><div class="empty">Ese turno ya no está en tu lista.</div></div><button type="button" class="btn" data-go="#/mis">Ver mis turnos</button>'; return; }
     const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, conf = p.estado === 'confirmado', rech = p.estado === 'rechazado';
     const url = rech ? '' : comoLlegarUrl(pt, c), d = parseIso(p.fecha), pasado = p.fecha < hoy();
-    let h = pt.lat != null ? mapaLugar(pt, c, 'big')
+    let h = '<div class="pcw tur">';
+    h += pt.lat != null ? mapaLugar(pt, c, 'big')
       : `<div class="mapa big foto"${fotoAttr(p.cid, (pt.fotos || [])[0], `background-image:${colorDe(c.id ? c : { id: p.cid })};`)}></div>`;
     h += `<div class="det"><div class="st ${esc(p.estado)}"><i></i>${conf ? 'Confirmado por un coordinador' : rech ? 'No fue confirmado' : 'Esperando confirmación'}${!conf && !rech ? ' <a class="qhelp" href="#/ayuda/espera">¿Qué significa?</a>' : ''}</div>`;
     h += `<h2>${esc(cap(DOW_L[d.getDay()]))} ${d.getDate()} de ${MES[d.getMonth()]} · <span class="num">${esc(p.desde)} a ${esc(p.hasta)}</span></h2>`;
@@ -1020,7 +1047,7 @@
     if (pt.indicaciones) h += `<div class="info"><b>Cómo encontrarlo</b><p>${esc(pt.indicaciones)}</p></div>`;
     if (pt.retiro) h += `<div class="info"><b>${esc(retiroLabel(pt))}</b><p>${esc(pt.retiro)}</p></div>`;
     if (tieneLugar(pt)) h += `<button type="button" class="btn alt" data-lugar="${esc(p.cid)}|${esc(p.punto)}">${I('pin')}Ver fotos y datos del lugar</button>`;
-    h += '</div>';
+    h += '</div></div>';
     $('app').innerHTML = h;
   }
   // "Anotate conmigo": link directo a ese turno (se abre listo para anotarse); no muestra datos de nadie
@@ -1432,7 +1459,7 @@
     } else $('msBody').innerHTML = `<h4>${esc(c.ciudad || '')}${g.tipo === 'pt' ? ' · ' + esc(g.items[0].lab) : ''}</h4><div class="mcc"><span class="im"${fotoAttr(c.id, c.portada, `background-image:${colorDe(c)};`)}></span><span class="tx"><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c), npt + (npt === 1 ? ' punto' : ' puntos')].filter(Boolean).join(' · '))}</small><span class="f ${x.e.est}">${esc(x.e.txt)}</span></span><button type="button" class="go" data-go="#/c/${esc(c.id)}">Ver turnos</button></div>${x.pts.length < npt ? `<p class="mnota">${x.pts.length ? `${npt - x.pts.length} de ${npt} puntos todavía no están marcados en el mapa.` : `Los puntos de esta campaña todavía no están marcados en el mapa: aparece en el centro de ${esc(c.ciudad || 'su localidad')}.`}</p>` : ''}`;
     const sh = $('msheet'); sh.classList.remove('on'); void sh.offsetWidth; sh.classList.add('on');
     // Que se vea la tarjeta: si el mapa queda cortado abajo (por la barra), se acomoda la página.
-    const r = $('mapw') && $('mapw').getBoundingClientRect(), tb = ($('tabbar') && $('tabbar').offsetHeight) || 0;
+    const r = $('mapw') && $('mapw').getBoundingClientRect(), tb = PC() ? 0 : ($('tabbar') && $('tabbar').offsetHeight) || 0;
     if (r && r.bottom > window.innerHeight - tb) window.scrollBy({ top: r.bottom - (window.innerHeight - tb) + 8, behavior: 'smooth' });
   }
   // Pines chicos de los puntos de la campaña elegida (se ven aunque el mapa esté lejos).
@@ -1486,7 +1513,7 @@
   function marcarEstados() { document.querySelectorAll(GRUPOS).forEach(b => b.setAttribute('aria-pressed', b.classList.contains('on') ? 'true' : 'false')); }
   new MutationObserver(() => { clearTimeout(marcarEstados.t); marcarEstados.t = setTimeout(marcarEstados, 0); }).observe(document.body, { childList: true, subtree: true });
   // Si la pantalla se vuelve a dibujar después de tocar un botón, el foco vuelve al botón equivalente
-  const CLAVES = ['dia', 'cdia', 'cf', 'cdf', 'aj', 'hf', 'tab', 'vista', 'plegar', 'sem', 'bsat'];
+  const CLAVES = ['dia', 'cdia', 'cf', 'cdf', 'aj', 'hf', 'tab', 'vista', 'plegar', 'sem', 'bsat', 'calmes', 'ayg'];
   document.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const k = CLAVES.find(x => b.dataset[x] !== undefined); if (!k) return;
@@ -1534,6 +1561,7 @@
     if (ds.login !== undefined) { login(); return; }
     if (ds.ciudad) { S.ciudad = ds.ciudad; renderHome(); return; }
     if (ds.dia) { S.dia = ds.dia; renderCamp(); return; }
+    if (ds.calmes) { const c = S.campanas[S.route.cid]; if (!c) return; const dias = diasDe(c).filter(d => turnosDelDia(c, d).some(t => !yaEmpezo(d, t))), meses = [...new Set(dias.map(d => d.slice(0, 7)))], m = meses[meses.indexOf(S.dia.slice(0, 7)) + (+ds.calmes)]; if (m) { S.dia = dias.find(d => d.slice(0, 7) === m); renderCamp(); } return; }
     if (ds.cf) { S.campFiltro = ds.cf; renderCamp(); return; }
     if (ds.ccretry) { S.ccErr[ds.ccretry] = false; listenCC(ds.ccretry); renderCamp(); return; }
     if (ds.plegar) { S.plegados = S.plegados || {}; const k = S.route.cid + '|' + ds.plegar; S.plegados[k] = !S.plegados[k]; renderCamp(); return; }
