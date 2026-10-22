@@ -9,6 +9,10 @@
 
 
 
+## Versión 57 — nota para el coordinador
+
+- Se quitó el atajo "Voy con mi esposa/o" de la nota para el coordinador: causaba confusión (cada hermano se anota con su propio link).
+
 ## Versión 56 — mantenimiento de los carritos
 
 - Se prende por campaña (Ajustes → Campaña → "Mantenimiento de los carritos"), con "Revisar cada" 15, 30, 60 o 90 días.

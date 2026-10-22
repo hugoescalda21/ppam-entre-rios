@@ -559,11 +559,11 @@ const SEED = {
     await m.goto(FILE + '#/c/parana-terminal'); await m.waitForTimeout(250); await entrar(m, 300);
     await m.evaluate(() => { location.hash = '#/c/parana-terminal'; }); await m.waitForTimeout(150);
     await m.click('[data-dia="2026-10-03"]'); await m.click('[data-pedir="t3"]'); await m.waitForTimeout(100);
-    check('el formulario tiene "Nota para el coordinador (opcional)" con 4 atajos y 0/200', /Nota para el coordinador\s*\(opcional\)\s*0\/200/i.test(await text(m, '.sheet')) && await m.evaluate(() => document.querySelectorAll('[data-atajo]').length === 4));
-    await m.click('[data-atajo="Voy con mi esposa/o"]'); await m.click('[data-atajo="Puedo llevar el carrito"]');
+    check('el formulario tiene "Nota para el coordinador (opcional)" con 3 atajos y 0/200', /Nota para el coordinador\s*\(opcional\)\s*0\/200/i.test(await text(m, '.sheet')) && await m.evaluate(() => document.querySelectorAll('[data-atajo]').length === 3));
+    await m.click('[data-atajo="Es mi primera vez"]'); await m.click('[data-atajo="Puedo llevar el carrito"]');
     let v = await m.evaluate(() => ({ t: document.querySelector('#pNota').value, on: document.querySelectorAll('[data-atajo].on').length, c: document.querySelector('#pNotaCnt').textContent }));
-    check('los atajos se suman al texto y quedan marcados', v.t === 'Voy con mi esposa/o. Puedo llevar el carrito.' && v.on === 2 && v.c === '45/200', v);
-    await m.click('[data-atajo="Voy con mi esposa/o"]');
+    check('los atajos se suman al texto y quedan marcados', v.t === 'Es mi primera vez. Puedo llevar el carrito.' && v.on === 2 && v.c === '43/200', v);
+    await m.click('[data-atajo="Es mi primera vez"]');
     v = await m.evaluate(() => document.querySelector('#pNota').value);
     check('tocar de nuevo un atajo lo saca', v === 'Puedo llevar el carrito.', v);
     await m.fill('#pNota', 'x'.repeat(250));

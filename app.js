@@ -57,7 +57,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '56';
+  const VERSION = '57';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -1203,7 +1203,7 @@
     inp.addEventListener('input', f); inp.addEventListener('blur', () => { const r = normCel(inp.value); if (r.ok) { inp.value = r.txt; out.textContent = ''; out.className = 'celok'; } });
     f();
   }
-  const NOTA_ATAJOS = ['Voy con mi esposa/o', 'Puedo llevar el carrito', 'Es mi primera vez', 'Llego unos minutos tarde'];
+  const NOTA_ATAJOS = ['Puedo llevar el carrito', 'Es mi primera vez', 'Llego unos minutos tarde'];
   function notaCampo(valor) {
     return `<div class="fld nota-fld"><label for="pNota">Nota para el coordinador <span class="opc">(opcional)</span><span class="nt-cnt" id="pNotaCnt">${(valor || '').length}/${NOTA_MAX}</span></label>
       <div class="nt-chips">${NOTA_ATAJOS.map(x => `<button type="button" data-atajo="${esc(x)}">${esc(x)}</button>`).join('')}</div>
