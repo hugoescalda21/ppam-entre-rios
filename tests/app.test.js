@@ -257,7 +257,7 @@ const SEED = {
   const vol = await c.evaluate(() => decodeURIComponent(window.__opened.pop().split('text=')[1]));
   check('"Pedir voluntarios" arma el mensaje con los turnos que faltan y el link', /Necesitamos voluntarios/.test(vol) && /Jueves 1 de octubre · 10 a 12 · Andén 1 \(falta 1\)/.test(vol) && /#\/c\/parana-terminal/.test(vol), vol.slice(0, 300));
   await c.click('[data-tab="dia"]'); await c.click('[data-cdia="2026-10-03"]'); await c.waitForTimeout(100);
-  check('lista del día: Ana en el stand del sábado', /Hall central\s*Faltan 2\s*16 a 18\s*Faltan 2\s*Ana Paz\s*San Agustín \(Paraná\)\s*2 lugares libres/.test(await text(c, '#app')) && /1 confirmados/.test(await text(c, '#app')), await text(c, '#app'));
+  check('lista del día: Ana en el stand del sábado', /Hall central\s*Faltan 2\s*16 a 18\s*Faltan 2\s*Ana Paz\s*San Agustín \(Paraná\)\s*(•••\s*)?2 lugares libres/.test(await text(c, '#app')) && /1 confirmados/.test(await text(c, '#app')), await text(c, '#app'));
   await c.click('[data-listadia]'); await c.waitForTimeout(100); await c.click('#lWa');
   const lista = await c.evaluate(() => decodeURIComponent(window.__opened.pop().split('text=')[1]));
   check('compartir la lista del día por WhatsApp', /16 a 18 · Hall central: Ana Paz/.test(lista), lista);
@@ -604,7 +604,7 @@ const SEED = {
     await k.screenshot({ path: SHOTS + '/coord-nota.png' });
     await k.click('[data-confirmar]'); await k.waitForTimeout(200);
     await k.click('[data-tab="dia"]'); await k.click('[data-cdia="2026-10-03"]'); await k.waitForTimeout(100);
-    check('y en la lista del día, debajo del turno', /Hall central[\s\S]*Luis Gómez\s*San Agustín \(Paraná\)\s*Luis: Es mi primera vez\./.test(await text(k, '#app')), await text(k, '#app'));
+    check('y en la lista del día, debajo del turno', /Hall central[\s\S]*Luis Gómez\s*San Agustín \(Paraná\)\s*(•••\s*)?Luis: Es mi primera vez\./.test(await text(k, '#app')), await text(k, '#app'));
     await k.click('[data-listadia]'); await k.waitForTimeout(100); await k.click('#lWa');
     const msg = await k.evaluate(() => decodeURIComponent(window.__opened.pop().split('text=')[1]));
     check('la lista que se comparte por WhatsApp no lleva la nota', /Luis Gómez/.test(msg) && !/primera vez/.test(msg), msg);
@@ -1038,7 +1038,7 @@ const SEED = {
     check('la pestaña Ayuda está siempre en la barra de abajo', await a.evaluate(() => { const b = document.getElementById('tabAyuda'); return b && !b.classList.contains('hidden') && /Ayuda/.test(b.textContent); }));
     await a.click('#tabAyuda'); await a.waitForTimeout(200);
     const at = await text(a, '#app');
-    check('Ayuda: 16 preguntas para publicadores, en 3 grupos, sin las de coordinadores', await a.evaluate(() => document.querySelectorAll('.faq details').length) === 16 && /Anotarme[\s\S]*Mis turnos[\s\S]*Mis datos y la app/.test(at) && !/Para coordinadores/.test(at), at.slice(0, 200));
+    check('Ayuda: 17 preguntas para publicadores, en 3 grupos, sin las de coordinadores', await a.evaluate(() => document.querySelectorAll('.faq details').length) === 17 && /Anotarme[\s\S]*Mis turnos[\s\S]*Mis datos y la app/.test(at) && !/Para coordinadores/.test(at), at.slice(0, 200));
     check('la pestaña queda marcada y el título dice "Preguntas frecuentes"', await a.evaluate(() => document.getElementById('tabAyuda').classList.contains('on')) && /Preguntas frecuentes/.test(await text(a, '#tbTitle')));
     await a.click('#faq-completo summary'); await a.waitForTimeout(80);
     check('tocar una pregunta muestra la respuesta', await a.evaluate(() => document.getElementById('faq-completo').open) && /Con lugar/.test(await text(a, '#faq-completo')));
@@ -1051,7 +1051,7 @@ const SEED = {
     if (fs.existsSync(ax2)) { await a.keyboard.press('Escape'); await a.waitForTimeout(100); await a.addScriptTag({ content: fs.readFileSync(ax2, 'utf8') }); const v = await a.evaluate(async () => (await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations.map(x => x.id + ' x' + x.nodes.length)); check('axe (WCAG 2.2 AA) sin problemas: Ayuda', v.length === 0, v); }
     const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '');
     await entrar(k, 300); await k.evaluate(() => { location.hash = '#/ayuda/recuperar'; }); await k.waitForTimeout(300);
-    check('el coordinador ve además "Para coordinadores", y un enlace abre esa respuesta', /Para coordinadores/.test(await text(k, '#app')) && await k.evaluate(() => document.getElementById('faq-recuperar').open) && await k.evaluate(() => document.querySelectorAll('.faq details').length) === 19);
+    check('el coordinador ve además "Para coordinadores", y un enlace abre esa respuesta', /Para coordinadores/.test(await text(k, '#app')) && await k.evaluate(() => document.getElementById('faq-recuperar').open) && await k.evaluate(() => document.querySelectorAll('.faq details').length) === 23);
     const u = await open([{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }], '');
     await entrar(u, 300);
     await u.evaluate(() => { const db = window.__ppamMock.db; db.doc('pedidos/parana-terminal__2026-10-02__t2__u-ana').set({ cid: 'parana-terminal', fecha: '2026-10-02', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-ana', email: 'ana@x.com', nombre: 'Ana', apellido: 'Paz', congregacion: 'X', celular: '343 555-0000', estado: 'pendiente', creado: 'x' }); });
@@ -1580,6 +1580,41 @@ const SEED = {
     await q.click('[data-tab="cobertura"]'); await q.waitForTimeout(150);
     check('PC: en Cobertura van los nombres completos', /Juan Díaz/.test(await text(q, '[data-cir="2026-10-01|t1"]')));
     delete SEED['pedidos/parana-terminal__2026-10-01__t1__otro1'];
+  }
+  {
+    console.log('\nCambiar o quitar a un hermano de su turno (v59)');
+    const S0 = JSON.parse(JSON.stringify(SEED));
+    const T = { t1: ['p1', '08:00', '10:00'], t2: ['p1', '10:00', '12:00'] };
+    const P = (f, tid, uid, n, a) => { SEED[`pedidos/parana-terminal__${f}__${tid}__${uid}`] = { cid: 'parana-terminal', fecha: f, tid, punto: T[tid][0], desde: T[tid][1], hasta: T[tid][2], uid, nombre: n, apellido: a, congregacion: 'Paraná Centro (Paraná)', celular: '343 400-1111', estado: 'confirmado', creado: '2026-09-20T10:00:00Z' }; };
+    SEED['cupos/parana-terminal__2026-10-01__t1'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't1', ocupados: { 'u-juan': 'c' } };
+    SEED['cupos/parana-terminal__2026-10-01__t2'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', ocupados: {} };
+    P('2026-10-01', 't1', 'u-juan', 'Juan', 'Díaz');
+    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal'); await entrar(k, 400);
+    check('Quién va: el confirmado tiene el botón de opciones', !!(await k.$('[data-pmenu="parana-terminal__2026-10-01__t1__u-juan"]')));
+    await k.click('[data-pmenu="parana-terminal__2026-10-01__t1__u-juan"]'); await k.waitForTimeout(150);
+    check('el menú ofrece cambiar, WhatsApp y quitar', /Juan Díaz[\s\S]*Cambiar de turno o de lugar[\s\S]*Escribirle por WhatsApp[\s\S]*Quitar del turno/.test(await text(k, '.ov')));
+    await k.click('#pmMover'); await k.waitForTimeout(150);
+    check('cambiar: su turno actual aparece marcado y no se puede elegir', await k.evaluate(() => { const l = [...document.querySelectorAll('.ov .lgr')]; return l.length >= 2 && /Su turno actual/.test(l[0].innerText) && l[0].querySelector('input').disabled; }));
+    await k.click('.ov input[value="t2"]'); await k.click('#mvOk'); await k.waitForTimeout(300);
+    const st = await k.evaluate(() => ({ viejo: window.__store['pedidos/parana-terminal__2026-10-01__t1__u-juan'], nuevo: window.__store['pedidos/parana-terminal__2026-10-01__t2__u-juan'], c1: window.__store['cupos/parana-terminal__2026-10-01__t1'].ocupados, c2: window.__store['cupos/parana-terminal__2026-10-01__t2'].ocupados }));
+    check('pasa confirmado al turno nuevo, con su mismo id, y libera el anterior', !st.viejo && st.nuevo && st.nuevo.estado === 'confirmado' && st.nuevo.uid === 'u-juan' && st.nuevo.movido.de === 'parana-terminal__2026-10-01__t1__u-juan' && st.c2['u-juan'] === 'c' && !('u-juan' in st.c1), st);
+    check('ofrece avisarle por WhatsApp con el antes y el ahora', await k.evaluate(() => { const a = [...document.querySelectorAll('.ov a.btn')].find(x => /wa\.me/.test(x.href)); const t = a && decodeURIComponent(a.href); return !!t && /Antes: jueves 1 de octubre, 8 a 10/.test(t) && /Ahora: jueves 1 de octubre, 10 a 12/.test(t); }));
+    await k.evaluate(() => document.querySelectorAll('.ov').forEach(x => x.remove()));
+    check('queda en el historial', await k.evaluate(() => Object.keys(window.__store).some(x => x.startsWith('auditoria/') && window.__store[x].tipo === 'movio')));
+    await k.click('[data-pmenu="parana-terminal__2026-10-01__t2__u-juan"]'); await k.waitForTimeout(150); await k.click('#pmQuitar'); await k.waitForTimeout(150);
+    await k.fill('#qMot', 'Se suspende el carrito'); await k.click('#qOk'); await k.waitForTimeout(300);
+    check('quitar: libera el lugar y queda "no confirmado"', await k.evaluate(() => window.__store['pedidos/parana-terminal__2026-10-01__t2__u-juan'].estado === 'rechazado' && !('u-juan' in window.__store['cupos/parana-terminal__2026-10-01__t2'].ocupados)));
+    check('y ofrece el aviso con el motivo', /Motivo: Se suspende el carrito/.test(await text(k, '.ov .lprev')));
+    check('sin errores (cambiar o quitar)', k.errs.length === 0, k.errs);
+    // Lo que ve el hermano
+    delete SEED['pedidos/parana-terminal__2026-10-01__t1__u-juan'];
+    SEED['pedidos/parana-terminal__2026-10-01__t2__u-juan'] = Object.assign({}, { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't2', punto: 'p1', desde: '10:00', hasta: '12:00', uid: 'u-juan', nombre: 'Juan', apellido: 'Díaz', congregacion: 'Paraná Centro (Paraná)', celular: '343 400-1111', estado: 'confirmado', creado: 'x', movido: { de: 'x', fecha: '2026-10-01', desde: '08:00', hasta: '10:00', punto: 'p1', at: 'x' } });
+    const h = await open([{ uid: 'u-juan', email: 'juan@x.com', displayName: 'Juan Díaz' }]); await h.waitForTimeout(300);
+    check('el hermano ve "El coordinador cambió tu turno" en el inicio', /El coordinador cambió tu turno[\s\S]*Antes: jue 1, 8 a 10 · Andén 1[\s\S]*10 a 12, en el mismo lugar/.test(await text(h, '.codok.mov')), await text(h, '.codok.mov'));
+    await h.click('[data-movok]'); await h.waitForTimeout(150);
+    check('"Entendido" lo oculta', !(await h.$('.codok.mov')));
+    check('sin errores (hermano, turno cambiado)', h.errs.length === 0, h.errs);
+    Object.keys(SEED).forEach(x => delete SEED[x]); Object.assign(SEED, S0);
   }
   await b.close(); console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;

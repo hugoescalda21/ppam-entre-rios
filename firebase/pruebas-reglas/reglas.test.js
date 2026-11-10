@@ -415,6 +415,23 @@ const section = (t) => console.log('\n' + t);
   await check('un administrador habilita a Beto para todas', assertSucceeds(db(ADM).doc('hermanos/h-beto').update({ todas: true })));
   await check('con "todas", Beto pide en la campaña ajena', assertSucceeds(pedirEn(B, 'ajena', 't2')));
 
+  section('Cambiar a un hermano de turno');
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const f = ctx.firestore();
+    await f.doc('cupos/' + CID + '__2026-10-12__t1').set({ cid: CID, fecha: '2026-10-12', tid: 't1', ocupados: { 'h-caro': 'c' } });
+    await f.doc('pedidos/' + CID + '__2026-10-12__t1__h-caro').set(Object.assign(datos(C, 't1', { fecha: '2026-10-12' }), { uid: 'h-caro', estado: 'confirmado' }));
+  });
+  const O1 = CID + '__2026-10-12__t1__h-caro', N2 = CID + '__2026-10-12__t2__h-caro';
+  const mover = (email, extra, sinBorrar) => { const f = db(email), b = f.batch(); const d = Object.assign(datos(C, 't2', { fecha: '2026-10-12' }), { uid: 'h-caro', estado: 'confirmado', por: email, creado: 'x', movido: { de: O1, fecha: '2026-10-12', desde: '08:00', hasta: '10:00', punto: 'p1', at: 'x' } }, extra || {});
+    b.set(f.doc('pedidos/' + N2), d); b.set(f.doc('cupos/' + CID + '__2026-10-12__t2'), { cid: CID, fecha: '2026-10-12', tid: 't2', ocupados: { 'h-caro': 'c' } }, { merge: true });
+    b.update(f.doc('cupos/' + CID + '__2026-10-12__t1'), { ['ocupados.h-caro']: DEL() }); if (!sinBorrar) b.delete(f.doc('pedidos/' + O1)); return b.commit(); };
+  await check('un hermano NO se cambia solo como "movido"', assertFails(mover(C)));
+  await check('otro coordinador NO lo cambia', assertFails(mover(CO2)));
+  await check('NO sin borrar el pedido anterior', assertFails(mover(CO, {}, true)));
+  await check('NO a nombre de otro hermano', assertFails(mover(CO, { uid: 'h-ana' })));
+  await check('el coordinador lo cambia de turno (nuevo confirmado, anterior borrado)', assertSucceeds(mover(CO)));
+  await check('el hermano ve su turno nuevo', assertSucceeds(db(C).doc('pedidos/' + N2).get()));
+
   await env.cleanup();
   console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;

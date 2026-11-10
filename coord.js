@@ -223,7 +223,7 @@ window.PPAM_COORD = function (K) {
     ov.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrar(); });
   }
   const waUrl = (cel) => { const x = String(cel || '').replace(/\D/g, ''); return 'https://wa.me/' + (x.length === 10 ? '549' + x : x); };
-  function personaCoord(q) { const wa = waUrl; return `<div class="dp ${q.estado === 'confirmado' ? 'c' : 'p'}"><span class="mk">${q.estado === 'confirmado' ? I('check', 'width:13px;height:13px;stroke-width:3') : ''}</span><div class="who"><b>${esc(q.nombre)} ${esc(q.apellido)}</b><small>${esc(q.congregacion)}${q.estado === 'pendiente' ? ' · <em>por confirmar</em>' : ''}${q.manual ? ' · <span class="man">cargado por coordinador</span>' : ''}</small></div>${q.celular ? `<a class="wa" href="${wa(q.celular)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(q.nombre)}">${I('chat')}</a>` : ''}${q.estado === 'pendiente' ? `<div class="bb"><button type="button" class="sbtn nk" data-rechazar="${esc(q.id)}">No</button><button type="button" class="sbtn pri" data-confirmar="${esc(q.id)}">Confirmar</button></div>` : ''}${q.nota ? `<div class="nota chica">${I('edit', 'width:14px;height:14px')}<span><b>${esc(q.nombre)}:</b> ${esc(q.nota)}</span></div>` : ''}</div>`; }
+  function personaCoord(q) { const wa = waUrl; return `<div class="dp ${q.estado === 'confirmado' ? 'c' : 'p'}"><span class="mk">${q.estado === 'confirmado' ? I('check', 'width:13px;height:13px;stroke-width:3') : ''}</span><div class="who"><b>${esc(q.nombre)} ${esc(q.apellido)}</b><small>${esc(q.congregacion)}${q.estado === 'pendiente' ? ' · <em>por confirmar</em>' : ''}${q.manual ? ' · <span class="man">cargado por coordinador</span>' : ''}</small></div>${q.celular ? `<a class="wa" href="${wa(q.celular)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(q.nombre)}">${I('chat')}</a>` : ''}${q.estado === 'confirmado' ? `<button type="button" class="sbtn mas3" data-pmenu="${esc(q.id)}" aria-label="Opciones de ${esc(q.nombre)} ${esc(q.apellido)}">•••</button>` : ''}${q.estado === 'pendiente' ? `<div class="bb"><button type="button" class="sbtn nk" data-rechazar="${esc(q.id)}">No</button><button type="button" class="sbtn pri" data-confirmar="${esc(q.id)}">Confirmar</button></div>` : ''}${q.nota ? `<div class="nota chica">${I('edit', 'width:14px;height:14px')}<span><b>${esc(q.nombre)}:</b> ${esc(q.nota)}</span></div>` : ''}</div>`; }
   // Hermanos ya conocidos (anotados en las campañas que coordina), para completar los datos con un toque
   function conocidos() {
     const m = {};
@@ -404,7 +404,7 @@ window.PPAM_COORD = function (K) {
   }
   /* ---------- Historial: lista, filtro "solo borrados" y "Restaurar" ---------- */
   const audFecha = (x) => { const v = x && x.at; if (!v) return null; if (typeof v === 'string') return new Date(v); if (v.toDate) return v.toDate(); if (v.seconds) return new Date(v.seconds * 1000); return null; };
-  const AUD_IC = { borro_turno: 'x', borro_punto: 'x', borro_foto: 'x', quito: 'x', cancelo: 'x', no_confirmo: 'x', confirmo: 'check', anoto: 'plus', creo_turno: 'plus', creo_punto: 'plus', creo_campana: 'plus', restauro: 'back', cambio_turno: 'edit', cambio_punto: 'edit', cambio_campana: 'edit', coordinadores: 'edit', config: 'edit', habilito: 'check', deshabilito: 'x' };
+  const AUD_IC = { borro_turno: 'x', borro_punto: 'x', borro_foto: 'x', quito: 'x', cancelo: 'x', no_confirmo: 'x', confirmo: 'check', anoto: 'plus', creo_turno: 'plus', creo_punto: 'plus', creo_campana: 'plus', restauro: 'back', cambio_turno: 'edit', cambio_punto: 'edit', cambio_campana: 'edit', coordinadores: 'edit', config: 'edit', habilito: 'check', deshabilito: 'x', movio: 'cal' };
   const esBorrado = (x) => /^(borro_|quito|cancelo|no_confirmo)/.test(x.tipo);
   function cuandoTxt(d) {
     if (!d) return 'recién';
@@ -576,7 +576,81 @@ window.PPAM_COORD = function (K) {
     if (estado === 'confirmado') batch.set(cref, { cid: p.cid, fecha: p.fecha, tid: p.tid, ocupados: { [p.uid]: 'c' } }, { merge: true });
     else batch.update(cref, { ['ocupados.' + p.uid]: S.del() });
     batch.update(S.db.doc('pedidos/' + pid), { estado, actualizado: new Date().toISOString(), por: S.user.email.toLowerCase() });
-    try { await batch.commit(); if (estado !== 'confirmado') S.db.doc('companeros/' + cupoId(p.cid, p.fecha, p.tid)).update({ ['n.' + p.uid]: S.del() }).catch(() => {}); const c = S.campanas[p.cid] || {}; auditar(p.cid, estado === 'confirmado' ? 'confirmo' : p.estado === 'confirmado' ? 'quito' : 'no_confirmo', (estado === 'confirmado' ? 'confirmó a ' : p.estado === 'confirmado' ? 'quitó del turno a ' : 'no confirmó a ') + pTxt(c, p)); if (!(estado === 'confirmado' && avisarConfirmado(p, c))) toast(estado === 'confirmado' ? 'Confirmado' : 'Listo'); } catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); }
+    try { await batch.commit(); if (estado !== 'confirmado') S.db.doc('companeros/' + cupoId(p.cid, p.fecha, p.tid)).update({ ['n.' + p.uid]: S.del() }).catch(() => {}); const c = S.campanas[p.cid] || {}; auditar(p.cid, estado === 'confirmado' ? 'confirmo' : p.estado === 'confirmado' ? 'quito' : 'no_confirmo', (estado === 'confirmado' ? 'confirmó a ' : p.estado === 'confirmado' ? 'quitó del turno a ' : 'no confirmó a ') + pTxt(c, p)); if (!(estado === 'confirmado' && avisarConfirmado(p, c))) toast(estado === 'confirmado' ? 'Confirmado' : 'Listo'); return true; } catch (e) { console.error(e); toast('No se pudo guardar. Probá de nuevo.'); return false; }
+  }
+  /* ---------- Cambiar o quitar a un hermano de su turno (desde Quién va) ---------- */
+  const turnoTxt = (c, fecha, t) => `${fmtDia(fecha)}, ${fmtHora(t.desde)} a ${fmtHora(t.hasta)} · ${((c.puntos || {})[t.punto] || {}).nombre || ''}`;
+  const waMsg = (cel, txt) => { const x = String(cel || '').replace(/\D/g, ''); return x ? 'https://wa.me/' + (x.length === 10 ? '549' + x : x) + '?text=' + encodeURIComponent(txt) : ''; };
+  function menuPersona(pid) {
+    const p0 = S.coord.pedidos[pid], c = p0 && S.campanas[p0.cid]; if (!p0 || !c) return;
+    const p = Object.assign({ id: pid }, p0), wa = waMsg(p.celular, `Hola ${p.nombre}, `);
+    const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(p.nombre + ' ' + p.apellido))}</span><div><h3>${esc(p.nombre)} ${esc(p.apellido)}</h3><p class="hint">${esc(congCorta(p.congregacion))} · Confirmado${p.manual ? ' · cargado por coordinador' : ''}</p></div></div>
+      <div class="codok"><span><b>${esc(cap(turnoTxt(c, p.fecha, p)))}</b>${esc(c.nombre)}</span></div>
+      <button type="button" class="btn" id="pmMover">${I('cal', 'width:18px;height:18px')}Cambiar de turno o de lugar</button>
+      ${wa ? `<a class="btn alt" href="${esc(wa)}" target="_blank" rel="noopener">${I('chat', 'width:18px;height:18px')}Escribirle por WhatsApp</a>` : ''}
+      <button type="button" class="btn alt peligro" id="pmQuitar">Quitar del turno</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    ov.querySelector('#pmMover').addEventListener('click', () => { ov.remove(); moverPersona(p, c); });
+    ov.querySelector('#pmQuitar').addEventListener('click', () => { ov.remove(); quitarPersona(p, c); });
+  }
+  function quitarPersona(p, c) {
+    const ov = sheet(`<h3>¿Quitar a ${esc(p.nombre)} ${esc(p.apellido)} del turno?</h3><p class="hint">${esc(cap(turnoTxt(c, p.fecha, p)))}. El lugar queda libre y en "Mis turnos" lo ve como no confirmado.</p>
+      <div class="fld"><label for="qMot">Motivo (opcional, va en el mensaje)</label><input id="qMot" maxlength="120" placeholder="Por ejemplo: se suspende el carrito ese día"></div>
+      <button type="button" class="btn danger" id="qOk">Quitar del turno</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    ov.querySelector('#qOk').addEventListener('click', async () => {
+      const mot = ov.querySelector('#qMot').value.trim(), bt = ov.querySelector('#qOk'); bt.disabled = true;
+      const ok = await cambiarEstado(p.id, 'rechazado'); if (!ok) { bt.disabled = false; return; }
+      ov.remove();
+      const msg = `Hola ${p.nombre}, te sacamos del turno de la PPAM del ${turnoTxt(c, p.fecha, p)} (${c.nombre}).${mot ? ' Motivo: ' + mot.replace(/\.$/, '') + '.' : ''}\nPerdón por el cambio. Podés elegir otro turno desde la app.`, wa = waMsg(p.celular, msg);
+      sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>${esc(p.nombre)} ya no está en ese turno</h3><p>El lugar quedó libre.</p></div>${wa ? `<pre class="lprev">${esc(msg)}</pre><a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">${I('chat')}Avisarle por WhatsApp</a>` : ''}<button type="button" class="btn alt" data-cerrar>Listo</button>`);
+    });
+  }
+  function moverPersona(p, c) {
+    const dias = diasDe(c).filter(d => turnosDelDia(c, d).some(t => !yaEmpezo(d, t)));
+    if (!dias.length) { toast('No quedan turnos por delante en esta campaña.'); return; }
+    let dia = dias.includes(p.fecha) ? p.fecha : dias[0];
+    const ov = sheet(`<h3>Cambiar a ${esc(p.nombre)} ${esc(p.apellido)}</h3><p class="hint">Ahora: ${esc(turnoTxt(c, p.fecha, p))}. Elegí el turno nuevo: queda confirmado ahí y este lugar se libera.</p><div class="days" id="mvDias"></div><div id="mvLista"></div><p class="err hidden" id="mvErr"></p><button type="button" class="btn" id="mvOk" disabled>Cambiar de turno</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    const q = (s) => ov.querySelector(s);
+    const libres = (d, t) => { const oc = Object.keys((S.coord.cupos[cupoId(c.id, d, t.id)] || {}).ocupados || {}); return Math.max(0, cupoDe(c, t) - oc.length); };
+    const pinta = () => {
+      q('#mvDias').innerHTML = dias.slice(0, 40).map(d => { const x = parseIso(d); return `<button type="button" class="day${d === dia ? ' on' : ''}" data-mvd="${d}"><small>${DOW[x.getDay()]}</small><b>${x.getDate()}</b><i>${MES[x.getMonth()].slice(0, 3)}</i></button>`; }).join('');
+      const ts = turnosDelDia(c, dia).filter(t => !yaEmpezo(dia, t));
+      q('#mvLista').innerHTML = ts.length ? ts.map(t => { const actual = dia === p.fecha && t.id === p.tid, ya = !actual && busPeds(c.id).some(x => x.fecha === dia && x.tid === t.id && x.uid === p.uid && x.estado !== 'rechazado'), lib = libres(dia, t), no = actual || ya || !lib;
+        return `<label class="lgr${no ? ' ya' : ''}"><input type="radio" name="mvT" value="${esc(t.id)}"${no ? ' disabled' : ''}><span class="tx"><b class="num">${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))}</b> · ${esc(((c.puntos || {})[t.punto] || {}).nombre || '')}<small>${actual ? 'Su turno actual' : ya ? 'Ya está anotado ahí' : !lib ? 'Completo' : lib === 1 ? 'Falta 1' : 'Faltan ' + lib}</small>${no ? '' : `<span class="cqs"><em>Con:</em> ${conQuienHTML(quienesEn(c.id, dia, t.id), p.apellido)}</span>`}</span></label>`; }).join('') : '<div class="empty">No hay turnos ese día.</div>';
+      q('#mvOk').disabled = true;
+    };
+    ov.addEventListener('click', (e) => { const b = e.target.closest('[data-mvd]'); if (b) { dia = b.dataset.mvd; pinta(); } });
+    ov.addEventListener('change', (e) => { if (e.target.name === 'mvT') q('#mvOk').disabled = false; });
+    pinta();
+    const dd = q('#mvDias .day.on'); if (dd) dd.scrollIntoView({ inline: 'center', block: 'nearest' });
+    q('#mvOk').addEventListener('click', async () => {
+      const r = ov.querySelector('input[name="mvT"]:checked'); if (!r) return;
+      const t = Object.assign({ id: r.value }, c.turnos[r.value]), bt = q('#mvOk'); bt.disabled = true;
+      try { await moverPedido(p, c, dia, t); }
+      catch (e) { console.error(e); bt.disabled = false; const er = q('#mvErr'); er.textContent = 'No se pudo cambiar. Revisá la conexión y probá de nuevo.'; er.classList.remove('hidden'); return; }
+      ov.remove();
+      const antes = turnoTxt(c, p.fecha, p), ahora = turnoTxt(c, dia, t);
+      const msg = `Hola ${p.nombre}, te cambiamos el turno de la PPAM (${c.nombre}):\nAntes: ${antes}\nAhora: ${ahora}\n\n${p.manual ? 'Si no podés, avisame.' : 'Lo ves en "Mis turnos". Si no podés, avisame.'}`, wa = waMsg(p.celular, msg);
+      sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>${esc(p.nombre)} pasó al turno de ${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))}</h3><p>${esc(cap(fmtDia(dia)))} · ${esc(((c.puntos || {})[t.punto] || {}).nombre || '')}</p><p><span class="tag confirmado">Confirmado</span></p></div>${wa ? `<pre class="lprev">${esc(msg)}</pre><a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">${I('chat')}Avisarle por WhatsApp</a>` : ''}<button type="button" class="btn alt" data-cerrar>Listo</button>`);
+      S.coord.dia = dia; S.coord.flash = 'dt-' + t.id; if (S.route.name === 'coord') renderCoord();
+    });
+  }
+  // Pasa el pedido al turno nuevo (confirmado, con el mismo id de hermano) y libera el anterior, todo en un solo envío
+  async function moverPedido(p, c, fecha, t) {
+    const nid = c.id + '__' + fecha + '__' + t.id + '__' + p.uid, b = S.db.batch(), ahora = new Date().toISOString(), yo = S.user.email.toLowerCase();
+    const previo = S.coord.pedidos[nid];
+    if (previo) b.update(S.db.doc('pedidos/' + nid), { estado: 'confirmado', actualizado: ahora, por: yo });   // ya tenía un pedido no confirmado en ese turno
+    else {
+      const d = { cid: c.id, fecha, tid: t.id, punto: t.punto, desde: t.desde, hasta: t.hasta, uid: p.uid, nombre: p.nombre, apellido: p.apellido, congregacion: p.congregacion, estado: 'confirmado', creado: ahora, por: yo,
+        movido: { de: p.id, fecha: p.fecha, desde: p.desde, hasta: p.hasta, punto: p.punto, at: ahora } };
+      ['email', 'celular', 'nota'].forEach(k => { if (p[k]) d[k] = p[k]; }); if (p.manual) d.manual = true;
+      b.set(S.db.doc('pedidos/' + nid), d);
+    }
+    b.set(S.db.doc('cupos/' + cupoId(c.id, fecha, t.id)), { cid: c.id, fecha, tid: t.id, ocupados: { [p.uid]: 'c' } }, { merge: true });
+    b.update(S.db.doc('cupos/' + cupoId(c.id, p.fecha, p.tid)), { ['ocupados.' + p.uid]: S.del() });
+    b.delete(S.db.doc('pedidos/' + p.id));
+    await b.commit();
+    S.db.doc('companeros/' + cupoId(c.id, p.fecha, p.tid)).update({ ['n.' + p.uid]: S.del() }).catch(() => {});
+    auditar(c.id, 'movio', `cambió a ${p.nombre} ${p.apellido} de ${turnoTxt(c, p.fecha, p)} a ${turnoTxt(c, fecha, t)}`);
   }
   function textoVoluntarios(c, dias) {
     const i0 = dias.indexOf(S.coord.semana), ds = dias.slice(i0 < 0 ? 0 : i0, (i0 < 0 ? 0 : i0) + 7);
@@ -1239,7 +1313,7 @@ window.PPAM_COORD = function (K) {
   function habCampHTML(c) {
     escucharHermanos();
     const L = listaHermanos().filter(h => !h.baja), n = L.filter(h => habPara(h, c.id)).length, faltan = anotadosSinHab(c).length;
-    return `<div class="habc"><span><b class="num">${n}</b> ${n === 1 ? 'hermano habilitado' : 'hermanos habilitados'} para esta campaña</span><button type="button" class="sbtn" data-go="#/hermanos" data-hcamp="${esc(c.id)}">Ver hermanos</button>${faltan ? `<button type="button" class="sbtn pri" id="cfPasar">Habilitar a los ${faltan} que ya se anotaron</button>` : ''}</div>`;
+    return `<div class="habc"><span><b class="num">${n}</b> ${n === 1 ? 'hermano habilitado' : 'hermanos habilitados'} para esta campaña</span><button type="button" class="sbtn" data-go="#/hermanos" data-hcamp="${esc(c.id)}">Ver hermanos</button>${faltan ? `<button type="button" class="sbtn pri" id="cfPasar">${faltan === 1 ? 'Habilitar al que ya se anotó' : `Habilitar a los ${faltan} que ya se anotaron`}</button>` : ''}</div>`;
   }
   // Hermanos con turnos en la campaña que todavía no están habilitados para ella
   function anotadosSinHab(c) {
@@ -1249,7 +1323,7 @@ window.PPAM_COORD = function (K) {
   }
   async function pasarAnotados(c) {
     const ids = anotadosSinHab(c); if (!ids.length) return;
-    if (!confirm(`¿Habilitar para "${c.nombre}" a los ${ids.length} hermanos que ya tienen turnos en esta campaña?`)) return;
+    if (!confirm(ids.length === 1 ? `¿Habilitar para "${c.nombre}" al hermano que ya tiene turnos en esta campaña?` : `¿Habilitar para "${c.nombre}" a los ${ids.length} hermanos que ya tienen turnos en esta campaña?`)) return;
     try {
       for (let i = 0; i < ids.length; i += 400) { const b = S.db.batch(); ids.slice(i, i + 400).forEach(id => b.update(S.db.doc('hermanos/' + id), { camps: arrF().arrayUnion(c.id) })); await b.commit(); }
       auditar(c.id, 'habilito', `habilitó para la campaña a los ${ids.length} hermanos que ya se habían anotado`); toast('Listo: quedaron habilitados'); render();
@@ -1390,7 +1464,7 @@ window.PPAM_COORD = function (K) {
   function avisarHab(hid, cid) {
     const h = S.herm.lista[hid], c = S.campanas[cid]; if (!h || !c) return;
     const x = Object.assign({ id: hid }, h);
-    sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>${esc(h.nombre)} quedó habilitado para ${esc(c.nombre)}</h3><p>Su link sigue siendo el mismo. Si querés, avisale por WhatsApp: el mensaje le abre esta campaña.</p></div><a class="btn" href="${esc(waTxt(x.celular, msgCamp(x, c)))}" target="_blank" rel="noopener">${I('chat')}Avisarle por WhatsApp</a><button type="button" class="btn alt" id="haCopy">${I('copy')}Copiar el link de esta campaña</button><button type="button" class="btn alt" data-cerrar>Listo</button>`)
+    sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>Listo: ${esc(h.nombre)} ya puede anotarse en ${esc(c.nombre)}</h3><p>Su link sigue siendo el mismo. Si querés, avisale por WhatsApp: el mensaje le abre esta campaña.</p></div><a class="btn" href="${esc(waTxt(x.celular, msgCamp(x, c)))}" target="_blank" rel="noopener">${I('chat')}Avisarle por WhatsApp</a><button type="button" class="btn alt" id="haCopy">${I('copy')}Copiar el link de esta campaña</button><button type="button" class="btn alt" data-cerrar>Listo</button>`)
       .querySelector('#haCopy').addEventListener('click', () => copiar(linkHermano(h.cod, cid)));
   }
   function fichaHermano(hid) {
@@ -1664,5 +1738,5 @@ window.PPAM_COORD = function (K) {
       catch (e) { console.error(e); bt.disabled = false; bt.textContent = 'Guardar revisión'; toast('No se pudo guardar.'); }
     });
   }
-  return { listaCompleta, fichaCarrito, renderHermanos, renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };
+  return { menuPersona, listaCompleta, fichaCarrito, renderHermanos, renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };
 };

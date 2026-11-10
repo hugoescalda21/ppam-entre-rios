@@ -294,8 +294,22 @@ service cloud.firestore {
                (!('celular' in d) || (d.celular is string && d.celular.size() >= 8 && d.celular.size() <= 30)) &&
                getAfter(cupo).data.ocupados.get(d.uid, '') == 'c';
       }
+      // El coordinador cambia a un hermano de turno: el pedido nuevo (confirmado, mismo hermano) sale del anterior, que se borra en el mismo envío.
+      function pedidoMovido(d) {
+        let cupo = /databases/$(database)/documents/cupos/$(d.cid + '__' + d.fecha + '__' + d.tid);
+        let origen = /databases/$(database)/documents/pedidos/$(d.movido.de);
+        return d.keys().hasOnly(['cid', 'fecha', 'tid', 'punto', 'desde', 'hasta', 'uid', 'email', 'nombre', 'apellido', 'congregacion', 'celular', 'estado', 'creado', 'nota', 'manual', 'por', 'movido']) &&
+               gestiona(d.cid) && notaOk(d) && turnoOk(d) && d.estado == 'confirmado' && d.por == mail() &&
+               d.movido is map && d.movido.keys().hasOnly(['de', 'fecha', 'desde', 'hasta', 'punto', 'at']) && d.movido.de is string &&
+               id == d.cid + '__' + d.fecha + '__' + d.tid + '__' + d.uid &&
+               exists(origen) && get(origen).data.uid == d.uid && get(origen).data.cid == d.cid && !existsAfter(origen) &&
+               d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 60 &&
+               d.apellido is string && d.apellido.size() > 0 && d.apellido.size() <= 60 &&
+               d.congregacion is string && d.congregacion.size() > 0 && d.congregacion.size() <= 80 &&
+               getAfter(cupo).data.ocupados.get(d.uid, '') == 'c';
+      }
       allow read: if (puedePedir() && resource.data.uid == yo()) || gestiona(resource.data.cid);
-      allow create: if (puedePedir() && pedidoValido(request.resource.data)) || (conSesion() && pedidoManual(request.resource.data));
+      allow create: if (puedePedir() && pedidoValido(request.resource.data)) || (conSesion() && pedidoManual(request.resource.data)) || (conSesion() && pedidoMovido(request.resource.data));
       // El coordinador confirma o no; el publicador puede volver a pedir si antes no se lo confirmaron.
       allow update: if (
                      (gestiona(resource.data.cid) &&

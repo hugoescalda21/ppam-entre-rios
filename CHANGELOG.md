@@ -9,6 +9,16 @@
 
 
 
+## Versión 59 — cambiar o quitar a un hermano de su turno
+
+- En "Quién va", cada hermano confirmado tiene un botón ••• con "Cambiar de turno o de lugar", "Escribirle por WhatsApp" y "Quitar del turno".
+- Cambiar: se elige el día y un turno con lugar (se ve con quién iría). El hermano pasa confirmado al turno nuevo con su mismo id (le aparece en "Mis turnos"), el anterior se libera y se ofrece el WhatsApp con el antes y el ahora. Queda en el historial.
+- Quitar: con un motivo opcional; libera el lugar y ofrece el WhatsApp ya escrito.
+- El hermano ve en el inicio "El coordinador cambió tu turno" (antes y ahora) hasta que toca "Entendido".
+- Ayuda: preguntas nuevas (campaña con candado, dónde ver quién se anotó, lista completa, cambiar o quitar, habilitación por campaña).
+- Textos: "Habilitar al que ya se anotó" (con uno solo) y "Listo: Rosa ya puede anotarse en Costanera".
+- Reglas: el coordinador puede crear el pedido nuevo de un hermano movido solo si borra el anterior en el mismo envío.
+
 ## Versión 58 — habilitación por campaña y "Quién va"
 
 - Cada campaña elige quién puede anotarse (Ajustes → Campaña): "Todos los hermanos habilitados" (como hasta ahora, es lo que queda por defecto) o "Solo los habilitados para esta campaña".

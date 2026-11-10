@@ -57,7 +57,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '58';
+  const VERSION = '59';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -875,6 +875,7 @@
       ['espera', 'Mi turno dice "Esperando confirmación", ¿qué significa?', 'Que tu pedido llegó bien y un coordinador de la campaña lo tiene que confirmar. Mientras tanto el lugar queda guardado para vos. Cuando lo confirme, en Mis turnos va a decir "Confirmado".'],
       ['completo', 'Un horario dice "Completo", ¿qué hago?', 'Elegí otro horario u otro día: los que tienen lugar dicen cuántos quedan libres. Con el filtro "Con lugar" ves solo esos, y con la lupa de arriba buscás lugares libres para hoy o mañana en toda la provincia.'],
       ['acompanado', '¿Puedo anotarme con mi esposa o con otro hermano?', 'Sí. Cada uno se anota con su propio link en el mismo horario. Al anotarte podés dejar una nota para el coordinador, por ejemplo "Voy con mi esposa". Desde tu turno, "Invitar a alguien a este turno" le manda el enlace por WhatsApp.'],
+      ['candado', 'Una campaña me aparece con candado, ¿qué hago?', 'Esa campaña pide que su coordinador te habilite. Abrila y tocá "Pedir acceso": le llega al coordinador. Cuando te habilite, la campaña se abre sola, con tu mismo link. Tus otras campañas y tus turnos siguen igual.'],
       ['varios', '¿Puedo anotarme en más de un turno?', 'Sí, en los que quieras. Si dos turnos se superponen en el horario, la app te avisa antes de confirmar.']
     ] },
     { g: 'Mis turnos', qs: [
@@ -892,8 +893,11 @@
       ['senal', 'No me carga o tengo poca señal, ¿qué hago?', 'La app guarda en el celular lo último que cargó, así que podés ver campañas y turnos con poca señal. Si te anotás o cancelás sin conexión, se manda solo cuando vuelve. Si no carga nada, cerrala y volvé a abrirla; si sigue igual, usá "Reportar un problema".']
     ] },
     { g: 'Para coordinadores', coord: true, qs: [
-      ['anotar', '¿Cómo anoto a un hermano que no usa la app?', 'En Del día, tocá "Anotar" en el horario, o buscalo con la lupa de arriba. Queda confirmado y podés avisarle por WhatsApp con un solo mensaje.'],
-      ['lista', '¿Cómo paso la lista del día al grupo de WhatsApp?', 'En Del día, elegí el día y tocá "Compartir la lista por WhatsApp" al final: arma el mensaje con cada punto, horario y quiénes van.'],
+      ['quienva', '¿Dónde veo quién se anotó en cada turno?', 'Al entrar a tu campaña se abre "Quién va": elegí el día y ves quién va a cada punto y horario, con su WhatsApp. En "Cobertura" cada casilla muestra las iniciales (en la computadora, los nombres) de quienes van.'],
+      ['lista', '¿Cómo paso la lista al grupo o la imprimo?', 'En "Quién va" o en "Cobertura", tocá "Lista completa". Elegí este día, esta semana o toda la campaña, y mandala por WhatsApp o imprimila. Los celulares van solo si tildás "Incluir los celulares".'],
+      ['mover', '¿Cómo cambio a un hermano de turno o lo quito?', 'En "Quién va", tocá los tres puntos (•••) al lado del hermano. "Cambiar de turno o de lugar" lo pasa confirmado a otro turno con lugar y libera el anterior. "Quitar del turno" libera el lugar. En los dos casos te ofrece el WhatsApp ya escrito para avisarle.'],
+      ['porcampana', '¿Cómo pido que en mi campaña se anoten solo los que yo habilito?', 'En tu campaña, Ajustes › Campaña › "¿Quién puede anotarse?", elegí "Solo los habilitados para esta campaña". Después habilitás a cada hermano desde su ficha en Hermanos, o desde "Pidieron acceso". Sigue usando su mismo link.'],
+      ['anotar', '¿Cómo anoto a un hermano que no usa la app?', 'En "Quién va", tocá "Anotar" en el horario, o buscalo con la lupa de arriba. Queda confirmado y podés avisarle por WhatsApp con un solo mensaje.'],
       ['recuperar', 'Borré algo por error, ¿se puede recuperar?', 'En Ajustes › Historial ves quién cambió qué y cuándo; los puntos y turnos borrados se pueden volver con "Restaurar". Para cualquier otra cosa, avisale al administrador: hay copias de seguridad diarias.']
     ] }
   ];
@@ -985,7 +989,7 @@
     // Campañas que piden habilitación propia: el hermano no habilitado las ve con candado (si la campaña lo permite)
     const vis = vis0.filter(habEn), bloq = vis0.filter(c => !habEn(c) && c.verBloq !== false);
     const prox = S.yo ? misProximos() : [];
-    let h = avisoCoordHTML() + instalarHTML() + avisoContarHTML();
+    let h = avisoCoordHTML() + avisoMovidoHTML() + instalarHTML() + avisoContarHTML();
     revisarAvisoContar();
     if (prox.length) {
       h += `<div class="lbl">${prox[0].fecha === hoy() ? 'Hoy' : 'Tu próximo turno'}</div>` + ticket(prox[0]);
@@ -1086,6 +1090,15 @@
       await S.db.doc('accesos/' + cid + '__' + S.yo).set({ cid, hid: S.yo, nombre: String(h.nombre || '').slice(0, 60), apellido: String(h.apellido || '').slice(0, 60), congregacion: String(h.congregacion || '').slice(0, 80), at: S.ahora() });
       S.accPed = S.accPed || {}; S.accPed[cid] = true; toast('Listo: le avisamos al coordinador'); render();
     } catch (e) { console.error(e); toast('No se pudo enviar. Revisá la conexión y probá de nuevo.'); }
+  }
+  // El coordinador le cambió el turno: se le avisa en el inicio hasta que toque "Entendido"
+  function avisoMovidoHTML() {
+    if (!S.esHermano || !S.yo) return '';
+    const vistos = (id) => { try { return !!localStorage.getItem('ppam-movido-' + id); } catch (e) { return false; } };
+    const ms = Object.keys(S.mis || {}).map(id => Object.assign({ id }, S.mis[id])).filter(p => p.movido && p.estado === 'confirmado' && p.fecha >= hoy() && !vistos(p.id));
+    return ms.map(p => { const c = S.campanas[p.cid] || {}, m = p.movido, lug = (pid) => ((c.puntos || {})[pid] || {}).nombre || '';
+      const mismo = m.punto === p.punto, d0 = parseIso(m.fecha);
+      return `<div class="codok mov">${I('cal', 'width:18px;height:18px')}<span><b>El coordinador cambió tu turno</b>Antes: ${esc(DOW[d0.getDay()].toLowerCase())} ${d0.getDate()}, ${esc(fmtHora(m.desde))} a ${esc(fmtHora(m.hasta))} · ${esc(lug(m.punto))}. Ahora: ${esc(fmtDia(p.fecha))}, ${esc(fmtHora(p.desde))} a ${esc(fmtHora(p.hasta))}${mismo ? ', en el mismo lugar' : ' · ' + esc(lug(p.punto))}.<br><button type="button" class="linkish fuerte" data-movok="${esc(p.id)}">Entendido</button></span></div>`; }).join('');
   }
   // Un coordinador que entró con su link de hermano: se le recuerda que con Google ve todo lo de su campaña
   function avisoCoordHTML() {
@@ -1989,6 +2002,8 @@
     if (ds.cancelar) { cancelarPedido(ds.cancelar); return; }
     if (ds.tab) { S.sucio = false; S.coord.tab = ds.tab; renderCoord(); return; }
     if (ds.pacc) { pedirAcceso(ds.pacc); return; }
+    if (ds.pmenu) { menuPersona(ds.pmenu); return; }
+    if (ds.movok) { try { localStorage.setItem('ppam-movido-' + ds.movok, '1'); } catch (e) { /* nada */ } render(); return; }
     if (ds.confirmar) { cambiarEstado(ds.confirmar, 'confirmado'); return; }
     if (ds.rechazar) { if (confirm('¿No confirmar este pedido? Se libera el lugar.')) cambiarEstado(ds.rechazar, 'rechazado'); return; }
     if (ds.quitar) { if (confirm('¿Quitar a esta persona del turno? Se libera el lugar.')) cambiarEstado(ds.quitar, 'rechazado'); return; }
@@ -2059,6 +2074,7 @@
   function textoVoluntarios(...a) { return enCoord('textoVoluntarios', a); }
   function textoDia(...a) { return enCoord('textoDia', a); }
   function listaCompleta(...a) { return enCoord('listaCompleta', a); }
+  function menuPersona(...a) { return enCoord('menuPersona', a); }
   function copiarHorarios(...a) { return enCoord('copiarHorarios', a); }
   function editarPunto(...a) { return enCoord('editarPunto', a); }
   function editarTurno(...a) { return enCoord('editarTurno', a); }

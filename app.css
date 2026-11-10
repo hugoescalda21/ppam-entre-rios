@@ -1261,3 +1261,8 @@ button.kc:first-child { border-top: 0; } .kc .tx { flex: 1; min-width: 0; } .kc 
 .fcamps .ck small, .ck small { color: var(--ink3); }
 .fco { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink2); padding: 6px 0 6px 4px; }
 .hcf { margin: 10px 0 0; }
+/* v59 · Cambiar o quitar a un hermano de su turno */
+.dp .mas3 { padding: 6px 10px; margin-left: 6px; letter-spacing: 1px; font-weight: 800; line-height: 1; }
+.codok.mov { background: var(--gold-bg); }
+.codok.mov > .ic { color: var(--gold-t); flex-shrink: 0; margin-top: 2px; }
+.ov .days { margin: 4px 0 10px; }
