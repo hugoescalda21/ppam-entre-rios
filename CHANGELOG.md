@@ -9,6 +9,12 @@
 
 
 
+## Versión 60 — depósitos para el retiro del carrito
+
+- Ajustes → Puntos y turnos → Depósitos: el lugar donde se guardan los carritos, con dirección, ubicación en el mapa (buscador, "Estoy acá" o link de Google Maps), hasta 2 fotos de la entrada, indicaciones y horario. Se carga una vez y se elige en cada punto.
+- En cada punto, "Retiro del carrito": un depósito, "Se queda en el lugar" u "Otro (escribirlo)", que es el texto de antes (lo ya cargado no cambia). Desde ahí también se crea un depósito nuevo.
+- El hermano ve en su turno y en "Ver lugar" la tarjeta del depósito (foto, dirección, a cuánto está del punto, indicaciones, horario, "Cómo llegar al depósito" y "Ver en el mapa" con los dos pines). El día del turno, el aviso dice "Primero pasá por el depósito". También va en el evento del calendario.
+
 ## Versión 59 — cambiar o quitar a un hermano de su turno
 
 - En "Quién va", cada hermano confirmado tiene un botón ••• con "Cambiar de turno o de lugar", "Escribirle por WhatsApp" y "Quitar del turno".

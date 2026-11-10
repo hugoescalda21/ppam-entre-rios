@@ -1616,6 +1616,43 @@ const SEED = {
     check('sin errores (hermano, turno cambiado)', h.errs.length === 0, h.errs);
     Object.keys(SEED).forEach(x => delete SEED[x]); Object.assign(SEED, S0);
   }
+  {
+    console.log('\nDepósitos para el retiro del carrito (v60)');
+    const S0 = JSON.parse(JSON.stringify(SEED));
+    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal'); await entrar(k, 400);
+    await k.click('[data-tab="config"]'); await k.waitForTimeout(150); await k.click('[data-aj="puntos"]'); await k.waitForTimeout(200);
+    check('Ajustes: sección Depósitos con "+ Depósito"', /Depósitos[\s\S]*Cargá el lugar donde se guardan los carritos/.test(await text(k, '#app')) && !!(await k.$('[data-dep=""]')));
+    await k.click('[data-dep=""]'); await k.waitForTimeout(200);
+    await k.fill('#dpNom', 'Depósito Salón Centro'); await k.fill('#dpDir', 'Urquiza 1240'); await k.fill('#dpInd', 'Timbre 2'); await k.fill('#dpHor', 'De 7:30 a 20:30');
+    await k.evaluate(() => { const c = window.__store['campanas/parana-terminal']; c.__x = 1; });
+    await k.click('#dpOk'); await k.waitForTimeout(300);
+    const dep = await k.evaluate(() => { const d = window.__store['campanas/parana-terminal'].depositos || {}; const id = Object.keys(d)[0]; return id ? Object.assign({ id }, d[id]) : null; });
+    check('guarda el depósito en la campaña', !!dep && dep.nombre === 'Depósito Salón Centro' && dep.direccion === 'Urquiza 1240' && dep.indicaciones === 'Timbre 2' && dep.horario === 'De 7:30 a 20:30', dep);
+    check('aparece en la lista, sin puntos que lo usen todavía', /Depósito Salón Centro[\s\S]*Todavía ningún punto lo usa/.test(await text(k, '#app')));
+    await k.click('[data-punto="p1"]'); await k.waitForTimeout(250);
+    check('en el punto: elegir depósito, "Se queda en el lugar" u "Otro"', await k.evaluate(() => [...document.querySelectorAll('.ov input[name="ptDep"]')].map(x => x.value).length === 3 && /Depósito Salón Centro[\s\S]*Se queda en el lugar[\s\S]*Otro \(escribirlo\)/.test(document.getElementById('ptDeps').innerText)));
+    await k.click(`.ov input[value="${dep.id}"]`); await k.waitForTimeout(80);
+    check('al elegir el depósito se oculta el texto libre', await k.evaluate(() => document.getElementById('ptRetF').classList.contains('hidden')));
+    await k.click('#ptOk'); await k.waitForTimeout(300);
+    check('el punto queda con su depósito', await k.evaluate((id) => window.__store['campanas/parana-terminal'].puntos.p1.deposito === id, dep.id));
+    check('la lista dice qué puntos lo usan', /Lo usan: Andén 1/.test(await text(k, '#app')));
+    check('sin errores (depósitos, coordinación)', k.errs.length === 0, k.errs);
+    // Lo que ve el hermano
+    const camp = await k.evaluate(() => JSON.parse(JSON.stringify(window.__store['campanas/parana-terminal'])));
+    SEED['campanas/parana-terminal'] = camp; delete SEED['campanas/parana-terminal'].__x;
+    SEED['campanas/parana-terminal'].puntos.p1.lat = -31.7333; SEED['campanas/parana-terminal'].puntos.p1.lng = -60.5297;
+    SEED['campanas/parana-terminal'].depositos[dep.id].lat = -31.7350; SEED['campanas/parana-terminal'].depositos[dep.id].lng = -60.5320;
+    SEED['pedidos/parana-terminal__2026-10-01__t1__u-ana'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't1', punto: 'p1', desde: '08:00', hasta: '10:00', uid: 'u-ana', nombre: 'Ana', apellido: 'Paz', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', estado: 'confirmado', creado: 'x' };
+    const h = await open([{ uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' }], '#/', { reloj: '2026-10-01T06:30:00-03:00' }); await h.waitForTimeout(400);
+    check('el día del turno: "Primero pasá por el depósito"', /Primero pasá por el depósito: Urquiza 1240 \(a 2\d0 m\)\. Horario: De 7:30 a 20:30\./.test(await text(h, '.ticket')), await text(h, '.ticket'));
+    await h.evaluate(() => { location.hash = '#/t/parana-terminal__2026-10-01__t1__u-ana'; }); await h.waitForTimeout(400);
+    check('detalle del turno: tarjeta del depósito con distancia, indicaciones y horario', /RETIRO DEL CARRITO\s*Depósito Salón Centro\s*Urquiza 1240 · a unos 2\d0 m del carrito, \d minutos caminando\s*Timbre 2\s*Retirar y devolver: De 7:30 a 20:30/.test(await text(h, '.depc')), await text(h, '.depc'));
+    check('"Cómo llegar al depósito" va a Google Maps caminando', await h.evaluate(() => /destination=-31\.735,-60\.532&travelmode=walking/.test(document.querySelector('.depc a.sbtn').href)));
+    await h.click('[data-depver]'); await h.waitForTimeout(250);
+    check('"Ver en el mapa" abre el depósito con la distancia al carrito', /Depósito Salón Centro[\s\S]*caminando del depósito al carrito/.test(await text(h, '.ov')));
+    check('sin errores (depósitos, hermano)', h.errs.length === 0, h.errs);
+    Object.keys(SEED).forEach(x => delete SEED[x]); Object.assign(SEED, S0);
+  }
   await b.close(); console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;
 })();

@@ -753,6 +753,7 @@ window.PPAM_COORD = function (K) {
     const diasTxt = (ds) => corta ? corta.filter(x => (ds || []).includes(x.d)).map(x => DOW[x.d] + ' ' + x.n).join(', ') || 'Ningún día de la campaña' : (ds || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW[d]).join(', ') || 'Ningún día';
     const fuera = (t) => (t.dias || []).filter(d => !validos.includes(d));
     const conTurnos = puntos.filter(p => turnos.some(t => t.punto === p.id));
+    h += depositosHTML(c, puntos);
     h += `<div class="sec">Puntos y turnos <button type="button" class="sbtn" data-punto="">+ Punto</button></div>`;
     if (!puntos.length) h += '<div class="card"><div class="empty">Agregá el primer punto (un carrito, un stand…). Después le cargás sus horarios.</div></div>';
     h += '<div class="pcw pcs">';
@@ -916,6 +917,89 @@ window.PPAM_COORD = function (K) {
       await b.commit(); toast('Foto de portada guardada');
     } catch (e) { console.error(e); toast(e && e.message === 'imagen' ? 'No se pudo leer esa imagen.' : 'No se pudo subir la foto. Probá con otra.'); }
   }
+  /* ---------- Depósitos: dónde se guardan los carritos (se cargan una vez y se eligen en cada punto) ---------- */
+  const listaDep = (c) => Object.keys(c.depositos || {}).map(id => Object.assign({ id }, c.depositos[id])).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+  function depositosHTML(c, puntos) {
+    const ds = listaDep(c);
+    if (!ds.length && !puntos.some(p => p.tipo === 'carrito' || p.tipo === 'stand')) return '';
+    let h = `<div class="sec">Depósitos <button type="button" class="sbtn" data-dep="">+ Depósito</button></div>`;
+    if (!ds.length) return h + '<div class="card"><div class="empty">Cargá el lugar donde se guardan los carritos, con su ubicación y una foto. Después lo elegís en cada punto y los hermanos lo ven en su turno.</div></div>';
+    h += '<div class="card">' + ds.map(d => { const usan = puntos.filter(p => p.deposito === d.id).map(p => p.nombre), nf = (d.fotos || []).length;
+      return `<div class="kc dpr"><span class="th"${d.fotos && d.fotos[0] ? fotoAttr(c.id, d.fotos[0]) : ''}>${d.fotos && d.fotos[0] ? '' : I('pin', 'width:20px;height:20px')}</span><span class="tx"><b>${esc(d.nombre)}</b><small>${esc([d.direccion, d.lat != null ? 'Marcado en el mapa' : 'Sin marcar en el mapa', nf ? nf + (nf === 1 ? ' foto' : ' fotos') : ''].filter(Boolean).join(' · '))}</small><small>${usan.length ? 'Lo usan: ' + esc(usan.join(', ')) : 'Todavía ningún punto lo usa'}</small></span><button type="button" class="sbtn" data-dep="${esc(d.id)}">Editar</button></div>`; }).join('') + '</div>';
+    return h + '<p class="note" style="margin:6px 0 14px">Donde se guardan los carritos. Lo cargás una vez y lo elegís en cada punto (Editar → Retiro del carrito).</p>';
+  }
+  function editarDeposito(c, didIn, alGuardar) {
+    if (!c) return;
+    const did = didIn || 'd' + uidGen(), d0 = didIn ? (c.depositos || {})[didIn] || {} : {};
+    const st = { fotos: (d0.fotos || []).slice(), nuevas: {}, borrar: [], lat: d0.lat != null ? d0.lat : null, lng: d0.lng != null ? d0.lng : null };
+    const ov = sheet(`<h3>${didIn ? 'Editar depósito' : 'Nuevo depósito'}</h3><p class="hint">Donde los hermanos buscan y devuelven el carrito.</p>
+      <div class="fld"><label for="dpNom">Nombre</label><input id="dpNom" maxlength="60" value="${esc(d0.nombre || '')}" placeholder="Depósito Salón Centro"></div>
+      <div class="fld"><label for="dpDir">Dirección</label><input id="dpDir" maxlength="150" value="${esc(d0.direccion || '')}" placeholder="Urquiza 1240"></div>
+      <div class="lbl">Ubicación · tocá el mapa donde está</div>
+      <div class="mapedit" id="dpMap"><div class="mapmsg">Cargando el mapa…</div></div>
+      <div class="okline" id="dpUbi"></div>
+      <div class="pills" style="margin-top:8px"><button type="button" class="sbtn" id="dpGeo">${I('target')}Estoy acá</button><button type="button" class="sbtn" id="dpFull">${I('search')}Buscar en el mapa</button><button type="button" class="sbtn" id="dpLinkB">${I('link')}Pegar link</button></div>
+      <div class="fld hidden" id="dpLinkF" style="margin:8px 0 0"><input id="dpLink" placeholder="Pegá acá el link de Google Maps" inputmode="url"></div>
+      <div class="lbl" style="margin-top:12px">Fotos de la entrada (hasta 2)</div><div class="up" id="dpFotos"></div>
+      <p class="small-hint">La puerta o el portón, para que lo reconozcan. Sin personas reconocibles.</p>
+      <div class="fld"><label for="dpInd">Indicaciones (opcional)</label><textarea id="dpInd" rows="2" maxlength="400" placeholder="Pedir la llave a…, timbre 2, devolver con la lona puesta…">${esc(d0.indicaciones || '')}</textarea></div>
+      <div class="fld"><label for="dpHor">Horario para retirar y devolver (opcional)</label><input id="dpHor" maxlength="80" value="${esc(d0.horario || '')}" placeholder="De 7:30 a 20:30"></div>
+      <button type="button" class="btn" id="dpOk">Guardar depósito</button>${didIn ? '<button type="button" class="btn alt" id="dpDel" style="color:var(--bad)">Borrar este depósito</button>' : ''}<button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
+    const q = (s) => ov.querySelector(s);
+    let mapa = null, dirAuto = '';
+    const pintarUbi = () => { q('#dpUbi').innerHTML = st.lat != null ? `✓ Ubicación marcada · <button type="button" class="linkish" id="dpUbiX">quitar</button>` : ''; if (q('#dpUbiX')) q('#dpUbiX').addEventListener('click', () => { st.lat = st.lng = null; if (mapa) mapa.quitar(); pintarUbi(); }); };
+    function marcar(lat, lng, dirSug, mover) {
+      st.lat = +(+lat).toFixed(6); st.lng = +(+lng).toFixed(6); if (mapa) mapa.poner(st.lat, st.lng, mover); pintarUbi();
+      const campo = q('#dpDir'), libre = () => !campo.value.trim() || campo.value.trim() === dirAuto; if (!libre()) return;
+      const llenar = (x) => { if (x && libre()) { campo.value = x; dirAuto = x; } };
+      if (dirSug) llenar(dirSug); else direccionDe(st.lat, st.lng).then(llenar);
+    }
+    centroMapa(c, st).then(async (cen) => {
+      try { await cargarLeaflet(); if (!ov.isConnected) return; q('#dpMap').innerHTML = ''; mapa = crearMapa(q('#dpMap'), cen, st.lat != null ? [st.lat, st.lng] : null, (ll) => marcar(ll.lat, ll.lng)); }
+      catch (e) { q('#dpMap').innerHTML = '<div class="mapmsg">No se pudo cargar el mapa. Usá "Estoy acá" o pegá un link de Google Maps.</div>'; }
+    });
+    q('#dpFull').addEventListener('click', () => buscarEnMapa(c, st, (lat, lng, dir) => marcar(lat, lng, dir, true), 'el depósito'));
+    q('#dpLinkB').addEventListener('click', () => { q('#dpLinkF').classList.remove('hidden'); q('#dpLink').focus(); });
+    q('#dpLink').addEventListener('input', () => { const g = parseMapsLink(q('#dpLink').value.trim()); if (g) marcar(g.lat, g.lng, '', true); });
+    q('#dpGeo').addEventListener('click', () => {
+      if (!navigator.geolocation) { toast('Este navegador no da la ubicación.'); return; }
+      const b = q('#dpGeo'); b.disabled = true;
+      navigator.geolocation.getCurrentPosition((pos) => { b.disabled = false; marcar(pos.coords.latitude, pos.coords.longitude, '', true); }, () => { b.disabled = false; toast('No se pudo obtener la ubicación. Revisá el permiso del navegador.'); }, { enableHighAccuracy: true, timeout: 15000 });
+    });
+    function pintarFotos() {
+      q('#dpFotos').innerHTML = st.fotos.map(f => `<div class="img"${st.nuevas[f] ? ` style="background-image:url('${st.nuevas[f]}')"` : fotoAttr(c.id, f)}><button type="button" data-qf="${esc(f)}" aria-label="Quitar foto">✕</button></div>`).join('') +
+        (st.fotos.length < 2 ? '<label class="add">' + I('camera', 'width:20px;height:20px;margin:0 auto 3px;display:block') + 'Agregar foto<input type="file" accept="image/*" id="dpFile"></label>' : '');
+      ov.querySelectorAll('[data-qf]').forEach(b => b.addEventListener('click', () => { const f = b.dataset.qf; st.fotos = st.fotos.filter(x => x !== f); if (st.nuevas[f]) delete st.nuevas[f]; else st.borrar.push(f); pintarFotos(); }));
+      if (q('#dpFile')) q('#dpFile').addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0]; if (!file) return;
+        try { const data = await achicar(file, 1200), f = 'f' + uidGen(); st.nuevas[f] = data; st.fotos.push(f); pintarFotos(); }
+        catch (err) { toast(err && err.message === 'imagen' ? 'No se pudo leer esa imagen.' : 'Esa foto es muy pesada. Probá con otra.'); }
+      });
+    }
+    pintarUbi(); pintarFotos();
+    q('#dpOk').addEventListener('click', async () => {
+      const d = { nombre: q('#dpNom').value.trim().slice(0, 60) };
+      if (!d.nombre) { toast('Poné un nombre al depósito.'); return; }
+      const dir = q('#dpDir').value.trim().slice(0, 150), ind = q('#dpInd').value.trim().slice(0, 400), hor = q('#dpHor').value.trim().slice(0, 80);
+      if (dir) d.direccion = dir; if (ind) d.indicaciones = ind; if (hor) d.horario = hor;
+      if (st.lat != null) { d.lat = st.lat; d.lng = st.lng; }
+      if (st.fotos.length) d.fotos = st.fotos;
+      const b = S.db.batch(), ahora = new Date().toISOString();
+      Object.keys(st.nuevas).forEach(f => { b.set(S.db.doc('fotos/' + fotoKey(c.id, f)), { cid: c.id, data: st.nuevas[f], creado: ahora }); S.fotos[fotoKey(c.id, f)] = st.nuevas[f]; });
+      st.borrar.forEach(f => b.delete(S.db.doc('fotos/' + fotoKey(c.id, f))));
+      b.update(S.db.doc('campanas/' + c.id), { ['depositos.' + did]: d });
+      const btn = q('#dpOk'); btn.disabled = true;
+      try { await b.commit(); auditar(c.id, didIn ? 'cambio_punto' : 'creo_punto', (didIn ? 'cambió el depósito ' : 'creó el depósito ') + d.nombre); ov.remove(); toast('Depósito guardado'); if (alGuardar) alGuardar(did, d); }
+      catch (e) { console.error(e); btn.disabled = false; toast('No se pudo guardar. Probá de nuevo.'); }
+    });
+    if (didIn) q('#dpDel').addEventListener('click', async () => {
+      const usan = Object.keys(c.puntos || {}).filter(pid => c.puntos[pid].deposito === didIn);
+      if (!confirm(usan.length ? `Lo usan ${usan.length === 1 ? 'un punto' : usan.length + ' puntos'}. Se les quita el depósito. ¿Borrarlo?` : '¿Borrar este depósito?')) return;
+      const upd = { ['depositos.' + didIn]: S.del() }; usan.forEach(pid => { upd['puntos.' + pid + '.deposito'] = S.del(); });
+      const b = S.db.batch(); b.update(S.db.doc('campanas/' + c.id), upd); (d0.fotos || []).forEach(f => b.delete(S.db.doc('fotos/' + fotoKey(c.id, f))));
+      try { await b.commit(); auditar(c.id, 'borro_punto', 'borró el depósito ' + (d0.nombre || '')); ov.remove(); toast('Depósito borrado'); } catch (e) { console.error(e); toast('No se pudo borrar.'); }
+    });
+  }
   function editarPunto(c, pidIn) {
     const pid = pidIn || 'p' + uidGen();
     const p = pidIn ? c.puntos[pidIn] : { nombre: '', tipo: 'carrito', cupo: 2, detalle: '' };
@@ -937,7 +1021,8 @@ window.PPAM_COORD = function (K) {
       <div class="lbl">Fotos del lugar (hasta 3)</div><div class="up" id="ptFotos"></div>
       <p class="small-hint">Del lugar, sin personas reconocibles. Se achican solas antes de subirse.</p>
       <div class="fld"><label for="ptInd">Cómo encontrarlo (opcional)</label><textarea id="ptInd" rows="2" placeholder="Entrando por Av. Ramírez, a la derecha, entre las boleterías 4 y 5.">${esc(p.indicaciones || '')}</textarea></div>
-      <div class="fld"><label for="ptRet" id="ptRetL">${retiroLabel(p)} (opcional)</label><textarea id="ptRet" rows="2" placeholder="Dónde se busca y se devuelve">${esc(p.retiro || '')}</textarea></div>
+      <div class="lbl" id="ptRetL">${retiroLabel(p)}</div><div id="ptDeps"></div>
+      <div class="fld${(p.deposito && p.deposito !== 'otro') || (!p.retiro && Object.keys(c.depositos || {}).length) ? ' hidden' : ''}" id="ptRetF"><textarea id="ptRet" rows="2" aria-labelledby="ptRetL" placeholder="Dónde se busca y se devuelve">${esc(p.retiro || '')}</textarea></div>
       <div class="lbl">Comodidades del lugar</div>
       <div class="cmsel">${COMOD.map(([k, txt, ic]) => `<label class="${st.comod[k] ? 'on' : ''}"><input type="checkbox" data-cm="${k}"${st.comod[k] ? ' checked' : ''}>${I(ic, 'width:16px;height:16px')}${txt}</label>`).join('')}</div>
       ${Object.keys(LUGX).map(k => `<div class="lugx${st.comod[k] ? '' : ' hidden'}" id="lx-${k}"><div class="t">${I(k === 'estac' ? 'auto' : 'bano', 'width:16px;height:16px')}¿Dónde está ${LUGX[k][0]}? <small>(opcional)</small></div><div class="okline" id="lxOk-${k}"></div>
@@ -983,6 +1068,20 @@ window.PPAM_COORD = function (K) {
       });
     }
     pintarUbi(); pintarFotos();
+    // Retiro: un depósito de la campaña, "se queda en el lugar" o texto libre (como antes)
+    let depSel = p.deposito && (p.deposito === 'lugar' || (c.depositos || {})[p.deposito]) ? p.deposito : 'otro';
+    const deps = () => listaDep(S.campanas[c.id] || c);
+    function pintarDeps() {
+      const ds = deps();
+      q('#ptDeps').innerHTML = ds.map(d => `<label class="lgr${depSel === d.id ? ' sel' : ''}"><input type="radio" name="ptDep" value="${esc(d.id)}"${depSel === d.id ? ' checked' : ''}><span class="tx"><b>${esc(d.nombre)}</b><small>${esc([d.direccion, d.lat != null && st.lat != null ? 'a ' + distTxt(metros({ lat: st.lat, lng: st.lng }, d)) + ' del punto' : ''].filter(Boolean).join(' · ') || 'Depósito de la campaña')}</small></span></label>`).join('') +
+        `<label class="lgr${depSel === 'lugar' ? ' sel' : ''}"><input type="radio" name="ptDep" value="lugar"${depSel === 'lugar' ? ' checked' : ''}><span class="tx"><b>Se queda en el lugar</b><small>No hay que retirarlo</small></span></label>` +
+        `<label class="lgr${depSel === 'otro' ? ' sel' : ''}"><input type="radio" name="ptDep" value="otro"${depSel === 'otro' ? ' checked' : ''}><span class="tx"><b>${ds.length ? 'Otro (escribirlo)' : 'Escribirlo'}</b><small>Solo con texto, como hasta ahora</small></span></label>` +
+        `<button type="button" class="linkish fuerte" id="ptDepN" style="margin:2px 0 10px">+ Nuevo depósito</button>`;
+      q('#ptRetF').classList.toggle('hidden', depSel !== 'otro');
+      q('#ptDepN').addEventListener('click', () => editarDeposito(S.campanas[c.id] || c, null, (id) => { depSel = id; setTimeout(pintarDeps, 50); }));
+    }
+    ov.addEventListener('change', (e) => { if (e.target.name === 'ptDep') { depSel = e.target.value; pintarDeps(); } });
+    pintarDeps();
     // Comodidades: el estacionamiento y el baño se pueden ubicar en el mapa
     function pintarLx(k) {
       const l = st.lug[k], el = q('#lxOk-' + k); if (!el) return;
@@ -1004,7 +1103,7 @@ window.PPAM_COORD = function (K) {
       }
     });
     Object.keys(LUGX).forEach(k => q('#lxLink-' + k).addEventListener('input', () => { const g = parseMapsLink(q('#lxLink-' + k).value.trim()); if (g) ponerLx(k, g.lat, g.lng); }));
-    q('#ptTipo').addEventListener('change', () => { if (!pidIn) q('#ptCupo').value = q('#ptTipo').value === 'stand' ? 3 : 2; q('#ptRetL').textContent = retiroLabel({ tipo: q('#ptTipo').value }) + ' (opcional)'; });
+    q('#ptTipo').addEventListener('change', () => { if (!pidIn) q('#ptCupo').value = q('#ptTipo').value === 'stand' ? 3 : 2; q('#ptRetL').textContent = retiroLabel({ tipo: q('#ptTipo').value }); });
     q('#ptLinkB').addEventListener('click', () => { q('#ptLinkF').classList.remove('hidden'); q('#ptLink').focus(); });
     q('#ptLink').addEventListener('input', () => {
       const v = q('#ptLink').value.trim(), g = parseMapsLink(v);
@@ -1026,7 +1125,7 @@ window.PPAM_COORD = function (K) {
       const dir = q('#ptDir').value.trim().slice(0, 150), ind = q('#ptInd').value.trim().slice(0, 600), ret = q('#ptRet').value.trim().slice(0, 600);
       if (dir) d.direccion = dir;
       if (ind) d.indicaciones = ind;
-      if (ret) d.retiro = ret;
+      if (depSel === 'otro') { if (ret) d.retiro = ret; } else d.deposito = depSel;
       if (st.lat != null) { d.lat = st.lat; d.lng = st.lng; } else if (st.mapsUrl) d.mapsUrl = st.mapsUrl;
       if (st.fotos.length) d.fotos = st.fotos;
       const cm = {}; COMOD.forEach(([k]) => { if (st.comod[k]) cm[k] = true; });
@@ -1738,5 +1837,5 @@ window.PPAM_COORD = function (K) {
       catch (e) { console.error(e); bt.disabled = false; bt.textContent = 'Guardar revisión'; toast('No se pudo guardar.'); }
     });
   }
-  return { menuPersona, listaCompleta, fichaCarrito, renderHermanos, renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };
+  return { editarDeposito, menuPersona, listaCompleta, fichaCarrito, renderHermanos, renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };
 };

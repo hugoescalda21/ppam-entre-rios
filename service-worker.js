@@ -1,5 +1,5 @@
 // Service worker de PPAM Entre Ríos: guarda la página y Firebase para que abra rápido y también sin señal.
-const CACHE = 'ppam-v61';
+const CACHE = 'ppam-v62';
 const SDK = 'ppam-sdk-10.13.2';   // Firebase (gstatic): misma versión = mismo archivo, se guarda una vez para abrir sin señal
 const SDK_URLS = ['app', 'auth', 'firestore'].map(n => `https://www.gstatic.com/firebasejs/10.13.2/firebase-${n}-compat.js`);
 const ASSETS = ['./', './index.html', './app.js?v=57', './coord.js?v=57', './app.css?v=57', './firebase-config.js?v=57', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png', './icon-64.png'];

@@ -57,7 +57,7 @@
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '59';
+  const VERSION = '60';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -298,7 +298,7 @@
   }
 
   const tieneUbic = (p) => p.lat != null || !!p.direccion || !!p.mapsUrl;
-  const tieneLugar = (p) => tieneUbic(p) || !!(p.fotos || []).length || !!p.indicaciones || !!p.retiro || !!p.pubs || Object.values(p.comod || {}).some(Boolean);
+  const tieneLugar = (p) => tieneUbic(p) || !!(p.fotos || []).length || !!p.indicaciones || !!p.retiro || !!p.deposito || !!p.pubs || Object.values(p.comod || {}).some(Boolean);
   function comoLlegarUrl(p, c) {
     if (p.lat != null && p.lng != null) return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
     if (p.mapsUrl && /^https:\/\/[^\s"'<>]+$/.test(p.mapsUrl)) return p.mapsUrl;
@@ -321,6 +321,52 @@
   const distTxt = (m) => m < 1000 ? `unos ${Math.max(10, Math.round(m / 10) * 10)} m` : `unos ${(m / 1000).toFixed(1).replace('.', ',')} km`;
   const minTxt = (m) => { const n = Math.max(1, Math.round(m / 80)); return n === 1 ? '1 minuto' : n + ' minutos'; };
   const tipoTxt = (p) => (p.tipo === 'stand' ? 'stand' : p.tipo === 'carrito' ? 'carrito' : 'punto');
+  /* ---------- Depósito: de dónde se retira el carrito (lo carga el coordinador en Ajustes → Puntos y turnos) ---------- */
+  const depDe = (c, p) => (p && p.deposito && p.deposito !== 'lugar' && ((c && c.depositos) || {})[p.deposito]) || null;
+  const depDist = (d, p) => (d && p && d.lat != null && p.lat != null ? metros(p, d) : null);
+  const depUrl = (d, c) => (d.lat != null ? `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}&travelmode=walking` : comoLlegarUrl(d, c));
+  // Texto corto para el aviso del día y el calendario
+  function retiroCorto(c, p) {
+    const d = depDe(c, p);
+    if (d) { const m = depDist(d, p); return `Primero pasá por el depósito: ${d.direccion || d.nombre}${m != null ? ` (a ${distTxt(m).replace('unos ', '')})` : ''}.${d.horario ? ' Horario: ' + d.horario + '.' : ''}`; }
+    if (p.deposito === 'lugar') return '';
+    return p.retiro ? retiroLabel(p) + ': ' + p.retiro : '';
+  }
+  // Tarjeta del retiro (detalle del turno y "Ver lugar")
+  function retiroHTML(c, pid) {
+    const p = (c.puntos || {})[pid] || {}, d = depDe(c, p);
+    if (d) {
+      const m = depDist(d, p), url = depUrl(d, c), f = (d.fotos || [])[0];
+      return `<div class="depc">${f ? `<div class="dfoto"${fotoAttr(c.id, f)} role="img" aria-label="Foto del depósito"></div>` : ''}<div class="dtx"><div class="lbl">${esc(retiroLabel(p))}</div><b>${esc(d.nombre)}</b>${d.direccion || m != null ? `<small>${esc([d.direccion, m != null ? `a ${distTxt(m)} del ${tipoTxt(p)}, ${minTxt(m)} caminando` : ''].filter(Boolean).join(' · '))}</small>` : ''}${d.indicaciones ? `<p>${esc(d.indicaciones)}</p>` : ''}${d.horario ? `<small>Retirar y devolver: ${esc(d.horario)}</small>` : ''}<div class="pills">${url ? `<a class="sbtn pri" href="${esc(url)}" target="_blank" rel="noopener">${I('nav', 'width:15px;height:15px')}Cómo llegar al depósito</a>` : ''}${d.lat != null ? `<button type="button" class="sbtn" data-depver="${esc(c.id)}|${esc(pid)}">${I('pin', 'width:15px;height:15px')}Ver en el mapa</button>` : ''}</div></div></div>`;
+    }
+    if (p.deposito === 'lugar') return `<div class="info"><b>${esc(retiroLabel(p))}</b><p>El ${esc(tipoTxt(p))} se queda en el lugar: no hay que retirarlo.</p></div>`;
+    return p.retiro ? `<div class="info"><b>${esc(retiroLabel(p))}</b><p>${esc(p.retiro)}</p></div>` : '';
+  }
+  // Mapa con el depósito y el punto
+  function verDeposito(cid, pid) {
+    const c = S.campanas[cid], p = c && c.puntos && c.puntos[pid], d = depDe(c, p); if (!d) return;
+    const m = depDist(d, p), url = depUrl(d, c), urlP = comoLlegarUrl(p, c), fotos = (d.fotos || []).map(f => `<div${fotoAttr(cid, f)}></div>`).join('');
+    const ov = sheet(`${fotos ? `<div class="fotos">${fotos}</div>` : ''}<h3>${esc(d.nombre)}</h3><span class="sub">${esc(retiroLabel(p))} · ${esc(p.nombre)} · ${esc(c.nombre)}</span>
+      ${d.lat != null ? '<div class="cmapa" id="dpMap"><div class="mapmsg">Cargando el mapa…</div></div>' : ''}
+      ${m != null ? `<div class="cdist">${I('pie')}<span><b>${distTxt(m)}</b> caminando del depósito al ${esc(tipoTxt(p))} · ${minTxt(m)}</span></div>` : ''}
+      ${d.direccion ? `<div class="dir">${I('pin')}<div>${esc(d.direccion)}</div></div>` : ''}
+      ${d.indicaciones ? `<div class="info"><b>Indicaciones</b>${esc(d.indicaciones)}</div>` : ''}${d.horario ? `<div class="info"><b>Retirar y devolver</b>${esc(d.horario)}</div>` : ''}
+      <div class="lugar-acts">${url ? `<a class="go" href="${esc(url)}" target="_blank" rel="noopener">${I('nav')}Cómo llegar al depósito</a>` : ''}${urlP ? `<a class="sbtn" href="${esc(urlP)}" target="_blank" rel="noopener">${I('nav', 'width:15px;height:15px')}Al ${esc(tipoTxt(p))}</a>` : ''}</div>
+      <button type="button" class="btn alt" data-cerrar style="margin-top:12px">Volver</button>`);
+    if (d.lat == null) return;
+    cargarLeaflet().then((L) => {
+      const el = ov.querySelector('#dpMap'); if (!el || !ov.isConnected) return;
+      el.innerHTML = '';
+      const map = L.map(el, { zoomControl: false, scrollWheelZoom: false });
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+      const pin = (cls, txt) => L.divIcon({ className: 'cpin ' + cls, html: `<i><b>${txt}</b></i>`, iconSize: [30, 30], iconAnchor: [15, 30] });
+      const pts = [[d.lat, d.lng]];
+      L.marker(pts[0], { icon: pin('dep', 'D'), title: d.nombre }).addTo(map);
+      if (p.lat != null) { pts.push([p.lat, p.lng]); L.marker(pts[1], { icon: pin('pt', ''), title: p.nombre }).addTo(map); L.polyline(pts, { color: '#12433F', weight: 3, dashArray: '6 7' }).addTo(map); }
+      if (pts.length > 1) map.fitBounds(pts, { padding: [40, 40], maxZoom: 18 }); else map.setView(pts[0], 17);
+      setTimeout(() => map.invalidateSize(), 80);
+    }).catch(() => { const el = ov.querySelector('#dpMap'); if (el) el.innerHTML = '<div class="mapmsg">No se pudo cargar el mapa. Usá el botón de Cómo llegar.</div>'; });
+  }
   // "Cómo llegar" pregunta cómo vas cuando el coordinador ubicó un estacionamiento
   const llegarAttr = (cid, pid) => { const p = ((S.campanas[cid] || {}).puntos || {})[pid], e = p && (p.lugares || {}).estac; return e && e.lat != null ? ` data-llegar="${esc(cid)}|${esc(pid)}"` : ''; };
   function comodHTML(cid, pid) {
@@ -814,7 +860,7 @@
     const top = esHoy ? `<span class="today">${I('clock', 'width:13px;height:13px')}${esc(cuando)}</span>${pill}` : `<span class="d">${esc(DOW[parseIso(p.fecha).getDay()] + ' ' + parseIso(p.fecha).getDate() + ' de ' + MES[parseIso(p.fecha).getMonth()])}</span>${pill}`;
     let hint = '';
     if (!conf) hint = '<div class="hint">Un coordinador lo revisa y te confirma. Lo vas a ver acá y en Mis turnos.' + (p.fecha <= addDays(hoy(), 2) ? ' <b>Si falta poco y todavía no te confirmaron, avisale al coordinador de tu congregación.</b>' : '') + '</div>';
-    else if (esHoy && pt.retiro) hint = `<div class="hint">${esc(retiroLabel(pt))}: ${esc(pt.retiro)}</div>`;
+    else if (esHoy && retiroCorto(c, pt)) hint = `<div class="hint">${esc(retiroCorto(c, pt))}</div>`;
     let acts;
     if (!conf) acts = `<button type="button" class="btn gh" data-go="#/t/${esc(p.id)}">Ver detalle</button><button type="button" class="btn gh sm" data-cancelar="${esc(p.id)}">Cancelar</button>`;
     else if (esHoy && url) acts = `<a class="btn w big2" href="${esc(url)}" target="_blank" rel="noopener"${llegarAttr(p.cid, p.punto)}>${I('nav')}Cómo llegar</a><button type="button" class="btn gh sm" data-go="#/t/${esc(p.id)}">Detalle</button>`;
@@ -1192,7 +1238,7 @@
       ${comodHTML(cid, pid)}
       ${url ? `<div class="lugar-acts"><a class="go" href="${esc(url)}" target="_blank" rel="noopener"${llegarAttr(cid, pid)}>${I('nav')}Cómo llegar</a>${dir ? `<button type="button" class="sbtn" data-copiar="${esc(dir)}">${I('copy')}Copiar dirección</button>` : ''}</div>` : ''}
       ${p.indicaciones ? `<div class="info"><b>Cómo encontrarlo</b>${esc(p.indicaciones)}</div>` : ''}
-      ${p.retiro ? `<div class="info"><b>${retiroLabel(p)}</b>${esc(p.retiro)}</div>` : ''}
+      ${retiroHTML(c, pid)}
       <button type="button" class="btn alt" data-cerrar style="margin-top:14px">Cerrar</button>`);
     if (ovL.querySelector('#vlPubs') && !S.pubs) cargarPubs().then(() => { const el = ovL.querySelector('#vlPubs'); if (el) el.outerHTML = pubsCarritoHTML(c, pid); });
   }
@@ -1461,7 +1507,7 @@
     if (!rech && !pasado) h += `<div class="info nota-info"><b>Nota para el coordinador</b><p>${p.nota ? esc(p.nota) : '<span class="faint">Sin nota.</span>'}</p><button type="button" class="sbtn" data-nota="${esc(p.id)}">${I('edit', 'width:15px;height:15px')}${p.nota ? 'Cambiar' : 'Agregar una nota'}</button></div>`;
     else if (p.nota) h += `<div class="info"><b>Nota para el coordinador</b><p>${esc(p.nota)}</p></div>`;
     if (pt.indicaciones) h += `<div class="info"><b>Cómo encontrarlo</b><p>${esc(pt.indicaciones)}</p></div>`;
-    if (pt.retiro) h += `<div class="info"><b>${esc(retiroLabel(pt))}</b><p>${esc(pt.retiro)}</p></div>`;
+    h += retiroHTML(c, p.punto);
     if (tieneLugar(pt)) h += `<button type="button" class="btn alt" data-lugar="${esc(p.cid)}|${esc(p.punto)}">${I('pin')}Ver fotos y datos del lugar</button>`;
     h += '</div></div>';
     $('app').innerHTML = h;
@@ -1489,7 +1535,7 @@
     const escIcs = (x) => String(x || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
     const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PPAM Entre Rios//ES', 'BEGIN:VEVENT', `UID:${pid}@ppam-entre-rios`, `DTSTAMP:${ahora}`,
       `DTSTART:${f}T${hh(p.desde)}`, `DTEND:${f}T${hh(p.hasta)}`, `SUMMARY:${escIcs('PPAM · ' + (pt.nombre || '') + ' (' + (c.nombre || '') + ')')}`,
-      `LOCATION:${escIcs([pt.direccion, c.nombre, c.ciudad].filter(Boolean).join(', '))}`, `DESCRIPTION:${escIcs([pt.indicaciones, pt.retiro && retiroLabel(pt) + ': ' + pt.retiro].filter(Boolean).join('\n'))}`,
+      `LOCATION:${escIcs([pt.direccion, c.nombre, c.ciudad].filter(Boolean).join(', '))}`, `DESCRIPTION:${escIcs([pt.indicaciones, retiroCorto(c, pt)].filter(Boolean).join('\n'))}`,
       'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', 'DESCRIPTION:Turno PPAM', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
     S.ultimoIcs = ics;
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = 'turno-ppam-' + p.fecha + '.ics';
@@ -2003,6 +2049,8 @@
     if (ds.tab) { S.sucio = false; S.coord.tab = ds.tab; renderCoord(); return; }
     if (ds.pacc) { pedirAcceso(ds.pacc); return; }
     if (ds.pmenu) { menuPersona(ds.pmenu); return; }
+    if (ds.depver) { const [cid, pid] = ds.depver.split('|'); verDeposito(cid, pid); return; }
+    if (ds.dep !== undefined && S.route.name === 'coord') { editarDeposito(S.campanas[S.route.cid], ds.dep || null); return; }
     if (ds.movok) { try { localStorage.setItem('ppam-movido-' + ds.movok, '1'); } catch (e) { /* nada */ } render(); return; }
     if (ds.confirmar) { cambiarEstado(ds.confirmar, 'confirmado'); return; }
     if (ds.rechazar) { if (confirm('¿No confirmar este pedido? Se libera el lugar.')) cambiarEstado(ds.rechazar, 'rechazado'); return; }
@@ -2075,6 +2123,7 @@
   function textoDia(...a) { return enCoord('textoDia', a); }
   function listaCompleta(...a) { return enCoord('listaCompleta', a); }
   function menuPersona(...a) { return enCoord('menuPersona', a); }
+  function editarDeposito(...a) { return enCoord('editarDeposito', a); }
   function copiarHorarios(...a) { return enCoord('copiarHorarios', a); }
   function editarPunto(...a) { return enCoord('editarPunto', a); }
   function editarTurno(...a) { return enCoord('editarTurno', a); }

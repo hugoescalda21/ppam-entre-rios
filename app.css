@@ -1266,3 +1266,20 @@ button.kc:first-child { border-top: 0; } .kc .tx { flex: 1; min-width: 0; } .kc 
 .codok.mov { background: var(--gold-bg); }
 .codok.mov > .ic { color: var(--gold-t); flex-shrink: 0; margin-top: 2px; }
 .ov .days { margin: 4px 0 10px; }
+/* v60 · Depósitos (retiro del carrito con ubicación y foto) */
+.cpin.dep i { background: var(--gold); }
+.lgr.sel { border-color: var(--pri); background: var(--pri-bg); }
+.dpr { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line2); }
+.dpr:first-child { border-top: 0; }
+.dpr .th { width: 56px; height: 56px; border-radius: 12px; flex-shrink: 0; background: var(--pri-bg) center/cover; color: var(--pri); display: grid; place-items: center; }
+.dpr .tx { flex: 1; min-width: 0; }
+.dpr .tx b { display: block; }
+.dpr .tx small { display: block; color: var(--ink3); font-size: 12.5px; line-height: 1.4; }
+.depc { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 12px 0; }
+.depc .dfoto { height: 130px; background: var(--pri-bg) center/cover; }
+.depc .dtx { padding: 12px 14px 14px; }
+.depc .lbl { margin: 0 0 4px; }
+.depc b { display: block; font-size: 16px; }
+.depc small { display: block; color: var(--ink3); font-size: 13px; margin-top: 2px; }
+.depc p { margin: 8px 0 0; font-size: 14px; color: var(--ink2); }
+.depc .pills { margin-top: 10px; }
