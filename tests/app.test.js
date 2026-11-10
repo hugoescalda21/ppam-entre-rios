@@ -242,6 +242,7 @@ const SEED = {
   await c.click('#coordBtn'); await c.waitForTimeout(250);
   check('Coordinar: arriba la tarjeta de hermanos habilitados y abajo su campaña', /Hermanos habilitados[\s\S]*Terminal de ómnibus/.test(await text(c, '#app')) && !!(await c.$('.hcard[data-go="#/hermanos"]')), await text(c, '#app'));
   await c.click('[data-go="#/coord/parana-terminal"]'); await c.waitForTimeout(250);
+  await c.click('[data-tab="pedidos"]'); await c.waitForTimeout(150);
   let co = await text(c, '#app');
   check('en su campaña: 1 por confirmar', /1\s*por confirmar/.test(co) && /Ana Paz\s*San Agustín \(Paraná\)/.test(co) && /343 555-0000/.test(co), co.slice(0, 400));
   check('el celular abre WhatsApp', await c.evaluate(() => /wa\.me\/5493435550000/.test(document.querySelector('#app a[href*="wa.me"]').href)));
@@ -257,9 +258,10 @@ const SEED = {
   check('"Pedir voluntarios" arma el mensaje con los turnos que faltan y el link', /Necesitamos voluntarios/.test(vol) && /Jueves 1 de octubre · 10 a 12 · Andén 1 \(falta 1\)/.test(vol) && /#\/c\/parana-terminal/.test(vol), vol.slice(0, 300));
   await c.click('[data-tab="dia"]'); await c.click('[data-cdia="2026-10-03"]'); await c.waitForTimeout(100);
   check('lista del día: Ana en el stand del sábado', /Hall central\s*Faltan 2\s*16 a 18\s*Faltan 2\s*Ana Paz\s*San Agustín \(Paraná\)\s*2 lugares libres/.test(await text(c, '#app')) && /1 confirmados/.test(await text(c, '#app')), await text(c, '#app'));
-  await c.click('[data-listadia]');
+  await c.click('[data-listadia]'); await c.waitForTimeout(100); await c.click('#lWa');
   const lista = await c.evaluate(() => decodeURIComponent(window.__opened.pop().split('text=')[1]));
-  check('compartir la lista del día por WhatsApp', /\*16 a 18 · Hall central\*\n  – Ana Paz/.test(lista), lista);
+  check('compartir la lista del día por WhatsApp', /16 a 18 · Hall central: Ana Paz/.test(lista), lista);
+  await c.evaluate(() => document.querySelectorAll('.ov').forEach(x => x.remove()));
   check('Del día: WhatsApp de cada hermano', await c.evaluate(() => /wa\.me\/549343/.test(document.querySelector('#dt-t3 .dp.c .wa').href)));
   await c.click('[data-cdia="2026-10-01"]'); await c.click('[data-cdf="faltan"]'); await c.waitForTimeout(80);
   check('filtro "Faltan": oculta el turno completo (8 a 10 del jueves)', !(await c.$('#dt-t1')) && !!(await c.$('#dt-t2')));
@@ -597,13 +599,13 @@ const SEED = {
     await cy.route(/gstatic|googleapis|openstreetmap/, r => r.abort());
     await cy.addInitScript(`(${mock.toString()})(${JSON.stringify(seed2)}, ${JSON.stringify([{ uid: 'u-co', email: 'coord@x.com', displayName: 'Carlos Vega' }])})`);
     const k = await cy.newPage(); k.errs = []; k.on('pageerror', e => k.errs.push(e.message));
-    await k.goto(FILE); await k.waitForTimeout(250); await entrar(k, 300); await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(300);
+    await k.goto(FILE); await k.waitForTimeout(250); await entrar(k, 300); await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(300); await k.click('[data-tab="pedidos"]'); await k.waitForTimeout(150);
     check('el coordinador ve la nota en el pedido', /Luis Gómez[\s\S]*343 555-2222\s*Nota: Es mi primera vez\.\s*No confirmar\s*Confirmar/.test(await text(k, '#app')), await text(k, '#app'));
     await k.screenshot({ path: SHOTS + '/coord-nota.png' });
     await k.click('[data-confirmar]'); await k.waitForTimeout(200);
     await k.click('[data-tab="dia"]'); await k.click('[data-cdia="2026-10-03"]'); await k.waitForTimeout(100);
     check('y en la lista del día, debajo del turno', /Hall central[\s\S]*Luis Gómez\s*San Agustín \(Paraná\)\s*Luis: Es mi primera vez\./.test(await text(k, '#app')), await text(k, '#app'));
-    await k.click('[data-listadia]');
+    await k.click('[data-listadia]'); await k.waitForTimeout(100); await k.click('#lWa');
     const msg = await k.evaluate(() => decodeURIComponent(window.__opened.pop().split('text=')[1]));
     check('la lista que se comparte por WhatsApp no lleva la nota', /Luis Gómez/.test(msg) && !/primera vez/.test(msg), msg);
     check('sin errores (coordinador, nota)', k.errs.length === 0, k.errs);
@@ -1025,7 +1027,7 @@ const SEED = {
     const g = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal', { nuevo: true });
     await g.evaluate(() => { try { localStorage.setItem('ppam-bienvenida', '1'); } catch (e) {} document.querySelectorAll('.ov').forEach(x => x.remove()); });
     await entrar(g, 300); await g.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await g.waitForTimeout(300);
-    check('la primera vez en Coordinación: tarjeta "Cómo se usa Coordinación"', /Cómo se usa Coordinación[\s\S]*Pedidos:[\s\S]*Del día:[\s\S]*lupa/i.test(await text(g, '#app')));
+    check('la primera vez en Coordinación: tarjeta "Cómo se usa Coordinación"', /Cómo se usa Coordinación[\s\S]*Quién va:[\s\S]*Pedidos:[\s\S]*lupa/i.test(await text(g, '#app')));
     await g.click('[data-cguia]'); await g.waitForTimeout(150);
     check('"Entendido" la cierra para siempre', !(await g.$('.cguia')) && await g.evaluate(() => localStorage.getItem('ppam-guia-coord') === '1'));
     check('sin errores (guía del coordinador)', g.errs.length === 0, g.errs);
@@ -1090,7 +1092,7 @@ const SEED = {
     await ctx2.addInitScript(`(${mock.toString()})(${JSON.stringify(S2)}, ${JSON.stringify([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }])})`);
     const k = await ctx2.newPage(); k.errs = []; k.on('pageerror', e => k.errs.push(e.message));
     await k.goto(FILE); await k.waitForTimeout(300); await entrar(k, 300);
-    await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(500);
+    await k.evaluate(() => { location.hash = '#/coord/parana-terminal'; }); await k.waitForTimeout(500); await k.click('[data-tab="pedidos"]'); await k.waitForTimeout(150);
     await k.click('[data-confirmar="parana-terminal__2026-10-02__t1__u-luis"]'); await k.waitForTimeout(400);
     const av = await k.evaluate(() => { const a = document.getElementById('avWa'); return a && { t: document.querySelector('.sheet').innerText, href: a.getAttribute('href') }; });
     check('al confirmar, ofrece avisarle por WhatsApp con el mensaje armado', av && /¿Le avisás a Luis\?/.test(av.t) && av.href.startsWith('https://wa.me/5493434441234?text=') && /confirmado/.test(decodeURIComponent(av.href)), av);
@@ -1514,6 +1516,70 @@ const SEED = {
     check('sin errores (PC, coordinación)', k.errs.length === 0, k.errs);
     const m = await open([pub], '#/c/parana-terminal');
     check('celular: sin calendario de PC ni índice, contenedores invisibles', await m.evaluate(() => !document.querySelector('.mcal') && getComputedStyle(document.querySelector('.ccols')).display === 'contents'));
+  }
+  {
+    console.log('\nHabilitación por campaña (v58)');
+    const pub = { uid: 'u-ana', email: 'ana@x.com', displayName: 'Ana Paz' };
+    const CC = SEED['campanas/concordia-costanera'];
+    SEED['campanas/concordia-costanera'] = Object.assign({}, CC, { soloHab: true });
+    let h = await open([pub]);
+    check('inicio: la campaña que pide habilitación aparece con candado', /No habilitada[\s\S]*Costanera/.test(await text(h, '.cc.bloq')), await text(h, '.cc.bloq'));
+    check('la campaña abierta a todos se ve como siempre', !!(await h.$('.cc.camp:not(.bloq)[data-go="#/c/parana-terminal"]')));
+    await h.click('.cc.bloq'); await h.waitForTimeout(250);
+    check('al abrirla: explica que el coordinador tiene que habilitarlo, con "Pedir acceso"', /coordinador tiene que habilitarte/.test(await text(h, '#app')) && !!(await h.$('[data-pacc="concordia-costanera"]')) && !(await h.$('[data-dia]')));
+    await h.click('[data-pacc="concordia-costanera"]'); await h.waitForTimeout(250);
+    check('"Pedir acceso" deja el pedido para el coordinador', await h.evaluate(() => { const a = window.__store['accesos/concordia-costanera__u-ana']; return !!a && a.hid === 'u-ana' && a.cid === 'concordia-costanera' && a.nombre === 'Ana'; }));
+    check('y muestra "Ya pediste acceso"', /Ya pediste acceso/.test(await text(h, '#app')) && !(await h.$('[data-pacc]')));
+    check('sin errores (campaña con candado)', h.errs.length === 0, h.errs);
+    SEED['campanas/concordia-costanera'] = Object.assign({}, CC, { soloHab: true, verBloq: false });
+    h = await open([pub]);
+    check('si la campaña no se muestra a los no habilitados, no aparece', !(await h.$('.cc.bloq')) && !/Costanera/.test(await text(h, '.ccs')));
+    SEED['campanas/concordia-costanera'] = Object.assign({}, CC, { soloHab: true });
+    SEED['hermanos/u-ana'] = { nombre: 'Ana', apellido: 'Paz', congregacion: 'San Agustín (Paraná)', celular: '343 555-0000', cod: 'HUANA000', uid: 'anon-u-ana', creado: '2026-09-01T10:00:00Z', por: 'coord@x.com', ultimo: '2026-09-29T10:00:00Z', camps: ['concordia-costanera'], coord: true };
+    h = await open([pub], '#/c/concordia-costanera');
+    check('habilitada para esa campaña: la ve y elige días', !!(await h.$('[data-dia]')) && !(await h.$('.bloqc')));
+    await h.evaluate(() => { location.hash = '#/'; }); await h.waitForTimeout(200);
+    check('un coordinador que entró con su link ve el aviso para entrar con Google', /Sos coordinador[\s\S]*Entrar con Google/.test(await text(h, '.avco')));
+    delete SEED['hermanos/u-ana'];
+    // Coordinación: pedidos de acceso y habilitar
+    SEED['hermanos/h-rosa'] = { nombre: 'Rosa', apellido: 'Acosta', congregacion: 'San Agustín (Paraná)', celular: '343 410-8890', cod: 'ROSA0001', uid: 'anon-rosa', creado: '2026-09-20T10:00:00Z', por: 'coord@x.com', porNombre: 'Carlos', ultimo: '2026-09-29T10:00:00Z' };
+    SEED['accesos/concordia-costanera__h-rosa'] = { cid: 'concordia-costanera', hid: 'h-rosa', nombre: 'Rosa', apellido: 'Acosta', congregacion: 'San Agustín (Paraná)', at: '2026-09-30T11:00:00Z' };
+    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal'); await entrar(k, 400);
+    await k.evaluate(() => { location.hash = '#/hermanos'; }); await k.waitForTimeout(500);
+    check('Hermanos: sección "Pidieron acceso" con la campaña', /Pidieron acceso[\s\S]*Rosa Acosta[\s\S]*Pidió entrar a Costanera/.test(await text(k, '#herm')), await text(k, '#herm'));
+    check('filtro por campaña (habilitados / sin habilitar)', await k.evaluate(() => [...document.querySelectorAll('#hCamp option')].map(o => o.value).join(',') === ',concordia-costanera,concordia-costanera|no'));
+    await k.click('[data-hacc="concordia-costanera__h-rosa"]'); await k.waitForTimeout(300);
+    check('Habilitar: queda habilitada para esa campaña y se borra el pedido', await k.evaluate(() => (window.__store['hermanos/h-rosa'].camps || []).includes('concordia-costanera') && !window.__store['accesos/concordia-costanera__h-rosa']));
+    check('y ofrece avisarle por WhatsApp con el link de esa campaña', await k.evaluate(() => { const a = [...document.querySelectorAll('.ov a.btn')].find(x => /wa\.me/.test(x.href)); return !!a && /Costanera/.test(decodeURIComponent(a.href)) && /cod=ROSA0001&c=concordia-costanera/.test(decodeURIComponent(a.href)); }));
+    await k.evaluate(() => document.querySelectorAll('.ov').forEach(x => x.remove()));
+    check('la etiqueta de la campaña aparece en su fila', /Costanera/.test(await text(k, '[data-hfic="h-rosa"] .hcc')));
+    await k.click('[data-hfic="h-rosa"]'); await k.waitForTimeout(200);
+    check('la ficha muestra sus campañas (tildada) y "Todas" para el administrador', await k.evaluate(() => document.querySelector('[data-fcamp="concordia-costanera"]').checked && !!document.getElementById('fTodas') && !!document.getElementById('fCoord')));
+    await k.click('[data-fcamp="concordia-costanera"]'); await k.waitForTimeout(250);
+    check('destildar la saca de la campaña', await k.evaluate(() => !(window.__store['hermanos/h-rosa'].camps || []).includes('concordia-costanera')));
+    check('sin errores (habilitación, coordinación)', k.errs.length === 0, k.errs);
+    delete SEED['hermanos/h-rosa']; delete SEED['accesos/concordia-costanera__h-rosa']; SEED['campanas/concordia-costanera'] = CC;
+  }
+  {
+    console.log('\nQuién va (v58)');
+    SEED['pedidos/parana-terminal__2026-10-01__t1__otro1'] = { cid: 'parana-terminal', fecha: '2026-10-01', tid: 't1', punto: 'p1', desde: '08:00', hasta: '10:00', uid: 'otro1', nombre: 'Juan', apellido: 'Díaz', congregacion: 'Paraná Centro (Paraná)', celular: '343 400-1111', estado: 'confirmado', creado: '2026-09-20T10:00:00Z' };
+    const k = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal'); await entrar(k, 400);
+    check('Coordinación abre en "Quién va" (primera pestaña)', await k.evaluate(() => document.querySelector('.tabs .on').dataset.tab === 'dia' && document.querySelector('.tabs button').textContent === 'Quién va'));
+    await k.click('[data-tab="cobertura"]'); await k.waitForTimeout(150);
+    check('Cobertura: cada casilla muestra las iniciales de quienes van', await k.evaluate(() => [...document.querySelectorAll('[data-cir="2026-10-01|t1"] .ci')].map(x => x.textContent).join(',') === 'JD'), await k.evaluate(() => (document.querySelector('[data-cir="2026-10-01|t1"]') || {}).innerHTML));
+    await k.click('[data-tab="dia"]'); await k.waitForTimeout(150);
+    await k.click('[data-listadia]'); await k.waitForTimeout(150);
+    check('Lista completa: muestra quiénes van', /Juan Díaz/.test(await text(k, '#lPrev')) && !/343 400-1111/.test(await text(k, '#lPrev')), await text(k, '#lPrev'));
+    await k.click('#lCel'); await k.waitForTimeout(80);
+    check('con celulares si se tilda', /Juan Díaz · 343 400-1111/.test(await text(k, '#lPrev')));
+    await k.click('[data-lr="campana"]'); await k.waitForTimeout(80); await k.click('#lWa'); await k.waitForTimeout(80);
+    check('WhatsApp: abre el mensaje con la lista', await k.evaluate(() => window.__opened.some(u => /wa\.me\/\?text=/.test(u) && /Juan D/.test(decodeURIComponent(u)))));
+    await k.evaluate(() => document.querySelectorAll('.ov').forEach(x => x.remove()));
+    check('sin errores (Quién va)', k.errs.length === 0, k.errs);
+    const q = await open([{ uid: 'u-adm', email: 'admin@x.com', displayName: 'Admin' }], '#/coord/parana-terminal', { ancho: 1440 }); await entrar(q, 400);
+    await q.click('[data-tab="cobertura"]'); await q.waitForTimeout(150);
+    check('PC: en Cobertura van los nombres completos', /Juan Díaz/.test(await text(q, '[data-cir="2026-10-01|t1"]')));
+    delete SEED['pedidos/parana-terminal__2026-10-01__t1__otro1'];
   }
   await b.close(); console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;

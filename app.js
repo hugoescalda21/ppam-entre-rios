@@ -53,11 +53,11 @@
     ciudad: 'todas', route: { name: 'home' }, dia: null,
     cc: {}, ccUnsub: {}, fotos: {},
     mis: {}, misUnsub: null,
-    coord: { cid: null, tab: 'pedidos', pedidos: {}, cupos: {}, unsub: [] , semana: null },
+    coord: { cid: null, tab: 'dia', pedidos: {}, cupos: {}, unsub: [] , semana: null },
     admins: [], coordEmails: {}, pend: {}, pendUnsub: {},
     isSoporte: false, soporteEmails: [], sop: { reportes: {}, errores: {}, unsub: [], filtro: 'nuevo', detalle: false, limpio: false }, ultimoError: null
   };
-  const VERSION = '57';
+  const VERSION = '58';
   window.__ppam = S;   // para las pruebas
 
   function toast(msg) { if (/^No se pudo/.test(msg)) registrarError('aviso', msg); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -208,7 +208,8 @@
   function readRoute() {
     const h = (location.hash || '#/').slice(1).split('/').filter(Boolean);
     const cod = (location.hash || '').match(/[?&]cod=([A-Za-z0-9-]+)/);
-    if (cod) S.route = { name: 'canje', cod: cod[1].toUpperCase().replace(/[^A-Z0-9]/g, '') };
+    const ccid = (location.hash || '').match(/[?&]c=([A-Za-z0-9_-]+)/);
+    if (cod) S.route = { name: 'canje', cod: cod[1].toUpperCase().replace(/[^A-Z0-9]/g, ''), cid: ccid ? ccid[1] : '' };
     else if (h[0] === 'c' && h[1]) S.route = h[2] && h[3] ? { name: 'camp', cid: h[1], fecha: h[2], tid: decodeURIComponent(h[3]) } : { name: 'camp', cid: h[1] };
     else if (h[0] === 't' && h[1]) S.route = { name: 'turno', pid: decodeURIComponent(h[1]) };
     else if (h[0] === 'k' && h[1]) S.route = { name: 'carrito', cod: h[1].toUpperCase().replace(/[^A-Z0-9]/g, '') };
@@ -932,15 +933,15 @@
     if (k.estado === 'malo') return cerrada(`<div class="lk warn">${I('alert', 'width:30px;height:30px')}</div><h2>Este link ya no sirve</h2><p>Puede ser que el responsable te haya mandado uno más nuevo, o que se haya dado de baja. Buscá el último mensaje o pedile uno nuevo al responsable de tu congregación.</p>`);
     if (k.estado === 'error') return cerrada(`<div class="lk warn">${I('alert', 'width:30px;height:30px')}</div><h2>No pudimos revisar tu link</h2><p>Revisá la conexión y probá de nuevo.</p><button type="button" class="btn" id="cjRe">Reintentar</button>`), $('cjRe').addEventListener('click', () => { S.canje = null; render(); });
     const l = k.link, ya = S.esHermano && S.acceso === 'si' && S.yo === l.hid;
-    if (ya) { history.replaceState(null, '', location.pathname + '#/'); readRoute(); render(); return; }
+    if (ya) { history.replaceState(null, '', location.pathname + (S.route.cid ? '#/c/' + S.route.cid : '#/')); readRoute(); render(); return; }
     const ini = iniciales((l.nombre || '') + ' ' + (l.apellido || ''));
     const otra = l.usado ? `<h2>Hola de nuevo, ${esc(l.nombre)}</h2><p>Ya entraste antes desde otro celular.</p>` : `<h2>¡Hola, ${esc(l.nombre)}!</h2><p>Tu congregación te habilitó para la predicación pública.</p>`;
     const migra = !l.usado && l.turnos ? `<div class="codok">${I('cal', 'width:18px;height:18px')}<span><b>${l.turnos === 1 ? 'Tu turno pasa' : `Tus ${l.turnos} turnos pasan`} a tu acceso nuevo</b>Los pediste con tu cuenta de Google. Desde ahora entrás solo con este link.</span></div>` : '';
     cerrada(`<div class="lk">${I(l.usado ? 'users' : 'check', 'width:30px;height:30px;stroke-width:2.2')}</div>${otra}<div class="yoc"><span class="av">${esc(ini)}</span><span><b>${esc(l.nombre)}</b><small>${esc(l.congregacion || '')}</small></span></div>${migra}
       <button type="button" class="btn" id="cjOk">${l.usado ? 'Entrar desde este celular' : 'Confirmar ingreso'}</button><p class="fine">${l.usado ? 'Tu acceso se pasa a este celular y el otro se cierra. Tus turnos siguen igual.' : 'Sin contraseña ni cuenta de Google.'}</p>`);
-    $('cjOk').addEventListener('click', () => entrarConLink(cod, l));
+    $('cjOk').addEventListener('click', () => entrarConLink(cod, l, S.route.cid));
   }
-  async function entrarConLink(cod, l) {
+  async function entrarConLink(cod, l, cid) {
     S.canje.estado = 'entrando'; S.entrando = true; render();
     try {
       // quien usaba la página con Google (o un coordinador probando su link) deja su cuenta en este celular
@@ -951,7 +952,7 @@
       b.update(S.db.doc('hermanos/' + l.hid), Object.assign({ uid: u.uid, ultimo: S.ahora(), disp: dispositivo().slice(0, 80) }, l.usado ? { aviso: true } : {}));
       b.update(S.db.doc('links/' + cod), { usado: true });
       await conTiempo(b.commit());
-      S.canje = null; history.replaceState(null, '', location.pathname + '#/'); readRoute();
+      S.canje = null; history.replaceState(null, '', location.pathname + (cid ? '#/c/' + cid : '#/')); readRoute();
       S.user = u; S.esHermano = true; S.acceso = 'cargando'; render();
       escucharHermano(u, { hid: l.hid, cod });
     } catch (e) {
@@ -980,9 +981,11 @@
       .sort((a, b) => String(a.desde || '').localeCompare(String(b.desde || '')) || String(a.nombre).localeCompare(String(b.nombre)));
     const ciudades = [...new Set(list.map(c => c.ciudad).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
     if (S.ciudad !== 'todas' && !ciudades.includes(S.ciudad)) S.ciudad = 'todas';
-    const vis = list.filter(c => S.ciudad === 'todas' || c.ciudad === S.ciudad);
+    const vis0 = list.filter(c => S.ciudad === 'todas' || c.ciudad === S.ciudad);
+    // Campañas que piden habilitación propia: el hermano no habilitado las ve con candado (si la campaña lo permite)
+    const vis = vis0.filter(habEn), bloq = vis0.filter(c => !habEn(c) && c.verBloq !== false);
     const prox = S.yo ? misProximos() : [];
-    let h = instalarHTML() + avisoContarHTML();
+    let h = avisoCoordHTML() + instalarHTML() + avisoContarHTML();
     revisarAvisoContar();
     if (prox.length) {
       h += `<div class="lbl">${prox[0].fecha === hoy() ? 'Hoy' : 'Tu próximo turno'}</div>` + ticket(prox[0]);
@@ -1030,8 +1033,9 @@
       // Las que no se pueden ubicar (sin puntos marcados y ciudad desconocida) siguen apareciendo, debajo del mapa.
       const fuera = fueraDelMapa(vis);
       if (fuera.length) h += `<div class="lbl" style="margin-top:4px">${fuera.length === 1 ? 'Sin ubicación en el mapa' : fuera.length + ' campañas sin ubicación en el mapa'}</div><div class="pcw ccs">` + fuera.map(campCard).join('') + '</div>';
+      if (bloq.length) h += '<div class="pcw ccs">' + bloq.map(campBloq).join('') + '</div>';
     }
-    else h += vis.length ? '<div class="pcw ccs">' + vis.map(campCard).join('') + '</div>' : '<div class="card"><div class="empty"><b>Por ahora no hay campañas programadas.</b><br>Cuando haya una, la vas a ver acá y te vas a poder anotar.</div></div>';
+    else h += vis.length || bloq.length ? '<div class="pcw ccs">' + vis.map(campCard).join('') + bloq.map(campBloq).join('') + '</div>' : '<div class="card"><div class="empty"><b>Por ahora no hay campañas programadas.</b><br>Cuando haya una, la vas a ver acá y te vas a poder anotar.</div></div>';
     // En PC: lo tuyo (próximo turno, invitación) a la izquierda y las campañas a la derecha
     $('app').innerHTML = /class="(ticket|welcome|coordbar)/.test(izq) ? `<div class="pcw hcols"><div class="pcw hizq">${izq}</div><div class="pcw hder">${h}</div></div>` : izq + h;
     if (vis.length && S.vista === 'mapa') dibujarMapa(vis);
@@ -1054,10 +1058,46 @@
   }
   const ESTADOS = { pendiente: 'Esperando confirmación', confirmado: 'Confirmado', rechazado: 'No confirmado' };
 
+  /* ---------- Habilitación por campaña ---------- */
+  // Una campaña con "soloHab" deja anotarse solo a los hermanos habilitados para ella (o para todas). Coordinadores y administradores entran siempre.
+  const habEn = (c) => !S.esHermano || !c || c.soloHab !== true || !!(S.hermano && (S.hermano.todas || (S.hermano.camps || []).includes(c.id)));
+  function campBloq(c) {
+    return `<button type="button" class="cc camp bloq" data-go="#/c/${esc(c.id)}"><span class="th sinf" style="background-image:${colorDe(c)};">${I('lock', 'width:24px;height:24px')}</span><span class="tx"><span class="pronto">${I('lock', 'width:12px;height:12px')}No habilitada</span><b>${esc(c.nombre)}</b><small>${esc([c.ciudad, rangoCorto(c)].filter(Boolean).join(' · '))}</small><small class="falt">Para anotarte, el coordinador tiene que habilitarte</small></span>${I('chev')}</button>`;
+  }
+  // ¿Ya pidió acceso a esta campaña? (se pregunta una vez por campaña)
+  function accesoPedido(cid) {
+    S.accPed = S.accPed || {};
+    if (S.accPed[cid] === undefined && S.yo) {
+      S.accPed[cid] = 'cargando';
+      S.db.doc('accesos/' + cid + '__' + S.yo).get().then((d) => { S.accPed[cid] = d.exists; if (S.route.name === 'camp' && S.route.cid === cid) render(); }).catch(() => { S.accPed[cid] = false; if (S.route.name === 'camp' && S.route.cid === cid) render(); });
+    }
+    return S.accPed[cid];
+  }
+  function renderBloqueada(c) {
+    const ya = accesoPedido(c.id);
+    $('app').innerHTML = `<div class="card bloqc"><div class="lk">${I('lock', 'width:28px;height:28px')}</div><h2>Esta campaña pide habilitación</h2>
+      <p>Para participar en esta campaña, su coordinador tiene que habilitarte. Tus otras campañas y tus turnos siguen igual.</p>
+      ${ya === true ? `<div class="codok">${I('check', 'width:18px;height:18px')}<span><b>Ya pediste acceso</b>Cuando el coordinador te habilite, la campaña se abre sola.</span></div>` : ya === 'cargando' ? '' : `<button type="button" class="btn" data-pacc="${esc(c.id)}">Pedir acceso</button>`}
+      <button type="button" class="btn alt" data-go="#/">Volver al inicio</button></div>`;
+  }
+  async function pedirAcceso(cid) {
+    const h = S.hermano; if (!h || !S.yo) return;
+    try {
+      await S.db.doc('accesos/' + cid + '__' + S.yo).set({ cid, hid: S.yo, nombre: String(h.nombre || '').slice(0, 60), apellido: String(h.apellido || '').slice(0, 60), congregacion: String(h.congregacion || '').slice(0, 80), at: S.ahora() });
+      S.accPed = S.accPed || {}; S.accPed[cid] = true; toast('Listo: le avisamos al coordinador'); render();
+    } catch (e) { console.error(e); toast('No se pudo enviar. Revisá la conexión y probá de nuevo.'); }
+  }
+  // Un coordinador que entró con su link de hermano: se le recuerda que con Google ve todo lo de su campaña
+  function avisoCoordHTML() {
+    if (!S.esHermano || !S.hermano || !S.hermano.coord) return '';
+    return `<div class="avco"><b>Sos coordinador</b><span>Con este link ves la app como hermano. Para ver quién se anotó en cada turno, entrá con tu cuenta de Google.</span><button type="button" class="btn" data-login>Entrar con Google</button></div>`;
+  }
+
   /* ---------- Campaña ---------- */
   function renderCamp() {
     const c = S.campanas[S.route.cid];
     if (!c) { $('app').innerHTML = '<div class="card"><div class="empty">Esa campaña no existe o ya terminó.</div></div>'; return; }
+    if (!habEn(c)) return renderBloqueada(c);
     listenCC(c.id);
     const dias = diasDe(c).filter(d => turnosDelDia(c, d).some(t => !yaEmpezo(d, t)));
     const cargando = !(S.ccOk || {})[c.id] && !(S.ccErr || {})[c.id], errCupos = !!(S.ccErr || {})[c.id];
@@ -1948,6 +1988,7 @@
     if (ds.nota) { editarNota(ds.nota); return; }
     if (ds.cancelar) { cancelarPedido(ds.cancelar); return; }
     if (ds.tab) { S.sucio = false; S.coord.tab = ds.tab; renderCoord(); return; }
+    if (ds.pacc) { pedirAcceso(ds.pacc); return; }
     if (ds.confirmar) { cambiarEstado(ds.confirmar, 'confirmado'); return; }
     if (ds.rechazar) { if (confirm('¿No confirmar este pedido? Se libera el lugar.')) cambiarEstado(ds.rechazar, 'rechazado'); return; }
     if (ds.quitar) { if (confirm('¿Quitar a esta persona del turno? Se libera el lugar.')) cambiarEstado(ds.quitar, 'rechazado'); return; }
@@ -1958,7 +1999,7 @@
     if (ds.cir) { const [d, tid] = ds.cir.split('|'); S.coord.dia = d; S.coord.tab = 'dia'; S.coord.diaF = 'todos'; S.coord.flash = 'dt-' + tid; renderCoord(); return; }
     if (t.id === 'busBtn') { abrirBuscador(); return; }
     if (ds.voluntarios !== undefined) { const c = S.campanas[S.route.cid]; compartir(textoVoluntarios(c, diasDe(c))); return; }
-    if (ds.listadia !== undefined) { const c = S.campanas[S.route.cid]; compartir(textoDia(c, Object.values(S.coord.pedidos))); return; }
+    if (ds.listadia !== undefined) { listaCompleta(S.campanas[S.route.cid]); return; }
     if (ds.punto !== undefined) { editarPunto(S.campanas[S.route.cid], ds.punto || null); return; }
     if (ds.turno !== undefined) { editarTurno(S.campanas[S.route.cid], ds.turno || null, ds.tpto); return; }
     if (ds.cph) { copiarHorarios(S.campanas[S.route.cid], ds.cph); return; }
@@ -1994,7 +2035,7 @@
     if (coordMod) return Promise.resolve(coordMod);
     if (!coordCargando) coordCargando = new Promise((res, rej) => {
       const sc = document.createElement('script'); sc.src = './coord.js?v=' + VERSION;
-      sc.onload = () => { try { coordMod = window.PPAM_COORD({ DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt, KCOLORES, TIPOS_PUB, colorHex, kNombre, kNum, conPubs, cargarPubs, pubNombre, pubSub, tapaHTML, resumenItems, conMant, PROB_TIPOS }); res(coordMod); } catch (e) { rej(e); } };
+      sc.onload = () => { try { coordMod = window.PPAM_COORD({ DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt, KCOLORES, TIPOS_PUB, colorHex, kNombre, kNum, conPubs, cargarPubs, pubNombre, pubSub, tapaHTML, resumenItems, conMant, PROB_TIPOS, compartir }); res(coordMod); } catch (e) { rej(e); } };
       sc.onerror = () => { coordCargando = null; rej(new Error('coord.js')); };
       document.head.appendChild(sc);
     });
@@ -2017,6 +2058,7 @@
   function cambiarEstado(...a) { return enCoord('cambiarEstado', a); }
   function textoVoluntarios(...a) { return enCoord('textoVoluntarios', a); }
   function textoDia(...a) { return enCoord('textoDia', a); }
+  function listaCompleta(...a) { return enCoord('listaCompleta', a); }
   function copiarHorarios(...a) { return enCoord('copiarHorarios', a); }
   function editarPunto(...a) { return enCoord('editarPunto', a); }
   function editarTurno(...a) { return enCoord('editarTurno', a); }

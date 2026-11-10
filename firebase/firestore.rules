@@ -56,6 +56,12 @@ service cloud.firestore {
     function puedePedir() { return habilitado() || staff(); }
     function yo() { return anonimo() ? get(docSes()).data.hid : request.auth.uid; }
     function firmaOk(d) { return anonimo() ? !('email' in d) : d.email == mail(); }
+    // Habilitación por campaña: si la campaña la pide (soloHab), el hermano tiene que estar habilitado para ella (o para todas).
+    function habCamp(cid) {
+      let c = get(/databases/$(database)/documents/campanas/$(cid)).data;
+      let h = get(docHer(yo())).data;
+      return !anonimo() || c.get('soloHab', false) != true || h.get('todas', false) == true || cid in h.get('camps', []);
+    }
 
     match /config/publico {
       allow read: if lector();
@@ -265,7 +271,7 @@ service cloud.firestore {
       function pedidoValido(d) {
         let cupo = /databases/$(database)/documents/cupos/$(d.cid + '__' + d.fecha + '__' + d.tid);
         return d.keys().hasOnly(['cid', 'fecha', 'tid', 'punto', 'desde', 'hasta', 'uid', 'email', 'nombre', 'apellido', 'congregacion', 'celular', 'estado', 'creado', 'nota']) &&
-               notaOk(d) && turnoOk(d) &&
+               notaOk(d) && turnoOk(d) && habCamp(d.cid) &&
                d.uid == yo() && firmaOk(d) && d.estado == 'pendiente' &&
                id == d.cid + '__' + d.fecha + '__' + d.tid + '__' + yo() &&
                d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 60 &&
@@ -312,7 +318,8 @@ service cloud.firestore {
     // Cada uno tiene un código (la llave de su link) y el uid del celular que lo está usando.
     match /hermanos/{hid} {
       function campos(d) {
-        return d.keys().hasOnly(['nombre', 'apellido', 'congregacion', 'celular', 'cod', 'uid', 'ultimo', 'disp', 'antes', 'aviso', 'baja', 'creado', 'por', 'porNombre', 'bajaPor', 'bajaAt']) &&
+        return d.keys().hasOnly(['nombre', 'apellido', 'congregacion', 'celular', 'cod', 'uid', 'ultimo', 'disp', 'antes', 'aviso', 'baja', 'creado', 'por', 'porNombre', 'bajaPor', 'bajaAt', 'camps', 'todas', 'coord']) &&
+               (!('camps' in d) || (d.camps is list && d.camps.size() <= 300)) && (!('todas' in d) || d.todas is bool) && (!('coord' in d) || d.coord is bool) &&
                d.nombre is string && d.nombre.size() > 0 && d.nombre.size() <= 60 &&
                d.apellido is string && d.apellido.size() > 0 && d.apellido.size() <= 60 &&
                d.congregacion is string && d.congregacion.size() > 0 && d.congregacion.size() <= 80 &&
@@ -330,12 +337,20 @@ service cloud.firestore {
                texto(request.resource.data, 'disp', 80) && (!('aviso' in request.resource.data) || request.resource.data.aviso is bool) &&
                (!('antes' in request.resource.data) || request.resource.data.antes is map);
       }
+      // Campañas para las que está habilitado: cada coordinador toca solo las suyas; "todas" la pone un administrador.
+      function misCamps() { return get(/databases/$(database)/documents/roles/$(mail())).data.get('campanas', []); }
+      function campsOk(antes, despues) {
+        let a = despues.get('camps', []).toSet();
+        let b = antes.get('camps', []).toSet();
+        return esAdmin() || (a.difference(b).union(b.difference(a)).size() == 0 || a.difference(b).union(b.difference(a)).hasOnly(misCamps())) && despues.get('todas', false) == antes.get('todas', false);
+      }
       allow read: if staff() || (anonimo() && exists(docSes()) && get(docSes()).data.hid == hid);
-      allow create: if staff() && campos(request.resource.data) && request.resource.data.por == mail() &&
+      allow create: if staff() && campos(request.resource.data) && request.resource.data.por == mail() && campsOk({}, request.resource.data) &&
                      !('uid' in request.resource.data) && !('ultimo' in request.resource.data) && request.resource.data.get('baja', false) == false;
       // El coordinador cambia datos, manda un link nuevo (cambia el código y deja afuera al celular) o da de baja.
       allow update: if (staff() && campos(request.resource.data) &&
-                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nombre', 'apellido', 'congregacion', 'celular', 'cod', 'uid', 'aviso', 'baja', 'bajaPor', 'bajaAt']) &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nombre', 'apellido', 'congregacion', 'celular', 'cod', 'uid', 'aviso', 'baja', 'bajaPor', 'bajaAt', 'camps', 'todas', 'coord']) &&
+                       campsOk(resource.data, request.resource.data) &&
                        (request.resource.data.get('uid', null) == null || request.resource.data.get('uid', null) == resource.data.get('uid', null))) ||
                      ingreso();
       allow delete: if esAdmin();
@@ -355,6 +370,16 @@ service cloud.firestore {
       allow update: if anonimo() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usado']) &&
                      request.resource.data.usado == true && getAfter(docSes()).data.cod == cod;
       allow delete: if staff();
+    }
+    // accesos/{cid}__{hid}: un hermano pide que lo habiliten para una campaña que lo pide. Lo ve y lo resuelve su coordinador.
+    match /accesos/{id} {
+      allow get: if habilitado() && id.matches('.+__' + yo());
+      allow list: if gestiona(resource.data.cid);
+      allow create: if habilitado() && request.resource.data.keys().hasOnly(['cid', 'hid', 'nombre', 'apellido', 'congregacion', 'at']) &&
+                     request.resource.data.hid == yo() && id == request.resource.data.cid + '__' + yo() && request.resource.data.at == request.time &&
+                     request.resource.data.cid is string && texto(request.resource.data, 'nombre', 60) && texto(request.resource.data, 'apellido', 60) && texto(request.resource.data, 'congregacion', 80) &&
+                     get(/databases/$(database)/documents/campanas/$(request.resource.data.cid)).data.get('soloHab', false) == true;
+      allow delete: if gestiona(resource.data.cid) || (habilitado() && resource.data.hid == yo());
     }
     // descartados/{uid}: quienes usaban Google y un coordinador sacó de la lista de sugerencias (pruebas, etc.)
     match /descartados/{uid} {

@@ -9,6 +9,17 @@
 
 
 
+## Versión 58 — habilitación por campaña y "Quién va"
+
+- Cada campaña elige quién puede anotarse (Ajustes → Campaña): "Todos los hermanos habilitados" (como hasta ahora, es lo que queda por defecto) o "Solo los habilitados para esta campaña".
+- En una campaña que pide habilitación, el hermano no habilitado la ve con candado y puede tocar "Pedir acceso" (o no la ve, si se desmarca "Mostrarla con candado").
+- Hermanos: filtro por campaña (habilitados / sin habilitar), sección "Pidieron acceso" con Habilitar o "Ahora no", etiquetas con las campañas de cada uno, y en la ficha las campañas que piden habilitación (los administradores también "Todas las campañas").
+- Al habilitar, se le puede avisar por WhatsApp con su mismo link, que le abre esa campaña (#/?cod=…&c=campaña). "Habilitar a los que ya se anotaron" pasa de una vez a quienes ya tienen turnos.
+- "Es coordinador" en la ficha: al entrar con su link le aparece un aviso para entrar con Google.
+- Coordinación: "Del día" pasa a llamarse "Quién va" y es la primera pestaña. Cobertura muestra las iniciales de quienes van en cada casilla (en la PC, los nombres). Pedidos muestra todos los confirmados, con buscador.
+- "Lista completa": quiénes van este día, esta semana o toda la campaña, para mandar por WhatsApp o imprimir (con o sin celulares).
+- Reglas: un hermano solo pide turno en una campaña con habilitación propia si está habilitado para ella; colección "accesos" (pedidos de acceso); cada coordinador habilita solo para sus campañas.
+
 ## Versión 57 — nota para el coordinador
 
 - Se quitó el atajo "Voy con mi esposa/o" de la nota para el coordinador: causaba confusión (cada hermano se anota con su propio link).

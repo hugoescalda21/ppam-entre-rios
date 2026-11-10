@@ -1231,3 +1231,33 @@ button.kc:first-child { border-top: 0; } .kc .tx { flex: 1; min-width: 0; } .kc 
   .arow.hf .acts .sbtn { display: inline-flex; align-items: center; gap: 6px; }
 }
 @media (min-width: 1100px) { body.cerrado .tb-in { max-width: 620px; } }
+
+/* v58 · Quién va: nombres en Cobertura, Pedidos completos, lista completa */
+.grid button { display: flex; flex-direction: column; align-items: center; gap: 3px; white-space: normal; min-height: 34px; }
+.grid button .cq { white-space: nowrap; }
+.grid button .cns { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; }
+.grid .ci { display: inline-flex; align-items: center; justify-content: center; min-width: 21px; height: 21px; padding: 0 3px; border-radius: 999px; background: rgba(255,255,255,.88); color: var(--pri); font-size: 9.5px; font-weight: 800; letter-spacing: -.02em; border: 1px solid rgba(18,67,63,.18); }
+.grid .ci.p { border: 1.5px dashed var(--gold-t); color: var(--gold-t); background: rgba(255,255,255,.7); }
+.grid .cn { display: block; width: 100%; font-size: 11px; font-weight: 500; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
+.grid .cn.p { font-style: italic; opacity: .85; }
+.grid button:has(.cn) { align-items: stretch; }
+.grid button:has(.cn) .cq { padding: 0 4px; text-align: left; }
+.vtodos { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 4px 2px; font-size: 13px; color: var(--ink3); }
+.lprev { white-space: pre-wrap; font: 12.5px/1.5 Inter, system-ui, sans-serif; background: var(--field); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; max-height: 34vh; overflow: auto; margin: 10px 0 12px; color: var(--ink2); }
+.ov .seg2 { margin-bottom: 8px; }
+/* v58 · Habilitación por campaña */
+.cc.bloq { opacity: .92; border: 1.5px dashed var(--line); background: var(--card); }
+.cc.bloq .th { filter: grayscale(.6); }
+.bloqc { text-align: center; padding: 22px 18px; }
+.bloqc .lk { width: 58px; height: 58px; border-radius: 50%; background: var(--gold-bg); color: var(--gold-t); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+.bloqc h2 { margin: 4px 0 2px; font-family: var(--tt); }
+.bloqc .codok { text-align: left; }
+.avco { display: flex; flex-direction: column; gap: 4px; background: var(--pri-bg); border: 1.5px solid var(--pri); border-radius: 16px; padding: 13px 14px; margin: 4px 0 14px; font-size: 13.5px; line-height: 1.45; }
+.avco .btn { margin-top: 8px; }
+.habc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--field); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 0 0 12px 32px; font-size: 13px; }
+.habc > span { flex: 1 1 100%; }
+.hcc { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.hcc i { font-style: normal; font-size: 11px; font-weight: 600; color: var(--ok); background: var(--ok-bg); border-radius: 999px; padding: 1px 8px; }
+.fcamps .ck small, .ck small { color: var(--ink3); }
+.fco { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink2); padding: 6px 0 6px 4px; }
+.hcf { margin: 10px 0 0; }

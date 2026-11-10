@@ -5,7 +5,7 @@
    ===================================================================== */
 window.PPAM_COORD = function (K) {
   'use strict';
-  const { DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt, KCOLORES, TIPOS_PUB, colorHex, kNombre, kNum, conPubs, cargarPubs, pubNombre, pubSub, tapaHTML, resumenItems, conMant, PROB_TIPOS } = K;
+  const { DOW, parseIso, I, esc, fmtDia, fmtHora, cap, S, ESTADOS, refrescar, $, MES, hoy, go, campRango, colorDe, fotoAttr, diasDe, turnosDelDia, cupoId, cupoDe, isoOf, yaEmpezo, iniciales, sinTilde, modal, busRecientes, busGuardar, sheet, NOTA_MAX, normCel, CEL_ERR, bindCel, toast, fTxt, uidGen, comoLlegarUrl, copiar, minutos, pad, addDays, registrarError, TIPOS, pTxt, linkCampana, fotoKey, render, cargarLeaflet, retiroLabel, VERSION, pantallaLabel, COMOD, metros, distTxt, KCOLORES, TIPOS_PUB, colorHex, kNombre, kNum, conPubs, cargarPubs, pubNombre, pubSub, tapaHTML, resumenItems, conMant, PROB_TIPOS, compartir } = K;
   const PC = () => !!(window.matchMedia && window.matchMedia('(min-width: 1100px)').matches);   // pantalla ancha (ver app.js)
   const fmtCorto = (s) => { const d = parseIso(s); return `${DOW[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; };
   function achicar(file, max) {
@@ -43,7 +43,7 @@ window.PPAM_COORD = function (K) {
   }
   function guiaCoord() {
     try { if (localStorage.getItem('ppam-guia-coord')) return ''; } catch (e) { return ''; }
-    return `<div class="cguia"><b>${I('star', 'width:16px;height:16px')}Cómo se usa Coordinación</b><ul><li><b>Pedidos:</b> confirmá o no a quien se anotó. Con el botón verde le escribís por WhatsApp.</li><li><b>Del día:</b> quién va a cada punto, y la lista para compartir con el grupo.</li><li><b>La lupa</b> (arriba): buscá un hermano, un punto o un turno, y anotá a alguien que no usa la app.</li></ul><button type="button" class="sbtn" data-cguia>Entendido</button></div>`;
+    return `<div class="cguia"><b>${I('star', 'width:16px;height:16px')}Cómo se usa Coordinación</b><ul><li><b>Quién va:</b> quiénes van a cada punto cada día, y la lista completa para compartir o imprimir.</li><li><b>Pedidos:</b> confirmá o no a quien se anotó. Con el botón verde le escribís por WhatsApp.</li><li><b>La lupa</b> (arriba): buscá un hermano, un punto o un turno, y anotá a alguien que no usa la app.</li></ul><button type="button" class="sbtn" data-cguia>Entendido</button></div>`;
   }
   function pedidoRow(p) {
     const c = S.campanas[p.cid] || {}, pt = (c.puntos || {})[p.punto] || {}, d = parseIso(p.fecha);
@@ -101,14 +101,15 @@ window.PPAM_COORD = function (K) {
     dias.forEach(d => turnosDelDia(c, d).forEach(t => { total += cupoDe(c, t); ocup += Math.min(cupoDe(c, t), Object.values((S.coord.cupos[cupoId(c.id, d, t.id)] || {}).ocupados || {}).filter(v => v === 'c').length); }));
     const personas = new Set(peds.filter(p => p.estado === 'confirmado').map(p => p.uid)).size;
     let h = `<div class="kpis"><div class="kpi hl"><b class="num">${pend.length}</b><span>por confirmar</span></div><div class="kpi"><b class="num">${total ? Math.round(ocup * 100 / total) : 0}%</b><span>cubierto de hoy al ${esc(c.hasta ? parseIso(c.hasta).getDate() + ' ' + MES[parseIso(c.hasta).getMonth()].slice(0, 3) : 'final')}</span></div><div class="kpi"><b class="num">${personas}</b><span>${personas === 1 ? 'hermano confirmado' : 'hermanos confirmados'}</span></div></div>`;
-    const tabs = [['pedidos', 'Pedidos'], ['cobertura', 'Cobertura'], ['dia', 'Del día'], ['config', 'Ajustes']];
+    const tabs = [['dia', 'Quién va'], ['cobertura', 'Cobertura'], ['pedidos', 'Pedidos'], ['config', 'Ajustes']];
     h += `<div id="cTab"><div class="tabs">${tabs.map(([k, l]) => `<button type="button" class="${S.coord.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
     if (S.coord.tab === 'pedidos') h += guiaCoord() + coordPedidos(c, pend, peds);
     else if (S.coord.tab === 'cobertura') h += coordCobertura(c, dias);
-    else if (S.coord.tab === 'dia') h += coordDia(c, dias, peds);
+    else if (S.coord.tab === 'dia') h += guiaCoord() + coordDia(c, dias, peds);
     else h += coordConfig(c);
     $('app').innerHTML = h + '</div>';
     if (S.coord.tab === 'config') bindConfig(c);
+    if (S.coord.tab === 'pedidos') bindBuscaConf();
     if (S.coord.flash) { const e = document.getElementById(S.coord.flash); if (e) { e.scrollIntoView({ block: 'center' }); e.classList.add('flash'); S.coord.flashV = [S.coord.flash, Date.now() + 2500]; S.coord.flash = null; } }
     else if (S.coord.flashV && Date.now() < S.coord.flashV[1]) { const e = document.getElementById(S.coord.flashV[0]); if (e) e.classList.add('flash'); }
   }
@@ -403,7 +404,7 @@ window.PPAM_COORD = function (K) {
   }
   /* ---------- Historial: lista, filtro "solo borrados" y "Restaurar" ---------- */
   const audFecha = (x) => { const v = x && x.at; if (!v) return null; if (typeof v === 'string') return new Date(v); if (v.toDate) return v.toDate(); if (v.seconds) return new Date(v.seconds * 1000); return null; };
-  const AUD_IC = { borro_turno: 'x', borro_punto: 'x', borro_foto: 'x', quito: 'x', cancelo: 'x', no_confirmo: 'x', confirmo: 'check', anoto: 'plus', creo_turno: 'plus', creo_punto: 'plus', creo_campana: 'plus', restauro: 'back', cambio_turno: 'edit', cambio_punto: 'edit', cambio_campana: 'edit', coordinadores: 'edit', config: 'edit' };
+  const AUD_IC = { borro_turno: 'x', borro_punto: 'x', borro_foto: 'x', quito: 'x', cancelo: 'x', no_confirmo: 'x', confirmo: 'check', anoto: 'plus', creo_turno: 'plus', creo_punto: 'plus', creo_campana: 'plus', restauro: 'back', cambio_turno: 'edit', cambio_punto: 'edit', cambio_campana: 'edit', coordinadores: 'edit', config: 'edit', habilito: 'check', deshabilito: 'x' };
   const esBorrado = (x) => /^(borro_|quito|cancelo|no_confirmo)/.test(x.tipo);
   function cuandoTxt(d) {
     if (!d) return 'recién';
@@ -474,13 +475,20 @@ window.PPAM_COORD = function (K) {
     let h = `<div class="sec">Por confirmar</div>`;
     h += pend.length ? '<div class="pcw rqs">' + pend.map(p => pedidoCoordRow(c, p, `<button type="button" class="sbtn nk" data-rechazar="${esc(p.id)}">${I('x', 'width:15px;height:15px')}No confirmar</button><button type="button" class="sbtn pri" data-confirmar="${esc(p.id)}">${I('check', 'width:15px;height:15px')}Confirmar</button>`)).join('') + '</div>' : '<div class="card"><div class="empty">No hay pedidos nuevos. Todo al día.</div></div>';
     const conf = peds.filter(p => p.estado === 'confirmado' && p.fecha >= hoy()).sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde));
-    if (conf.length) h += `<div class="sec">Confirmados (${conf.length})</div><div class="card">` + conf.slice(0, 40).map(p => pedidoCoordRow(c, p, `<button type="button" class="sbtn bad" data-quitar="${esc(p.id)}">Quitar del turno</button>`)).join('') + '</div>';
+    if (conf.length) {
+      const todos = S.coord.verTodos === c.id || conf.length <= 40, clave = (p) => sinTilde(`${p.nombre} ${p.apellido} ${p.congregacion || ''} ${fmtDia(p.fecha)} ${fmtHora(p.desde)}`).toLowerCase();
+      h += `<div class="sec">Confirmados (${conf.length})</div>${conf.length > 8 ? `<div class="srch2">${I('search', 'width:16px;height:16px')}<input id="cPq" type="search" placeholder="Buscar por nombre o día" aria-label="Buscar entre los confirmados"></div>` : ''}<div class="card" id="cConf">` +
+        conf.map((p, i) => `<div class="cfr${!todos && i >= 40 ? ' mas hidden' : ''}" data-pq="${esc(clave(p))}">${pedidoCoordRow(c, p, `<button type="button" class="sbtn bad" data-quitar="${esc(p.id)}">Quitar del turno</button>`)}</div>`).join('') +
+        `${todos ? '' : `<div class="vtodos"><span>Mostrando 40 de ${conf.length}</span><button type="button" class="linkish fuerte" data-vtodos="${esc(c.id)}">Ver los ${conf.length - 40} restantes</button></div>`}<div class="empty hidden" id="cPq0">Nadie con ese nombre o día.</div></div>`;
+    }
     return h;
   }
   function coordCobertura(c, dias) {
     if (!dias.length) return '<div class="empty">No hay días con turnos por delante. Revisá las fechas y los turnos en Configurar.</div>';
     if (!S.coord.semana || !dias.includes(S.coord.semana)) S.coord.semana = dias[0];
     const N = PC() ? 14 : 7;   // en PC entran dos semanas
+    // Quiénes van en cada casilla (iniciales en el celular, nombres en la PC)
+    const quien = {}; Object.values(S.coord.pedidos || {}).forEach(p => { if (p.estado !== 'confirmado' && p.estado !== 'pendiente') return; (quien[p.fecha + '|' + p.tid] = quien[p.fecha + '|' + p.tid] || []).push(p); });
     const i0 = dias.indexOf(S.coord.semana), ds = dias.slice(i0, i0 + N);
     let h = `<div class="acts" style="margin:0 0 10px;"><button type="button" class="sbtn" data-sem="-${N}" ${i0 === 0 ? 'disabled' : ''}>${I('back', 'width:15px;height:15px')}Anteriores</button><button type="button" class="sbtn" data-sem="${N}" ${i0 + N >= dias.length ? 'disabled' : ''}>Siguientes${I('chev', 'width:15px;height:15px')}</button></div>`;
     Object.keys(c.puntos || {}).forEach(pid => {
@@ -496,12 +504,14 @@ window.PPAM_COORD = function (K) {
           const t = turnosDelDia(c, d).find(x => x.punto === pid && x.desde === a && x.hasta === b);
           if (!t) { h += '<div class="na">·</div>'; return; }
           const oc = Object.values((S.coord.cupos[cupoId(c.id, d, t.id)] || {}).ocupados || {}), n = cupoDe(c, t), k = oc.filter(v => v === 'c').length, pe = oc.length - k;
-          h += `<button type="button" class="${k >= n ? 'full' : k > 0 ? 'half' : 'none'}" data-cir="${d}|${esc(t.id)}" title="Ver quiénes van${pe ? ' (' + pe + ' por confirmar)' : ''}">${k}/${n}${pe ? '<sup>+' + pe + '</sup>' : ''}</button>`;
+          const gente = (quien[d + '|' + t.id] || []).sort((a, b) => (a.estado === 'confirmado' ? 0 : 1) - (b.estado === 'confirmado' ? 0 : 1));
+          const nom = gente.map(p => PC() ? `<span class="cn${p.estado === 'pendiente' ? ' p' : ''}">${esc(p.nombre)} ${esc(p.apellido)}</span>` : `<span class="ci${p.estado === 'pendiente' ? ' p' : ''}">${esc(iniciales(p.nombre + ' ' + p.apellido))}</span>`).join('');
+          h += `<button type="button" class="${k >= n ? 'full' : k > 0 ? 'half' : 'none'}" data-cir="${d}|${esc(t.id)}" title="${esc(gente.length ? gente.map(p => p.nombre + ' ' + p.apellido + (p.estado === 'pendiente' ? ' (por confirmar)' : '')).join(', ') : 'Nadie anotado todavía')}"><span class="cq">${k}/${n}${pe ? '<sup>+' + pe + '</sup>' : ''}</span>${nom ? `<span class="cns">${nom}</span>` : ''}</button>`;
         });
       });
       h += '</div>';
     });
-    h += `<div class="acts"><button type="button" class="sbtn pri" data-voluntarios>${I('chat')}Pedir voluntarios por WhatsApp</button></div><p class="note">Tocá una casilla para ver quiénes van en ese turno. "Pedir voluntarios" arma un mensaje con los turnos de estos días que todavía no están completos y el link a la campaña.</p>`;
+    h += `<div class="acts"><button type="button" class="sbtn pri" data-voluntarios>${I('chat')}Pedir voluntarios por WhatsApp</button><button type="button" class="sbtn" data-listadia>${I('list')}Lista completa</button></div><p class="note">En cada casilla, ${PC() ? 'los nombres' : 'las iniciales'} de quienes van (${PC() ? 'en cursiva' : 'con borde punteado'}, los que faltan confirmar). Tocá una casilla para ver el detalle. "Pedir voluntarios" arma un mensaje con los turnos de estos días que todavía no están completos y el link a la campaña.</p>`;
     return h;
   }
   function coordDia(c, dias, peds) {
@@ -541,7 +551,7 @@ window.PPAM_COORD = function (K) {
     h += '</div>';
     if (!ts.length) h += '<div class="card"><div class="empty">No hay turnos ese día.</div></div>';
     else if (!vistos) h += '<div class="card"><div class="empty">Ese día está todo cubierto.</div></div>';
-    h += `<div class="acts"><button type="button" class="sbtn pri" data-listadia>${I('share')}Compartir la lista por WhatsApp</button></div>`;
+    h += `<div class="acts"><button type="button" class="sbtn pri" data-listadia>${I('list')}Lista completa</button></div><p class="note">Para compartir por WhatsApp o imprimir quiénes van: este día, la semana o toda la campaña.</p>`;
     return h;
   }
   const enCurso = new Set();
@@ -584,6 +594,56 @@ window.PPAM_COORD = function (K) {
       return `*${fmtHora(t.desde)} a ${fmtHora(t.hasta)} · ${c.puntos[t.punto].nombre}*\n${ps.length ? ps.map(p => `  – ${p.nombre} ${p.apellido}`).join('\n') : '  (sin confirmar)'}`;
     }).join('\n\n');
   }
+  /* ---------- Lista completa: quiénes van (día, semana o campaña) para WhatsApp o para imprimir ---------- */
+  function datosLista(c, o) {
+    const ds0 = diasDe(c).filter(d => d >= hoy()), d0 = ds0.includes(S.coord.dia) ? S.coord.dia : ds0[0];
+    const ds = !d0 ? [] : o.rango === 'dia' ? [d0] : o.rango === 'semana' ? ds0.filter(d => d >= d0 && d <= addDays(d0, 6)) : ds0;
+    const peds = Object.values(S.coord.pedidos || {}).filter(p => p.estado === 'confirmado' || (o.pend && p.estado === 'pendiente'));
+    return ds.map(d => ({ d, ts: turnosDelDia(c, d).map(t => { const ps = peds.filter(p => p.fecha === d && p.tid === t.id).sort((a, b) => (a.estado === 'confirmado' ? 0 : 1) - (b.estado === 'confirmado' ? 0 : 1)); return { t, p: (c.puntos || {})[t.punto] || {}, ps, falta: Math.max(0, cupoDe(c, t) - ps.filter(q => q.estado === 'confirmado').length) }; }) })).filter(x => x.ts.length);
+  }
+  const persTxt = (p, o) => `${p.nombre} ${p.apellido}${p.estado === 'pendiente' ? ' (por confirmar)' : ''}${o.cel && p.celular ? ' · ' + p.celular : ''}`;
+  function textoLista(c, o) {
+    const L = datosLista(c, o);
+    if (!L.length) return '';
+    const tit = o.rango === 'dia' ? cap(fmtDia(L[0].d)) : `${cap(fmtDia(L[0].d))} al ${fmtDia(L[L.length - 1].d)}`;
+    return `*PPAM · ${c.nombre}* — ${tit}\n` + L.map(x => `\n*${cap(fmtDia(x.d))}*\n` + x.ts.map(({ t, p, ps, falta }) => `${fmtHora(t.desde)} a ${fmtHora(t.hasta)} · ${p.nombre || ''}: ${ps.length ? ps.map(q => persTxt(q, o)).join(', ') : 'nadie todavía'}${falta ? ` (${falta === 1 ? 'falta 1' : 'faltan ' + falta})` : ''}`).join('\n')).join('\n');
+  }
+  function imprimirLista(c, o) {
+    const L = datosLista(c, o), w = window.open('', '_blank');
+    if (!w) { toast('El navegador bloqueó la ventana para imprimir. Permitila y probá de nuevo.'); return; }
+    const filas = L.map(x => `<h2>${esc(cap(fmtDia(x.d)))}</h2><table><thead><tr><th>Horario</th><th>Punto</th><th>Quiénes van</th></tr></thead><tbody>${x.ts.map(({ t, p, ps, falta }) => `<tr><td>${esc(fmtHora(t.desde))} a ${esc(fmtHora(t.hasta))}</td><td>${esc(p.nombre || '')}</td><td>${ps.map(q => `<div${q.estado === 'pendiente' ? ' class="pe"' : ''}>${esc(persTxt(q, o))}</div>`).join('')}${falta ? `<div class="fa">${falta === 1 ? 'Falta 1' : 'Faltan ' + falta}</div>` : ''}</td></tr>`).join('')}</tbody></table>`).join('');
+    w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>PPAM · ${esc(c.nombre)}</title><style>body{font:13px/1.4 system-ui,sans-serif;color:#1d2622;margin:24px}h1{font-size:18px;margin:0 0 4px;color:#12433F}h2{font-size:14px;margin:18px 0 6px;color:#12433F}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;vertical-align:top}th{background:#f1f4f3}td:first-child{white-space:nowrap;width:110px}.pe{font-style:italic;color:#8a5a00}.fa{color:#b3261e;font-weight:600}h2{break-after:avoid}tr{break-inside:avoid}</style></head><body><h1>PPAM · ${esc(c.nombre)}</h1><div>${esc(c.ciudad || '')}</div>${filas || '<p>No hay turnos en esos días.</p>'}</body></html>`);
+    w.document.close(); w.focus(); setTimeout(() => { try { w.print(); } catch (e) { /* nada */ } }, 300);
+  }
+  function listaCompleta(c) {
+    if (!c) return;
+    const o = { rango: S.coord.lr || 'dia', pend: true, cel: false };
+    const ov = sheet(`<h3>Lista completa</h3><p class="hint">Quiénes van a cada turno, para mandar al grupo o imprimir.</p>
+      <div class="seg2" role="group" aria-label="Qué días">${[['dia', 'Este día'], ['semana', 'Esta semana'], ['campana', 'Toda la campaña']].map(([k, l]) => `<button type="button" data-lr="${k}" class="${o.rango === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <label class="ck"><input type="checkbox" id="lPend" checked> <span>Incluir los que faltan confirmar</span></label>
+      <label class="ck"><input type="checkbox" id="lCel"> <span>Incluir los celulares <small>(solo para coordinadores; no lo mandes al grupo)</small></span></label>
+      <pre class="lprev" id="lPrev"></pre>
+      <div class="two"><button type="button" class="btn" id="lWa">${I('chat')}WhatsApp</button><button type="button" class="btn alt" id="lPr">Imprimir</button></div><button type="button" class="btn alt" data-cerrar>Cerrar</button>`);
+    const q = (s) => ov.querySelector(s);
+    const prev = () => { o.pend = q('#lPend').checked; o.cel = q('#lCel').checked; const t = textoLista(c, o); q('#lPrev').textContent = t ? t.replace(/\*/g, '') : 'No hay turnos en esos días.'; ov.querySelectorAll('[data-lr]').forEach(b => b.classList.toggle('on', b.dataset.lr === o.rango)); };
+    ov.querySelectorAll('[data-lr]').forEach(b => b.addEventListener('click', () => { o.rango = S.coord.lr = b.dataset.lr; prev(); }));
+    q('#lPend').addEventListener('change', prev); q('#lCel').addEventListener('change', prev);
+    q('#lWa').addEventListener('click', () => { const t = textoLista(c, o); if (t) compartir(t); });
+    q('#lPr').addEventListener('click', () => imprimirLista(c, o));
+    prev();
+  }
+  // Buscador de "Confirmados" (en Pedidos): filtra sin volver a dibujar
+  function bindBuscaConf() {
+    const inp = $('cPq'), box = $('cConf'); if (!box) return;
+    const vt = box.querySelector('[data-vtodos]'); if (vt) vt.addEventListener('click', () => { S.coord.verTodos = vt.dataset.vtodos; renderCoord(); });
+    if (!inp) return;
+    inp.addEventListener('input', () => {
+      const t = sinTilde(inp.value.trim()).toLowerCase(); let n = 0;
+      box.querySelectorAll('.cfr').forEach(r => { const si = t ? r.dataset.pq.includes(t) : !r.classList.contains('mas'); r.classList.toggle('hidden', !si); if (si) n++; });
+      const v = box.querySelector('.vtodos'); if (v) v.classList.toggle('hidden', !!t);
+      $('cPq0').classList.toggle('hidden', n > 0);
+    });
+  }
   /* ---------- Configurar una campaña (coordinadores y administradores) ---------- */
   function coordConfig(c) {
     const puntos = Object.keys(c.puntos || {}).map(id => Object.assign({ id }, c.puntos[id]));
@@ -605,6 +665,11 @@ window.PPAM_COORD = function (K) {
       <label class="ck"><input type="checkbox" id="cfMant"${c.mantOn ? ' checked' : ''}> <span><b>Mantenimiento de los carritos</b><br>"¿El carrito quedó bien?" al terminar el turno, problemas, reparaciones y revisión periódica.</span></label>
       <div class="fld" style="margin:-6px 0 10px 32px"><label for="cfRev">Revisar cada</label><select id="cfRev">${[15, 30, 60, 90].map(n => `<option value="${n}"${(c.revDias || 30) === n ? ' selected' : ''}>${n} días</option>`).join('')}</select></div>
       <label class="ck"><input type="checkbox" id="cfAct"${c.activa !== false ? ' checked' : ''}> <span>Visible para todos (si la desmarcás, deja de aparecer en el inicio)</span></label>
+      <div class="lbl" style="margin-top:6px">¿Quién puede anotarse?</div>
+      <label class="ck rd"><input type="radio" name="cfHab" value="todos"${c.soloHab ? '' : ' checked'}> <span><b>Todos los hermanos habilitados</b><br>Como hasta ahora: cualquier hermano con su link puede anotarse en esta campaña.</span></label>
+      <label class="ck rd"><input type="radio" name="cfHab" id="cfSolo" value="solo"${c.soloHab ? ' checked' : ''}> <span><b>Solo los habilitados para esta campaña</b><br>El coordinador habilita a cada hermano (en Hermanos) y le manda el link de esta campaña. Los demás la ven con candado y pueden pedir acceso.</span></label>
+      <label class="ck" style="margin-left:32px"><input type="checkbox" id="cfBloq"${c.verBloq === false ? '' : ' checked'}> <span>Mostrarla con candado a los no habilitados (si la desmarcás, no la ven)</span></label>
+      ${c.soloHab ? habCampHTML(c) : ''}
       <button type="button" class="btn" id="cfSave" style="margin-bottom:10px;">Guardar datos</button></div></div>`;
       return h;
     }
@@ -666,15 +731,17 @@ window.PPAM_COORD = function (K) {
       try { await b.commit(); auditar(c.id, 'borro_foto', 'quitó la foto de portada'); toast('Foto quitada'); } catch (e) { console.error(e); toast('No se pudo quitar.'); }
     });
     bindCel($('cfCon'), $('cfConOk'));
+    if ($('cfPasar')) $('cfPasar').addEventListener('click', () => pasarAnotados(c));
+    const hb = document.querySelector('[data-hcamp]'); if (hb) hb.addEventListener('click', () => { S.hcampIr = hb.dataset.hcamp; });
     $('cfSave').addEventListener('click', async () => {
       const bs = $('cfSave'); if (bs.disabled) return;
-      const d = { nombre: $('cfNom').value.trim(), ciudad: $('cfCiu').value.trim(), lugar: $('cfLug').value.trim(), desde: $('cfDes').value, hasta: $('cfHas').value, activa: $('cfAct').checked, pubsOn: $('cfPubs').checked, mantOn: $('cfMant').checked, revDias: parseInt($('cfRev').value, 10) || 30 };
+      const d = { nombre: $('cfNom').value.trim(), ciudad: $('cfCiu').value.trim(), lugar: $('cfLug').value.trim(), desde: $('cfDes').value, hasta: $('cfHas').value, activa: $('cfAct').checked, pubsOn: $('cfPubs').checked, mantOn: $('cfMant').checked, revDias: parseInt($('cfRev').value, 10) || 30, soloHab: $('cfSolo').checked, verBloq: $('cfBloq').checked };
       const con = $('cfCon').value.trim(), cn = normCel(con);
       if (con && !cn.ok) { toast('El WhatsApp de contacto no parece un celular. ' + CEL_ERR); return; }
       d.contacto = con ? cn.txt : S.del();
       if (!d.nombre || !d.desde || !d.hasta) { toast('Completá el nombre y las fechas.'); return; }
       if (d.hasta < d.desde) { toast('La fecha "hasta" es anterior a "desde".'); return; }
-      const cam = []; if (d.nombre !== c.nombre) cam.push(`nombre ("${c.nombre}" → "${d.nombre}")`); if (d.ciudad !== (c.ciudad || '')) cam.push(`ciudad (${c.ciudad || '—'} → ${d.ciudad})`); if (d.lugar !== (c.lugar || '')) cam.push('lugar'); if (d.desde !== c.desde || d.hasta !== c.hasta) cam.push(`fechas (${c.desde} a ${c.hasta} → ${d.desde} a ${d.hasta})`); if (d.activa !== (c.activa !== false)) cam.push(d.activa ? 'la hizo visible' : 'la ocultó'); if (d.mantOn !== !!c.mantOn) cam.push(d.mantOn ? 'prendió el mantenimiento de carritos' : 'apagó el mantenimiento de carritos'); if (d.pubsOn !== !!c.pubsOn) cam.push(d.pubsOn ? 'prendió la cuenta de publicaciones' : 'apagó la cuenta de publicaciones'); if ((con ? cn.txt : '') !== (c.contacto || '')) cam.push(con ? 'WhatsApp de contacto (' + cn.txt + ')' : 'quitó el WhatsApp de contacto');
+      const cam = []; if (d.nombre !== c.nombre) cam.push(`nombre ("${c.nombre}" → "${d.nombre}")`); if (d.ciudad !== (c.ciudad || '')) cam.push(`ciudad (${c.ciudad || '—'} → ${d.ciudad})`); if (d.lugar !== (c.lugar || '')) cam.push('lugar'); if (d.desde !== c.desde || d.hasta !== c.hasta) cam.push(`fechas (${c.desde} a ${c.hasta} → ${d.desde} a ${d.hasta})`); if (d.activa !== (c.activa !== false)) cam.push(d.activa ? 'la hizo visible' : 'la ocultó'); if (d.mantOn !== !!c.mantOn) cam.push(d.mantOn ? 'prendió el mantenimiento de carritos' : 'apagó el mantenimiento de carritos'); if (d.soloHab !== !!c.soloHab) cam.push(d.soloHab ? 'pidió habilitación propia para anotarse' : 'abrió la campaña a todos los habilitados'); if (d.pubsOn !== !!c.pubsOn) cam.push(d.pubsOn ? 'prendió la cuenta de publicaciones' : 'apagó la cuenta de publicaciones'); if ((con ? cn.txt : '') !== (c.contacto || '')) cam.push(con ? 'WhatsApp de contacto (' + cn.txt + ')' : 'quitó el WhatsApp de contacto');
       bs.disabled = true;
       try { await S.db.doc('campanas/' + c.id).update(d); if (cam.length) auditar(c.id, 'cambio_campana', 'cambió los datos de la campaña: ' + cam.join(', ')); S.sucio = false; S.pendRender = false; toast('Guardado'); render(); } catch (e) { console.error(e); toast('No se pudo guardar.'); }
       if (bs.isConnected) bs.disabled = false;
@@ -1101,8 +1168,8 @@ window.PPAM_COORD = function (K) {
      links/{cod}: la llave del link. Un celular a la vez; "link nuevo" anula el anterior. */
   const LETRAS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const nuevoCod = () => { const a = new Uint32Array(8); crypto.getRandomValues(a); return Array.from(a, x => LETRAS[x % 32]).join(''); };
-  const linkHermano = (cod) => location.origin + location.pathname + '#/?cod=' + cod;
-  const msgLink = (h, cod) => `Hola ${h.nombre}, ya estás habilitado para la predicación pública. Tocá este link para entrar:\n${linkHermano(cod || h.cod)}\n\nGuardá este mensaje: si cambiás de celular, entrás con este mismo link. Es solo para vos, no lo reenvíes.`;
+  const linkHermano = (cod, cid) => location.origin + location.pathname + '#/?cod=' + cod + (cid ? '&c=' + cid : '');
+  const msgLink = (h, cod, cid) => `Hola ${h.nombre}, ya estás habilitado para la predicación pública${cid && S.campanas[cid] ? ` (campaña *${S.campanas[cid].nombre}*)` : ''}. Tocá este link para entrar:\n${linkHermano(cod || h.cod, cid)}\n\nGuardá este mensaje: si cambiás de celular, entrás con este mismo link. Es solo para vos, no lo reenvíes.`;
   const waTxt = (cel, txt) => waUrl(cel) + '?text=' + encodeURIComponent(txt);
   const celSolo = (c) => String(c || '').replace(/\D/g, '');
   const cuandoH = (ts) => { const d = ts && (ts.toDate ? ts.toDate() : new Date(ts)); if (!d || isNaN(d)) return ''; const f = isoOf(d), hh = `${d.getHours()}:${pad(d.getMinutes())}`; return f === hoy() ? `hoy ${hh}` : f === addDays(hoy(), -1) ? `ayer ${hh}` : `el ${fmtCorto(f)}`; };
@@ -1110,7 +1177,8 @@ window.PPAM_COORD = function (K) {
   const fechaLocal = (x) => { const d = x && (x.toDate ? x.toDate() : new Date(x)); return d && !isNaN(d) ? isoOf(d) : String(x || '').slice(0, 10); };
   const yoFirma = () => ({ por: S.user.email.toLowerCase(), porNombre: (S.user.displayName || '').slice(0, 80) });
   function escucharHermanos() {
-    if (!S.herm) S.herm = { lista: {}, ok: false, q: '', cong: 'todas', viejos: null, unsub: null };
+    if (!S.herm) S.herm = { lista: {}, ok: false, q: '', cong: 'todas', viejos: null, unsub: null, camp: '', acc: {} };
+    escucharAccesos();
     if (S.herm.unsub) return;
     S.herm.unsub = () => {};   // ya se está escuchando (el primer aviso puede llegar antes de que vuelva onSnapshot)
     const un = S.db.collection('hermanos').onSnapshot((qs) => {
@@ -1123,7 +1191,7 @@ window.PPAM_COORD = function (K) {
       const o = {}; qs.forEach(d => { o[d.id] = d.data(); }); if (!S.herm) return; S.herm.desc = o;
       if (S.route.name === 'hermanos') refrescar(renderHermanos); else if (S.route.name === 'coord' && !S.route.cid) refrescar(renderCoord);
     }, (e) => console.error(e));
-    if (S.herm) S.herm.unsub = () => { un(); un2(); };
+    if (S.herm) S.herm.unsub = () => { un(); un2(); Object.values((S.herm && S.herm.accU) || {}).forEach(f => { try { f(); } catch (e) { /* nada */ } }); };
   }
   // Quienes ya pidieron turnos con Google en las campañas que coordino: se habilitan con su mismo id (así sus turnos quedan)
   async function cargarViejos() {
@@ -1139,6 +1207,54 @@ window.PPAM_COORD = function (K) {
     S.herm.viejos = v; S.herm.cargandoViejos = false;
     if (S.route.name === 'hermanos') refrescar(renderHermanos); else if (S.route.name === 'coord' && !S.route.cid) refrescar(renderCoord);
   }
+  /* ---------- Habilitación por campaña (coordinadores) ---------- */
+  // Campañas que piden habilitación propia y que coordino (las que todavía no terminaron)
+  const campsHab = () => misCampanas().filter(c => c.soloHab && (!c.hasta || c.hasta >= hoy()));
+  const habPara = (h, cid) => !!(h.todas || (h.camps || []).includes(cid));
+  const nomCamp = (cid) => { const c = S.campanas[cid]; return c ? c.nombre : 'Otra campaña'; };
+  // Pedidos de acceso ("Pedir acceso" del hermano), uno por campaña que coordino
+  function escucharAccesos() {
+    const H = S.herm; H.accU = H.accU || {}; H.acc = H.acc || {};
+    campsHab().forEach(c => {
+      if (H.accU[c.id]) return;
+      H.accU[c.id] = () => {};   // ya se está escuchando (el primer aviso puede llegar antes de que vuelva onSnapshot)
+      H.accU[c.id] = S.db.collection('accesos').where('cid', '==', c.id).onSnapshot((qs) => {
+        Object.keys(H.acc).forEach(k => { if (H.acc[k].cid === c.id) delete H.acc[k]; });
+        qs.forEach(d => { H.acc[d.id] = Object.assign({ id: d.id }, d.data()); });
+        if (S.route.name === 'hermanos') refrescar(renderHermanos);
+      }, (e) => console.error(e));
+    });
+  }
+  const accesosPend = () => Object.values((S.herm && S.herm.acc) || {}).filter(a => S.herm.lista[a.hid] && !habPara(S.herm.lista[a.hid], a.cid));
+  const arrF = () => window.__ppamMock ? window.__ppamMock.arr : firebase.firestore.FieldValue;
+  async function habilitarEn(hid, cid, si) {
+    const b = S.db.batch();
+    b.update(S.db.doc('hermanos/' + hid), { camps: si ? arrF().arrayUnion(cid) : arrF().arrayRemove(cid) });
+    if (si && S.herm.acc[cid + '__' + hid]) b.delete(S.db.doc('accesos/' + cid + '__' + hid));
+    await b.commit();
+    auditar(cid, si ? 'habilito' : 'deshabilito', `${si ? 'habilitó' : 'sacó de la campaña'} a ${((S.herm.lista[hid] || {}).nombre || '')} ${((S.herm.lista[hid] || {}).apellido || '')}`.trim());
+  }
+  const msgCamp = (h, c) => `Hola ${h.nombre}, ya estás habilitado para la campaña *${c.nombre}*${c.ciudad ? ' (' + c.ciudad + ')' : ''}${c.desde ? ', ' + campRango(c) : ''}.\n\nEntrá con tu link para elegir tus turnos:\n${linkHermano(h.cod, c.id)}\n\nEs personal, no lo reenvíes.`;
+  // En la campaña (Ajustes): cuántos están habilitados y pasar a los que ya se anotaron
+  function habCampHTML(c) {
+    escucharHermanos();
+    const L = listaHermanos().filter(h => !h.baja), n = L.filter(h => habPara(h, c.id)).length, faltan = anotadosSinHab(c).length;
+    return `<div class="habc"><span><b class="num">${n}</b> ${n === 1 ? 'hermano habilitado' : 'hermanos habilitados'} para esta campaña</span><button type="button" class="sbtn" data-go="#/hermanos" data-hcamp="${esc(c.id)}">Ver hermanos</button>${faltan ? `<button type="button" class="sbtn pri" id="cfPasar">Habilitar a los ${faltan} que ya se anotaron</button>` : ''}</div>`;
+  }
+  // Hermanos con turnos en la campaña que todavía no están habilitados para ella
+  function anotadosSinHab(c) {
+    if (!S.herm || !S.herm.ok) return [];
+    const ids = new Set(Object.values(S.coord.pedidos || {}).filter(p => p.cid === c.id && p.estado !== 'rechazado').map(p => p.uid));
+    return [...ids].filter(id => S.herm.lista[id] && !S.herm.lista[id].baja && !habPara(S.herm.lista[id], c.id));
+  }
+  async function pasarAnotados(c) {
+    const ids = anotadosSinHab(c); if (!ids.length) return;
+    if (!confirm(`¿Habilitar para "${c.nombre}" a los ${ids.length} hermanos que ya tienen turnos en esta campaña?`)) return;
+    try {
+      for (let i = 0; i < ids.length; i += 400) { const b = S.db.batch(); ids.slice(i, i + 400).forEach(id => b.update(S.db.doc('hermanos/' + id), { camps: arrF().arrayUnion(c.id) })); await b.commit(); }
+      auditar(c.id, 'habilito', `habilitó para la campaña a los ${ids.length} hermanos que ya se habían anotado`); toast('Listo: quedaron habilitados'); render();
+    } catch (e) { console.error(e); toast('No se pudo guardar. Revisá la conexión y probá de nuevo.'); }
+  }
   const listaHermanos = () => Object.keys(S.herm.lista).map(id => Object.assign({ id }, S.herm.lista[id]));
   // Todos los que pidieron turnos con Google y todavía no tienen link, salvo los que un coordinador quitó de la lista
   const viejosPend = () => Object.values(S.herm.viejos || {}).filter(v => !S.herm.lista[v.uid] && !(S.herm.desc || {})[v.uid]).sort((a, b) => (a.apellido + a.nombre).localeCompare(b.apellido + b.nombre, 'es'));
@@ -1150,13 +1266,17 @@ window.PPAM_COORD = function (K) {
     return `<button type="button" class="hcard" data-go="#/hermanos"><span class="ii">${I('users', 'width:24px;height:24px')}</span><span class="tx"><b>Hermanos habilitados${av ? ` <span class="bdg">${av} ${av === 1 ? 'aviso' : 'avisos'}</span>` : ''}</b><small>${esc(sub)}</small></span>${I('chev')}</button>`;
   }
   // En PC la lista se ve como tabla: congregación, celular y último ingreso en columnas (en el celular van en la línea de abajo)
-  const filaH = (h, acts) => `<div class="arow hf" data-hfic="${esc(h.id || '')}"><span class="av">${esc(iniciales(h.nombre + ' ' + h.apellido))}</span><span class="tx"><b>${esc(h.nombre)} ${esc(h.apellido)}</b><small>${esc(h.sub)}</small></span><span class="hx">${esc(h.congregacion || '')}</span><span class="hx num">${esc(h.celular || '')}</span><span class="hx">${esc(h.baja ? 'Dado de baja' : h.ultimo ? cap(cuandoH(h.ultimo) || '') : 'Todavía no entró')}</span><span class="acts">${acts}</span></div>`;
+  const filaH = (h, acts) => `<div class="arow hf" data-hfic="${esc(h.id || '')}"><span class="av">${esc(iniciales(h.nombre + ' ' + h.apellido))}</span><span class="tx"><b>${esc(h.nombre)} ${esc(h.apellido)}</b><small>${esc(h.sub)}</small>${chipsCamps(h)}</span><span class="hx">${esc(h.congregacion || '')}</span><span class="hx num">${esc(h.celular || '')}</span><span class="hx">${esc(h.baja ? 'Dado de baja' : h.ultimo ? cap(cuandoH(h.ultimo) || '') : 'Todavía no entró')}</span><span class="acts">${acts}</span></div>`;
+  const chipsCamps = (h) => { if (!campsHab().length && !h.todas) return ''; const cs = h.todas ? ['Todas las campañas'] : (h.camps || []).filter(id => S.campanas[id] && (!S.campanas[id].hasta || S.campanas[id].hasta >= hoy())).map(nomCamp); return cs.length ? `<span class="hcc">${cs.map(n => `<i>${esc(n)}</i>`).join('')}</span>` : ''; };
   const cabH = '<div class="hhd" aria-hidden="true"><span></span><span>Hermano</span><span>Congregación</span><span>Celular</span><span>Último ingreso</span><span></span></div>';
   function renderHermanos() {
     if (!S.user || !(S.isAdmin || S.coordDe.length)) { $('app').innerHTML = '<div class="empty">Esta parte es para coordinadores.</div>'; return; }
     escucharHermanos(); cargarViejos();
     const H = S.herm, q = sinTilde(H.q || '').toLowerCase(), qd = celSolo(H.q);
-    const pasa = (h) => (H.cong === 'todas' || h.congregacion === H.cong) && (!q || sinTilde(h.nombre + ' ' + h.apellido).toLowerCase().includes(q) || (qd.length >= 3 && celSolo(h.celular).includes(qd)));
+    const ch = campsHab(); if (H.camp && !ch.some(c => c.id === H.camp)) H.camp = '';
+    if (S.hcampIr) { if (ch.some(c => c.id === S.hcampIr)) H.camp = S.hcampIr; S.hcampIr = null; }
+    const cf = H.camp ? H.camp.split('|') : [], enCamp = (h) => !cf.length || (cf[1] === 'no' ? !habPara(h, cf[0]) : habPara(h, cf[0]));
+    const pasa = (h) => (H.cong === 'todas' || h.congregacion === H.cong) && enCamp(h) && (!q || sinTilde(h.nombre + ' ' + h.apellido).toLowerCase().includes(q) || (qd.length >= 3 && celSolo(h.celular).includes(qd)));
     const L = listaHermanos(), congs = [...new Set(L.map(h => h.congregacion))].sort((a, b) => a.localeCompare(b, 'es'));
     const vis = L.filter(pasa);
     const avisos = vis.filter(h => h.aviso && !h.baja), sinEntrar = vis.filter(h => !h.baja && !h.ultimo), activos = vis.filter(h => !h.baja && h.ultimo), bajas = vis.filter(h => h.baja);
@@ -1165,8 +1285,11 @@ window.PPAM_COORD = function (K) {
     const viejos = viejosPend().filter(pasa);
     let h = `<div id="herm"><button type="button" class="btn" data-hnuevo>${I('plus', 'width:18px;height:18px')}Habilitar a un hermano</button>
       <div class="srch2">${I('search', 'width:16px;height:16px')}<input id="hBus" type="search" placeholder="Buscar por nombre o celular" value="${esc(H.q || '')}" aria-label="Buscar hermano"></div>
+      ${ch.length ? `<div class="fld hcf"><label for="hCamp">Campaña</label><select id="hCamp"><option value="">Todos los hermanos</option>${ch.map(c => `<option value="${esc(c.id)}"${H.camp === c.id ? ' selected' : ''}>Habilitados en ${esc(c.nombre)}</option><option value="${esc(c.id)}|no"${H.camp === c.id + '|no' ? ' selected' : ''}>Sin habilitar en ${esc(c.nombre)}</option>`).join('')}</select></div>` : ''}
       ${congs.length > 1 ? `<div class="cg">${['todas', ...congs].map(c => `<button type="button" class="${H.cong === c ? 'on' : ''}" data-hcong="${esc(c)}">${c === 'todas' ? 'Todas' : esc(congCorta(c))}</button>`).join('')}</div>` : ''}`;
     if (!H.ok) h += H.err ? '<div class="empty">No se pudo cargar la lista. Revisá la conexión.</div>' : '<div class="empty">Cargando…</div>';
+    const acc = accesosPend();
+    if (acc.length) h += `<div class="sec">Pidieron acceso <span class="tag pendiente">${acc.length}</span></div><div class="card">${acc.map(a => { const x = H.lista[a.hid]; const otras = (x.camps || []).filter(id => id !== a.cid).map(nomCamp); return `<div class="arow"><span class="av">${esc(iniciales(x.nombre + ' ' + x.apellido))}</span><span class="tx"><b>${esc(x.nombre)} ${esc(x.apellido)}</b><small>Pidió entrar a ${esc(nomCamp(a.cid))}${a.at ? ' · ' + esc(cuandoH(a.at)) : ''}</small><small>${esc(congCorta(x.congregacion))}${otras.length ? ' · habilitado en ' + esc(otras.join(', ')) : ''}${x.porNombre || x.por ? ' · lo habilitó ' + esc(x.porNombre || x.por) : ''}</small></span><span class="acts"><button type="button" class="sbtn pri" data-hacc="${esc(a.id)}">Habilitar</button><button type="button" class="sbtn" data-hnoacc="${esc(a.id)}">Ahora no</button></span></div>`; }).join('')}</div>`;
     h += avisos.map(a => `<div class="codok warn">${I('alert', 'width:18px;height:18px')}<span><b>${esc(a.nombre)} ${esc(a.apellido)} entró desde otro celular</b>${esc(cap(cuandoH(a.ultimo) || ''))}${a.disp ? ' · ' + esc(a.disp) : ''}. Si no lo cambió ${esc(a.nombre)}, mandale un link nuevo: el viejo deja de servir.<br><button type="button" class="linkish fuerte" data-hfic="${esc(a.id)}">Ver a ${esc(a.nombre)}</button> · <button type="button" class="linkish" data-hok="${esc(a.id)}">Ya está, fue ${esc(a.nombre)}</button></span></div>`).join('');
     const reenviar = (x) => `<a class="sbtn" href="${esc(waTxt(x.celular, msgLink(x)))}" target="_blank" rel="noopener" aria-label="Reenviarle el link por WhatsApp">${I('chat', 'width:15px;height:15px')}<span class="pcsolo">Reenviar link</span></a>`;
     if (sinEntrar.length) h += `<div class="sec">Todavía no entraron <span class="tag pendiente">${sinEntrar.length}</span></div><div class="card">${cabH}${sinEntrar.map(x => filaH(Object.assign({ sub: `${congCorta(x.congregacion)} · link enviado ${cuandoH(x.creado) || ''}`.trim() }, x), reenviar(x))).join('')}</div>`;
@@ -1177,10 +1300,13 @@ window.PPAM_COORD = function (K) {
     if (bajas.length) h += `<details class="hbajas"><summary>Dados de baja (${bajas.length})</summary><div class="card">${cabH}${bajas.map(x => filaH(Object.assign({ sub: congCorta(x.congregacion) }, x), I('chev'))).join('')}</div></details>`;
     $('app').innerHTML = h + '</div>';
     const box = $('herm');
+    if ($('hCamp')) $('hCamp').addEventListener('change', (e) => { H.camp = e.target.value; renderHermanos(); });
     const bus = $('hBus'); bus.addEventListener('input', () => { H.q = bus.value; clearTimeout(H.t); H.t = setTimeout(() => { renderHermanos(); const b = $('hBus'); if (b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); } }, 250); });
     box.addEventListener('click', (e) => {
-      const t = e.target.closest('[data-hnuevo],[data-hcong],[data-hok],[data-hviejo],[data-hquitar],[data-hvolver],[data-hfic]'); if (!t || t.tagName === 'A' || e.target.closest('a')) return;
+      const t = e.target.closest('[data-hnuevo],[data-hcong],[data-hok],[data-hviejo],[data-hquitar],[data-hvolver],[data-hfic],[data-hacc],[data-hnoacc]'); if (!t || t.tagName === 'A' || e.target.closest('a')) return;
       const d = t.dataset;
+      if (d.hacc) { const a = H.acc[d.hacc]; if (!a) return; t.disabled = true; return habilitarEn(a.hid, a.cid, true).then(() => avisarHab(a.hid, a.cid)).catch((er) => { console.error(er); t.disabled = false; toast('No se pudo guardar. Revisá la conexión y probá de nuevo.'); }); }
+      if (d.hnoacc) return S.db.doc('accesos/' + d.hnoacc).delete().catch(() => toast('No se pudo guardar. Probá de nuevo.'));
       if (d.hnuevo !== undefined) return habilitarHermano();
       if (d.hcong !== undefined) { H.cong = d.hcong; return renderHermanos(); }
       if (d.hok) return S.db.doc('hermanos/' + d.hok).update({ aviso: false }).catch(() => toast('No se pudo guardar. Probá de nuevo.'));
@@ -1201,7 +1327,7 @@ window.PPAM_COORD = function (K) {
       <div class="fld"><label for="hCong">Congregación</label><select id="hCong"><option value="">Elegí la congregación</option>${congs.map(c => `<option${c === cg ? ' selected' : ''}>${esc(c)}</option>`).join('')}<option value="__otra"${otra ? ' selected' : ''}>Otra…</option></select></div>
       <div class="fld${otra ? '' : ' hidden'}" id="hOtraF"><label for="hOtra">¿Cuál?</label><input id="hOtra" value="${esc(otra ? cg : '')}" placeholder="Nombre de la congregación y ciudad"></div>
       <div class="fld"><label for="hCel">Celular (para mandarle el WhatsApp)</label><input id="hCel" type="tel" value="${esc(x.celular || '')}" placeholder="343 555-0000"><small class="celok" id="hCelOk"></small></div>
-      ${x.id ? '' : '<label class="ck"><input type="checkbox" id="hOk"> <span>El comité de servicio de su congregación lo aprobó para la predicación pública.</span></label>'}
+      ${x.id ? '' : (campsHab().length ? `<div class="lbl">Habilitarlo también para</div>${campsHab().map((c, i, a) => `<label class="ck"><input type="checkbox" data-ncamp="${esc(c.id)}"${a.length === 1 ? ' checked' : ''}> <span>${esc(c.nombre)}<br><small>Esta campaña pide habilitación propia</small></span></label>`).join('')}` : '') + '<label class="ck"><input type="checkbox" id="hOk"> <span>El comité de servicio de su congregación lo aprobó para la predicación pública.</span></label>'}
       <p class="err hidden" id="hErr"></p><button type="button" class="btn" id="hGo">${boton}</button><button type="button" class="btn alt" data-cerrar>Cancelar</button>`);
   }
   function leerForm(ov) {
@@ -1215,9 +1341,9 @@ window.PPAM_COORD = function (K) {
     return { nombre: nombre.slice(0, 60), apellido: apellido.slice(0, 60), congregacion: congregacion.slice(0, 80), celular: cel.txt };
   }
   function bindForm(ov) { const q = (s) => ov.querySelector(s); q('#hCong').addEventListener('change', () => q('#hOtraF').classList.toggle('hidden', q('#hCong').value !== '__otra')); bindCel(q('#hCel'), q('#hCelOk')); }
-  function listoLink(h, cod, titulo) {
-    sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>${titulo}</h3><p>Mandale su link por WhatsApp. Es personal: sirve en un celular a la vez.</p></div><a class="btn" id="hWa" href="${esc(waTxt(h.celular, msgLink(h, cod)))}" target="_blank" rel="noopener">${I('chat')}Mandarle su link por WhatsApp</a><button type="button" class="btn alt" id="hCopy">${I('copy')}Copiar el link</button><button type="button" class="btn alt" data-cerrar>Listo</button>`)
-      .querySelector('#hCopy').addEventListener('click', () => copiar(linkHermano(cod)));
+  function listoLink(h, cod, titulo, cid) {
+    sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>${titulo}</h3><p>Mandale su link por WhatsApp. Es personal: sirve en un celular a la vez.</p></div><a class="btn" id="hWa" href="${esc(waTxt(h.celular, msgLink(h, cod, cid)))}" target="_blank" rel="noopener">${I('chat')}Mandarle su link por WhatsApp</a><button type="button" class="btn alt" id="hCopy">${I('copy')}Copiar el link</button><button type="button" class="btn alt" data-cerrar>Listo</button>`)
+      .querySelector('#hCopy').addEventListener('click', () => copiar(linkHermano(cod, cid)));
   }
   // Nuevo hermano (o quien usaba Google: con su mismo id, así sus turnos quedan)
   function habilitarHermano(viejo) {
@@ -1228,11 +1354,12 @@ window.PPAM_COORD = function (K) {
       const dup = listaHermanos().find(h => !h.baja && celSolo(h.celular) === celSolo(x.celular) && h.id !== (viejo && viejo.uid));
       if (dup) { const e = ov.querySelector('#hErr'); e.textContent = `Ese celular ya es de ${dup.nombre} ${dup.apellido}, que ya está habilitado.`; e.classList.remove('hidden'); return; }
       const hid = viejo ? viejo.uid : 'h-' + uidGen() + uidGen(), cod = nuevoCod(), creado = new Date().toISOString();
+      const camps = [...ov.querySelectorAll('[data-ncamp]:checked')].map(e => e.dataset.ncamp);
       const b = S.db.batch();
-      b.set(S.db.doc('hermanos/' + hid), Object.assign({}, x, { cod, creado }, yoFirma()));
+      b.set(S.db.doc('hermanos/' + hid), Object.assign({}, x, { cod, creado }, camps.length ? { camps } : {}, yoFirma()));
       b.set(S.db.doc('links/' + cod), Object.assign({ hid, nombre: x.nombre, congregacion: x.congregacion, creado, por: S.user.email.toLowerCase() }, viejo && viejo.turnos ? { turnos: viejo.turnos } : {}));
       const bt = ov.querySelector('#hGo'); bt.disabled = true;
-      try { await b.commit(); ov.remove(); listoLink(x, cod, `${esc(x.nombre)} quedó habilitado`); }
+      try { await b.commit(); ov.remove(); listoLink(x, cod, `${esc(x.nombre)} quedó habilitado`, camps.length === 1 ? camps[0] : ''); }
       catch (e) { console.error(e); bt.disabled = false; const er = ov.querySelector('#hErr'); er.textContent = 'No se pudo guardar. Revisá la conexión y probá de nuevo.'; er.classList.remove('hidden'); }
     });
   }
@@ -1244,15 +1371,46 @@ window.PPAM_COORD = function (K) {
     await b.commit();
     listoLink(h, cod, reactivar ? `${esc(h.nombre)} volvió a estar habilitado` : 'Listo: el link anterior ya no sirve');
   }
+  // Ficha del hermano: las campañas con habilitación propia (las mías se tildan; las de otros coordinadores solo se ven)
+  function fichaCampsHTML(h) {
+    const mias = campsHab(), otras = (h.camps || []).filter(id => !mias.some(c => c.id === id) && S.campanas[id] && (!S.campanas[id].hasta || S.campanas[id].hasta >= hoy()));
+    let x = '';
+    if (mias.length || otras.length || S.isAdmin) {
+      x += `<div class="lbl" style="margin-top:12px">Campañas que piden habilitación</div><div class="fcamps">`;
+      x += mias.map(c => `<label class="ck"><input type="checkbox" data-fcamp="${esc(c.id)}"${(h.camps || []).includes(c.id) ? ' checked' : ''}${h.todas ? ' disabled' : ''}> <span><b>${esc(c.nombre)}</b><br><small>${esc([c.ciudad, campRango(c)].filter(Boolean).join(' · '))}</small></span></label>`).join('');
+      x += otras.map(id => `<div class="fco">${I('check', 'width:14px;height:14px')}${esc(nomCamp(id))} <small>(la maneja otro coordinador)</small></div>`).join('');
+      if (S.isAdmin) x += `<label class="ck"><input type="checkbox" id="fTodas"${h.todas ? ' checked' : ''}> <span><b>Todas las campañas</b><br><small>Solo administradores. Entra también en las que piden habilitación.</small></span></label>`;
+      if (!mias.length && !S.isAdmin) x += '<p class="fine izq">Ninguna de tus campañas pide habilitación propia: puede anotarse en todas.</p>';
+      x += '</div>';
+    }
+    x += `<label class="ck" style="margin-top:6px"><input type="checkbox" id="fCoord"${h.coord ? ' checked' : ''}> <span>Es coordinador <small>(al entrar con su link le aparece un aviso para entrar con Google)</small></span></label>`;
+    return x;
+  }
+  // Después de habilitar para una campaña: mandarle el aviso con el link que abre esa campaña
+  function avisarHab(hid, cid) {
+    const h = S.herm.lista[hid], c = S.campanas[cid]; if (!h || !c) return;
+    const x = Object.assign({ id: hid }, h);
+    sheet(`<div class="ok-big"><div class="o">${I('check', 'width:30px;height:30px;stroke-width:2.6')}</div><h3>${esc(h.nombre)} quedó habilitado para ${esc(c.nombre)}</h3><p>Su link sigue siendo el mismo. Si querés, avisale por WhatsApp: el mensaje le abre esta campaña.</p></div><a class="btn" href="${esc(waTxt(x.celular, msgCamp(x, c)))}" target="_blank" rel="noopener">${I('chat')}Avisarle por WhatsApp</a><button type="button" class="btn alt" id="haCopy">${I('copy')}Copiar el link de esta campaña</button><button type="button" class="btn alt" data-cerrar>Listo</button>`)
+      .querySelector('#haCopy').addEventListener('click', () => copiar(linkHermano(h.cod, cid)));
+  }
   function fichaHermano(hid) {
     const h0 = S.herm.lista[hid]; if (!h0) return; const h = Object.assign({ id: hid }, h0);
     const firm = h.porNombre || h.por || '';
     const ov = sheet(`<div class="acct"><span class="av big">${esc(iniciales(h.nombre + ' ' + h.apellido))}</span><div><h3>${esc(h.nombre)} ${esc(h.apellido)}</h3><p class="hint">${esc(h.congregacion)}</p></div></div>
       <dl class="dl"><dt>Celular</dt><dd>${esc(h.celular)}</dd><dt>Habilitado</dt><dd>${esc(h.creado ? fmtCorto(fechaLocal(h.creado)) : '')}${firm ? ', por ' + esc(firm) : ''}</dd><dt>Último ingreso</dt><dd>${h.ultimo ? esc(cap(cuandoH(h.ultimo))) + (h.disp ? ' · ' + esc(h.disp) : '') : 'Todavía no entró'}</dd>${h.baja ? `<dt>Estado</dt><dd class="mal">Dado de baja${h.bajaAt ? ' el ' + esc(fmtCorto(fechaLocal(h.bajaAt))) : ''}</dd>` : ''}</dl>
       ${h.baja ? `<button type="button" class="btn" id="fRe">${I('link', 'width:18px;height:18px')}Volver a habilitar</button>` : `<a class="btn" href="${esc(waTxt(h.celular, msgLink(h)))}" target="_blank" rel="noopener">${I('chat', 'width:18px;height:18px')}Reenviarle su link</a><button type="button" class="btn alt" id="fNuevo">${I('link', 'width:18px;height:18px')}Mandarle un link nuevo</button><button type="button" class="btn alt" id="fEd">${I('edit', 'width:18px;height:18px')}Cambiar datos</button><button type="button" class="btn alt peligro" id="fBaja">Dar de baja</button>`}
+      ${h.baja ? '' : fichaCampsHTML(h)}
       ${h.baja && S.isAdmin ? '<button type="button" class="btn alt peligro" id="fBorrar">Borrar para siempre</button>' : ''}
       <p class="fine">${h.baja ? 'Al volver a habilitarlo recibe un link nuevo.' + (S.isAdmin ? ' “Borrar” lo saca de la lista; sus turnos viejos no se tocan.' : '') : '“Link nuevo” anula el anterior y cierra el celular donde esté. “Dar de baja” le cierra el acceso; sus turnos quedan para que los revises.'}</p>`);
     const q = (s) => ov.querySelector(s), falla = () => toast('No se pudo guardar. Revisá la conexión y probá de nuevo.');
+    ov.querySelectorAll('[data-fcamp]').forEach(x => x.addEventListener('change', async () => {
+      x.disabled = true;
+      try { await habilitarEn(hid, x.dataset.fcamp, x.checked); if (x.checked) { ov.remove(); avisarHab(hid, x.dataset.fcamp); } else toast('Ya no está habilitado para esa campaña'); }
+      catch (e) { console.error(e); x.checked = !x.checked; falla(); }
+      x.disabled = false;
+    }));
+    if (q('#fTodas')) q('#fTodas').addEventListener('change', async () => { const x = q('#fTodas'); try { await S.db.doc('hermanos/' + hid).update({ todas: x.checked }); toast(x.checked ? 'Habilitado para todas las campañas' : 'Listo'); } catch (e) { console.error(e); x.checked = !x.checked; falla(); } });
+    if (q('#fCoord')) q('#fCoord').addEventListener('change', async () => { const x = q('#fCoord'); try { await S.db.doc('hermanos/' + hid).update({ coord: x.checked }); } catch (e) { console.error(e); x.checked = !x.checked; falla(); } });
     if (q('#fRe')) q('#fRe').addEventListener('click', async () => { ov.remove(); try { await linkNuevo(h, true); } catch (e) { console.error(e); falla(); } });
     if (q('#fBorrar')) q('#fBorrar').addEventListener('click', () => {
       ov.remove();
@@ -1506,5 +1664,5 @@ window.PPAM_COORD = function (K) {
       catch (e) { console.error(e); bt.disabled = false; bt.textContent = 'Guardar revisión'; toast('No se pudo guardar.'); }
     });
   }
-  return { fichaCarrito, renderHermanos, renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };
+  return { listaCompleta, fichaCarrito, renderHermanos, renderCoord, renderAdmin, renderSoporte, anotarHermano, restaurar, abrirHistorialGeneral, cambiarEstado, textoVoluntarios, textoDia, copiarHorarios, editarPunto, editarTurno, nuevaCampana, editarCoordinadores, cambiarReporte, abrirBuscadorCoord };
 };

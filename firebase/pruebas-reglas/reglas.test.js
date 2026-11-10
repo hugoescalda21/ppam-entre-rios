@@ -381,6 +381,40 @@ const section = (t) => console.log('\n' + t);
   await check('un hermano NO borra', assertFails(db(A).doc('problemas/pr3').delete()));
   await check('el coordinador borra', assertSucceeds(db(CO).doc('problemas/pr3').delete()));
 
+  section('Habilitación por campaña');
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const f = ctx.firestore(), base = { desde: '2026-10-01', hasta: '2026-10-31', activa: true, soloHab: true,
+      puntos: { p1: { nombre: 'Andén 1', tipo: 'carrito', cupo: 2 }, p2: { nombre: 'Hall', tipo: 'stand', cupo: 3 } },
+      turnos: { t1: { punto: 'p1', desde: '08:00', hasta: '10:00', dias: [1] }, t2: { punto: 'p2', desde: '10:00', hasta: '12:00', dias: [1] } } };
+    await f.doc('campanas/solo').set(Object.assign({ nombre: 'Solo habilitados' }, base));
+    await f.doc('campanas/ajena').set(Object.assign({ nombre: 'Ajena' }, base));
+    await f.doc('coordinadores/solo').set({ emails: [CO] });
+    await f.doc('coordinadores/ajena').set({ emails: [CO2] });
+    await f.doc('roles/' + CO).set({ campanas: [CID, 'solo'] });
+    await f.doc('roles/' + CO2).set({ campanas: ['ajena'] });
+  });
+  const pedirEn = (email, cid, tid) => { const f = db(email), b = f.batch(), id = `${cid}__${F}__${tid}`; b.set(f.doc('cupos/' + id), { cid, fecha: F, tid, ocupados: { [uidOf(email)]: 'p' } }, { merge: true }); b.set(f.doc('pedidos/' + id + '__' + uidOf(email)), datos(email, tid, { cid })); return b.commit(); };
+  const acc = (email, cid, extra) => db(email).doc(`accesos/${cid}__${uidOf(email)}`).set(Object.assign({ cid, hid: uidOf(email), nombre: 'Ana', apellido: 'Paz', congregacion: 'San Agustín (Paraná)', at: TS() }, extra || {}));
+  await check('un hermano sin habilitar NO pide turno en una campaña que pide habilitación', assertFails(pedirEn(A, 'solo', 't1')));
+  await check('un hermano pide acceso a esa campaña', assertSucceeds(acc(A, 'solo')));
+  await check('NO pide acceso a nombre de otro', assertFails(db(A).doc('accesos/solo__h-beto').set({ cid: 'solo', hid: 'h-beto', nombre: 'B', at: TS() })));
+  await check('NO pide acceso a una campaña abierta a todos', assertFails(acc(A, CID)));
+  await check('ve su propio pedido de acceso', assertSucceeds(db(A).doc('accesos/solo__h-ana').get()));
+  await check('puede preguntar por uno que no existe (el suyo)', assertSucceeds(db(A).doc('accesos/ajena__h-ana').get()));
+  await check('NO ve el pedido de acceso de otro', assertFails(db(B).doc('accesos/solo__h-ana').get()));
+  await check('el coordinador lista los pedidos de acceso de su campaña', assertSucceeds(db(CO).collection('accesos').where('cid', '==', 'solo').get()));
+  await check('otro coordinador NO los lista', assertFails(db(CO2).collection('accesos').where('cid', '==', 'solo').get()));
+  await check('el coordinador habilita a Ana para su campaña', assertSucceeds(db(CO).doc('hermanos/h-ana').update({ camps: ['solo'] })));
+  await check('el coordinador NO la habilita para una campaña ajena', assertFails(db(CO).doc('hermanos/h-ana').update({ camps: ['solo', 'ajena'] })));
+  await check('el coordinador NO la habilita para todas', assertFails(db(CO).doc('hermanos/h-ana').update({ todas: true })));
+  await check('el coordinador la marca como coordinadora (aviso para entrar con Google)', assertSucceeds(db(CO).doc('hermanos/h-ana').update({ coord: true })));
+  await check('ya habilitada, Ana pide su turno', assertSucceeds(pedirEn(A, 'solo', 't1')));
+  await check('pero NO en la campaña ajena', assertFails(pedirEn(A, 'ajena', 't1')));
+  await check('el coordinador borra el pedido de acceso', assertSucceeds(db(CO).doc('accesos/solo__h-ana').delete()));
+  await check('un hermano NO se habilita solo', assertFails(db(B).doc('hermanos/h-beto').update({ camps: ['solo'] })));
+  await check('un administrador habilita a Beto para todas', assertSucceeds(db(ADM).doc('hermanos/h-beto').update({ todas: true })));
+  await check('con "todas", Beto pide en la campaña ajena', assertSucceeds(pedirEn(B, 'ajena', 't2')));
+
   await env.cleanup();
   console.log(`\n${ok} OK, ${bad} fallaron`);
   process.exitCode = bad ? 1 : 0;
